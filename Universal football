@@ -59,7 +59,6 @@ local function updatePlayerAppearance()
     end
 end
 
--- Cập nhật màu áo cho tất cả AI
 local function applyTeamColors()
     for _, bot in ipairs(gameState.redTeam) do
         for _, part in ipairs(bot:GetChildren()) do
@@ -687,9 +686,6 @@ local function updateGoalkeeperAI(gk,dt)
     end
 end
 
--- ==========================================
--- CẦU THỦ AI - ĐỨNG VỊ TRÍ LÝ TƯỞNG KHI NGƯỜI CHƠI DẮT BÓNG
--- ==========================================
 local function updateOutfieldAI(bot,allBots,closestBot,dt)
     local ball=gameState.ball
     local team=bot.Team.Value
@@ -731,9 +727,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         return
     end
     
-    -- ==========================================
-    -- KHI NGƯỜI CHƠI DẮT BÓNG: AI ĐỨNG VỊ TRÍ LÝ TƯỞNG
-    -- ==========================================
     local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == team)
     
     if playerDribbling then
@@ -747,7 +740,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
             
             local target
             if role == "Striker" then
-                -- Tiền đạo: chạy về phía khung thành đối phương, tách ra hai bên để nhận chọc khe
                 local strikerIdx = bot:GetAttribute("FormationIndex") or 1
                 local sideOffset = (strikerIdx == 1) and -70 or 70
                 target = Vector3.new(
@@ -756,7 +748,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
                     math.min(attackGoalZ - 60, playerZ + attackDir * 150)
                 )
             elseif role == "Midfielder" then
-                -- Tiền vệ: dàn ngang ở giữa sân, tách 2 bên để nhận chuyền
                 local midIdx = bot:GetAttribute("FormationIndex") or 1
                 local sideOffset = (midIdx <= 2) and -90 or 90
                 local zOffset = (midIdx % 2 == 0) and 30 or -30
@@ -766,7 +757,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
                     playerZ + attackDir * 80 + zOffset
                 )
             else
-                -- Hậu vệ: đứng sau, dàn ngang để nhận bóng khi cần
                 local defIdx = bot:GetAttribute("FormationIndex") or 1
                 local sideOffset = (defIdx <= 2) and -70 or 70
                 target = Vector3.new(
@@ -776,14 +766,12 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
                 )
             end
             
-            -- Clamp trong sân
             target = Vector3.new(
                 math.clamp(target.X, MAP_POS.X - PITCH_WIDTH/2 + 10, MAP_POS.X + PITCH_WIDTH/2 - 10),
                 TORSO_Y,
                 math.clamp(target.Z, MAP_POS.Z - PITCH_LENGTH/2 + 5, MAP_POS.Z + PITCH_LENGTH/2 - 5)
             )
             
-            -- Tránh AI tụ lại 1 chỗ
             local dir = target - botPos
             if dir.Magnitude > 3 then
                 local newPos = botPos + dir.Unit * AI_SPEED * dt
@@ -793,7 +781,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
             return
         end
     end
-    -- ==========================================
     
     local target
     if bot==closestBot then
@@ -878,7 +865,6 @@ local function updateAILogic(dt)
         if bot.Role.Value=="Goalkeeper" then
             updateGoalkeeperAI(bot,dt)
         else
-            -- Khi người chơi dắt bóng, AI không được đuổi theo bóng nếu cùng đội
             local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value)
             
             local isStriker=(bot.Role.Value=="Striker")
@@ -1242,9 +1228,6 @@ local function startTimer()
     end)
 end
 
--- ==========================================
--- SETTINGS UI
--- ==========================================
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     
@@ -1254,7 +1237,6 @@ local function createSettingsUI()
     gui.Parent = player.PlayerGui
     gameState.settingsUI = gui
     
-    -- Nút bánh răng ở góc trên bên phải
     local gearBtn = Instance.new("TextButton")
     gearBtn.Name = "GearBtn"
     gearBtn.Size = UDim2.new(0, 44, 0, 44)
@@ -1268,7 +1250,6 @@ local function createSettingsUI()
     local gc = Instance.new("UICorner"); gc.CornerRadius = UDim.new(0, 10); gc.Parent = gearBtn
     local gs = Instance.new("UIStroke"); gs.Color = Color3.fromRGB(100, 100, 120); gs.Thickness = 2; gs.Parent = gearBtn
     
-    -- Panel cài đặt
     local panel = Instance.new("Frame")
     panel.Name = "SettingsPanel"
     panel.Size = UDim2.new(0, 400, 0, 480)
@@ -1284,18 +1265,17 @@ local function createSettingsUI()
     title.Size = UDim2.new(1, 0, 0, 45)
     title.Position = UDim2.new(0, 0, 0, 10)
     title.BackgroundTransparency = 1
-    title.Text = "⚙ CÀI ĐẶT TRẬN ĐẤU"
+    title.Text = "⚙ MATCH SETTINGS"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
     title.Font = Enum.Font.FredokaOne
     title.Parent = panel
     
-    -- Tên đội mình
     local ownNameLabel = Instance.new("TextLabel")
     ownNameLabel.Size = UDim2.new(0.9, 0, 0, 25)
     ownNameLabel.Position = UDim2.new(0.05, 0, 0, 65)
     ownNameLabel.BackgroundTransparency = 1
-    ownNameLabel.Text = "Tên đội MÌNH:"
+    ownNameLabel.Text = "Team Name:"
     ownNameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     ownNameLabel.TextScaled = true
     ownNameLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1313,12 +1293,11 @@ local function createSettingsUI()
     ownNameBox.Parent = panel
     local onc = Instance.new("UICorner"); onc.CornerRadius = UDim.new(0, 8); onc.Parent = ownNameBox
     
-    -- Tên đối thủ
     local oppNameLabel = Instance.new("TextLabel")
     oppNameLabel.Size = UDim2.new(0.9, 0, 0, 25)
     oppNameLabel.Position = UDim2.new(0.05, 0, 0, 140)
     oppNameLabel.BackgroundTransparency = 1
-    oppNameLabel.Text = "Tên đội ĐỐI THỦ:"
+    oppNameLabel.Text = "Opponent Name:"
     oppNameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
     oppNameLabel.TextScaled = true
     oppNameLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -1336,12 +1315,11 @@ local function createSettingsUI()
     oppNameBox.Parent = panel
     local opc = Instance.new("UICorner"); opc.CornerRadius = UDim.new(0, 8); opc.Parent = oppNameBox
     
-    -- Màu áo đội mình
     local colorLabel1 = Instance.new("TextLabel")
     colorLabel1.Size = UDim2.new(0.9, 0, 0, 25)
     colorLabel1.Position = UDim2.new(0.05, 0, 0, 215)
     colorLabel1.BackgroundTransparency = 1
-    colorLabel1.Text = "Màu áo đội MÌNH:"
+    colorLabel1.Text = "Team Color:"
     colorLabel1.TextColor3 = Color3.fromRGB(200, 200, 200)
     colorLabel1.TextScaled = true
     colorLabel1.TextXAlignment = Enum.TextXAlignment.Left
@@ -1355,7 +1333,6 @@ local function createSettingsUI()
     preview1.Parent = panel
     local prc1 = Instance.new("UICorner"); prc1.CornerRadius = UDim.new(0, 6); prc1.Parent = preview1
     
-    -- Color preset buttons đội mình
     local colorRow1 = Instance.new("Frame")
     colorRow1.Size = UDim2.new(0.9, 0, 0, 30)
     colorRow1.Position = UDim2.new(0.05, 0, 0, 245)
@@ -1387,12 +1364,11 @@ local function createSettingsUI()
         end)
     end
     
-    -- Màu áo đối thủ
     local colorLabel2 = Instance.new("TextLabel")
     colorLabel2.Size = UDim2.new(0.9, 0, 0, 25)
     colorLabel2.Position = UDim2.new(0.05, 0, 0, 285)
     colorLabel2.BackgroundTransparency = 1
-    colorLabel2.Text = "Màu áo đối thủ:"
+    colorLabel2.Text = "Opponent Color:"
     colorLabel2.TextColor3 = Color3.fromRGB(200, 200, 200)
     colorLabel2.TextScaled = true
     colorLabel2.TextXAlignment = Enum.TextXAlignment.Left
@@ -1437,12 +1413,11 @@ local function createSettingsUI()
         end)
     end
     
-    -- Nút Áp dụng
     local applyBtn = Instance.new("TextButton")
     applyBtn.Size = UDim2.new(0, 160, 0, 45)
     applyBtn.Position = UDim2.new(0.05, 0, 0, 370)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
-    applyBtn.Text = "✓ ÁP DỤNG"
+    applyBtn.Text = "✓ APPLY"
     applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     applyBtn.TextScaled = true
     applyBtn.Font = Enum.Font.FredokaOne
@@ -1461,12 +1436,11 @@ local function createSettingsUI()
         gameState.settingsOpen = false
     end)
     
-    -- Nút Đóng
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 160, 0, 45)
     closeBtn.Position = UDim2.new(0.55, 0, 0, 370)
     closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    closeBtn.Text = "✕ ĐÓNG"
+    closeBtn.Text = "✕ CLOSE"
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     closeBtn.TextScaled = true
     closeBtn.Font = Enum.Font.FredokaOne
@@ -1478,7 +1452,6 @@ local function createSettingsUI()
         gameState.settingsOpen = false
     end)
     
-    -- Toggle panel khi bấm gear
     gearBtn.MouseButton1Click:Connect(function()
         gameState.settingsOpen = not gameState.settingsOpen
         panel.Visible = gameState.settingsOpen
@@ -1801,8 +1774,8 @@ local function autoStart()
         end
     end)
     print("=== WORLD CUP 2026 ===")
-    print("⚙ Bấm nút bánh răng góc trên phải để đổi tên đội & màu áo!")
-    print("🎯 Khi bạn dắt bóng, đồng đội AI sẽ chạy đến vị trí lý tưởng để nhận chuyền!")
+    print("⚙ Click the gear icon at top-right to customize team names & colors!")
+    print("🎯 When you dribble, AI teammates move to ideal positions for passes!")
 end
 
 autoStart()
