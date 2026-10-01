@@ -19,10 +19,15 @@ local EXTRA_TIME = 120
 local NORMAL_WALKSPEED = 16
 local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
+local CROWD_CHEER_SOUND = "rbxassetid://1837879082"
+local WHISTLE_SOUND = "rbxassetid://9114221324"
+local FINAL_WHISTLE_SOUND = "rbxassetid://5801283728"
 
 local FEET_Y = MAP_POS.Y + 2.5
 local TORSO_Y = FEET_Y + 3
 local PENALTY_BOX_DEPTH = 60
+
+local STAND_POS = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 90, 63, 0)
 
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
@@ -52,8 +57,66 @@ local gameState = {
     playerSuspended=false,
     cardUILabel=nil,
     lastViolationTime=0,
-    playerPushConn=nil
+    playerPushConn=nil,
+    crowdSound=nil
 }
+
+-- ========== SOUND SYSTEM ==========
+local function playSoundOnce(id, volume, duration)
+    local s = Instance.new("Sound")
+    s.SoundId = id
+    s.Volume = volume
+    s.Parent = workspace
+    pcall(function() s:Play() end)
+    task.delay(duration or 4, function() 
+        if s then 
+            s:Stop()
+            s:Destroy() 
+        end
+    end)
+end
+
+local function playWhistle()
+    playSoundOnce(WHISTLE_SOUND, 8, 2.5)
+end
+
+local function playFinalWhistle()
+    playSoundOnce(FINAL_WHISTLE_SOUND, 10, 6)
+end
+
+local function createCrowdSound()
+    if gameState.crowdSound then gameState.crowdSound:Destroy() end
+    local s = Instance.new("Sound")
+    s.SoundId = CROWD_CHEER_SOUND
+    s.Looped = true
+    s.Volume = 0
+    s.Parent = workspace
+    pcall(function() s:Play() end)
+    gameState.crowdSound = s
+end
+
+local function updateCrowdVolume(dt)
+    if not gameState.crowdSound or not gameState.crowdSound.Parent then return end
+    local ball = gameState.ball
+    if not ball or not ball.Parent then 
+        gameState.crowdSound.Volume = 0
+        return
+    end
+    local bp = ball.Position
+    local distFront = math.abs(bp.Z - (MAP_POS.Z + PITCH_LENGTH/2))
+    local distBack = math.abs(bp.Z - (MAP_POS.Z - PITCH_LENGTH/2))
+    local closest = math.min(distFront, distBack)
+    
+    local targetVolume = 0
+    if closest < 180 then
+        local intensity = 1 - (closest / 180)
+        targetVolume = 0.6 + intensity * 2.4
+    end
+    
+    local current = gameState.crowdSound.Volume
+    gameState.crowdSound.Volume = current + (targetVolume - current) * math.min(dt * 4, 1)
+end
+-- ========== END SOUND SYSTEM ==========
 
 -- ========== CARD SYSTEM ==========
 local function savePlayerAppearance()
@@ -126,8 +189,7 @@ local function suspendPlayer()
 
     local char = gameState.playerChar
     if char and char:FindFirstChild("HumanoidRootPart") then
-        local sideX = PITCH_WIDTH/2 + 35
-        char:PivotTo(CFrame.new(MAP_POS + Vector3.new(sideX, 5, 0)))
+        char:PivotTo(CFrame.new(STAND_POS))
     end
 
     for _, btn in pairs(gameState.gameButtons) do
@@ -146,12 +208,14 @@ local function onPlayerViolation()
 
     if gameState.playerCard == "none" then
         gameState.playerCard = "yellow"
+        playWhistle()
         showCardAnimation("🟨 THẺ VÀNG — CẢNH CÁO!", Color3.fromRGB(255, 220, 0))
         updateCardUI()
         task.delay(2.5, function()
             showCardAnimation("LẦN NỮA SẼ BỊ THẺ ĐỎ!", Color3.fromRGB(255, 100, 100))
         end)
     elseif gameState.playerCard == "yellow" then
+        playWhistle()
         showCardAnimation("🟥 THẺ ĐỎ!", Color3.fromRGB(255, 50, 50))
         task.wait(0.5)
         suspendPlayer()
@@ -322,6 +386,7 @@ local function createStadium()
         cp("ST",Vector3.new(PITCH_WIDTH+100,h,40),MAP_POS+Vector3.new(0,h/2,-PITCH_LENGTH/2-30-i*20),c,Enum.Material.Concrete)
         cp("SB",Vector3.new(PITCH_WIDTH+100,h,40),MAP_POS+Vector3.new(0,h/2,PITCH_LENGTH/2+30+i*20),c,Enum.Material.Concrete)
     end
+    cp("StandBase",Vector3.new(80,60,60),MAP_POS+Vector3.new(PITCH_WIDTH/2+90,30,0),Color3.fromRGB(80,80,90),Enum.Material.Concrete)
     for _,pos in ipairs({MAP_POS+Vector3.new(-220,140,-220),MAP_POS+Vector3.new(220,140,-220),MAP_POS+Vector3.new(-220,140,220),MAP_POS+Vector3.new(220,140,220)}) do
         cp("Pole",Vector3.new(10,140,10),pos-Vector3.new(0,70,0),Color3.fromRGB(80,80,80),Enum.Material.Metal)
         local lh=cp("Head",Vector3.new(60,20,20),pos,Color3.fromRGB(255,255,255),Enum.Material.Neon)
@@ -1217,8 +1282,7 @@ local function resetPositions(concedingTeam)
             pc:PivotTo(CFrame.new(MAP_POS+Vector3.new(0,10,zOffset)))
             updatePlayerAppearance()
         else
-            local sideX = PITCH_WIDTH/2 + 35
-            pc:PivotTo(CFrame.new(MAP_POS + Vector3.new(sideX, 5, 0)))
+            pc:PivotTo(CFrame.new(STAND_POS))
         end
     end
     if concedingTeam then
@@ -1237,6 +1301,10 @@ end
 local function endMatch(winnerText)
     gameState.paused=true
     gameState.gameActive=false
+    playFinalWhistle()
+    if gameState.crowdSound then
+        gameState.crowdSound.Volume = 3
+    end
     showBigText(winnerText,Color3.fromRGB(255,100,100))
     task.wait(3)
     hideBigText()
@@ -1260,6 +1328,9 @@ local function endMatch(winnerText)
     gameState.paused=false
     resetPositions("Red")
     handleNewMatchStart()
+    if gameState.crowdSound then
+        gameState.crowdSound.Volume = 0
+    end
     gameState.gameActive=true
 end
 
@@ -1347,6 +1418,7 @@ local function startTimer()
                 gameState.timeLeft=gameState.timeLeft-1
                 if gameState.timeLeft<=0 then
                     if gameState.isExtraTime then
+                        playFinalWhistle()
                         showBigText("EXTRA TIME ENDED\nDRAW!",Color3.fromRGB(255,200,100))
                         task.wait(3)
                         hideBigText()
@@ -1374,6 +1446,7 @@ local function startTimer()
                     elseif gameState.currentHalf<gameState.maxHalves then
                         gameState.paused=true
                         gameState.gameActive=false
+                        playWhistle()
                         showBigText("HALF TIME",Color3.fromRGB(255,255,100))
                         task.wait(3)
                         hideBigText()
@@ -1392,6 +1465,7 @@ local function startTimer()
                         gameState.paused=true
                         gameState.gameActive=false
                         if gameState.scoreRed==gameState.scoreBlue then
+                            playWhistle()
                             showBigText("FULL TIME\nDRAW!\nEXTRA TIME",Color3.fromRGB(255,255,100))
                             task.wait(3)
                             hideBigText()
@@ -2000,7 +2074,7 @@ local function autoStart()
             task.wait(0.3)
             local hrp = nc:FindFirstChild("HumanoidRootPart")
             if hrp then
-                hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(PITCH_WIDTH/2 + 35, 5, 0))
+                hrp.CFrame = CFrame.new(STAND_POS)
             end
         else
             updatePlayerAppearance()
@@ -2008,6 +2082,7 @@ local function autoStart()
     end)
     
     createStadium()
+    createCrowdSound()
     createBall()
     createAIPlayer("Red","Goalkeeper",1)
     createAIPlayer("Red","Defender",1)
@@ -2046,12 +2121,10 @@ local function autoStart()
 
         local distX = math.abs(hrp.Position.X - MAP_POS.X)
         local distZ = math.abs(hrp.Position.Z - MAP_POS.Z)
-        local inField = distX < PITCH_WIDTH/2 + 25 and distZ < PITCH_LENGTH/2 + 25
+        local inField = distX < PITCH_WIDTH/2 + 40 and distZ < PITCH_LENGTH/2 + 25
 
         if inField then
-            local sideX = PITCH_WIDTH/2 + 35
-            local targetPos = Vector3.new(MAP_POS.X + sideX, MAP_POS.Y + 5, MAP_POS.Z)
-            hrp.CFrame = CFrame.new(targetPos)
+            hrp.CFrame = CFrame.new(STAND_POS)
             hrp.AssemblyLinearVelocity = Vector3.zero
         end
 
@@ -2069,6 +2142,7 @@ local function autoStart()
         updatePlayerDribble(dt)
         updateAILogic(dt)
         checkRules()
+        updateCrowdVolume(dt)
         if tick()-gameState.lastInterceptCheck>0.1 then
             gameState.lastInterceptCheck=tick()
             checkInterception()
@@ -2077,9 +2151,10 @@ local function autoStart()
     
     print("=== WORLD CUP 2026 ===")
     print("⚙ Click gear icon at top-right to change team names, colors & score")
-    print("🟨 Chạm bóng khi GK đối đang giữ → thẻ vàng")
-    print("🟥 Vi phạm lần 2 → thẻ đỏ, bị treo 1 trận")
-    print("🎯 Khi bạn dribble, AI đồng đội sẽ chạy tới vị trí tốt")
+    print("🟨 Chạm bóng khi GK đối đang giữ → thẻ vàng (còi to)")
+    print("🟥 Vi phạm lần 2 → thẻ đỏ, bị treo lên khán đài 1 trận")
+    print("📢 Khi bóng gần khung thành → tiếng cổ vũ to dần")
+    print("🎺 Kết thúc trận → còi mãn cuộc vang lên")
 end
 
 autoStart()
