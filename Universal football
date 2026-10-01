@@ -874,11 +874,6 @@ local function updateGoalkeeperAI(gk,dt)
         else
             shouldCatch = true
         end
-        -- PENALTY SHOOTOUT: LUÔN PARRY, KHÔNG CHỤP
-        if gameState.inPenaltyShootout then
-            shouldCatch = false
-            shouldParry = true
-        end
         if shouldCatch then
             ball.AssemblyLinearVelocity=Vector3.new(0,0,0)
             ball.AssemblyAngularVelocity=Vector3.new(0,0,0)
@@ -1058,6 +1053,7 @@ local function updateAILogic(dt)
     local ball=gameState.ball
     if not ball or not ball.Parent or gameState.restartCooldown or not gameState.gameActive or gameState.goalScored then return end
     if gameState.inPenaltyShootout or gameState.celebrating then return end
+    if gameState.paused or gameState.restartCountdown > 0 then return end
     local allBots={}
     for _,b in ipairs(gameState.redTeam) do table.insert(allBots,b) end
     for _,b in ipairs(gameState.blueTeam) do table.insert(allBots,b) end
@@ -1105,6 +1101,7 @@ local function checkInterception()
     if gameState.gkHolding then return end
     if gameState.shootCharging or gameState.knuckleCharging then return end
     if gameState.inPenaltyShootout or gameState.celebrating then return end
+    if gameState.paused or gameState.restartCountdown > 0 then return end
     local speed=ball.AssemblyLinearVelocity.Magnitude
     local isDribbled=gameState.playerDribbling
     if speed<20 and not isDribbled then return end
@@ -1222,6 +1219,7 @@ local function hideBigText()
 end
 
 local function resetPositions(concedingTeam)
+    if gameState.ball then gameState.ball.Anchored = false end
     gameState.playerDribbling=false
     gameState.gkHolding=false
     gameState.gkHoldingTeam=nil
@@ -1292,7 +1290,6 @@ local function startCelebration(winningTeam)
         )
     end
     
-    -- Player cũng chạy vào nếu thuộc đội thắng
     local pc = gameState.playerChar
     local pcIsWinner = (gameState.playerTeam == winningTeam) and not gameState.playerSuspended
     
@@ -1311,11 +1308,9 @@ local function startCelebration(winningTeam)
                 local dir = target - current
                 local dist = Vector3.new(dir.X, 0, dir.Z).Magnitude
                 if dist > 2 then
-                    -- Chạy vào giữa sân
                     local newPos = current + Vector3.new(dir.X, 0, dir.Z).Unit * 25 * 0.03
                     moveCharacter(bot, newPos, Vector3.new(centerPos.X, newPos.Y, centerPos.Z))
                 else
-                    -- Nhảy lên nhảy xuống
                     local jumpOffset = math.abs(math.sin(elapsed * 5)) * 4
                     local newPos = Vector3.new(target.X, TORSO_Y + jumpOffset, target.Z)
                     moveCharacter(bot, newPos, Vector3.new(centerPos.X, newPos.Y, centerPos.Z))
@@ -1323,7 +1318,6 @@ local function startCelebration(winningTeam)
             end
         end
         
-        -- Player cũng chạy vào
         if pcIsWinner and pc then
             local hrp = pc:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -1353,38 +1347,35 @@ local function runPenaltyShootout()
     gameState.inPenaltyShootout = true
     stopCrowd()
     hideGoalText()
+    gameState.playerDribbling = false
     
     local redScore, blueScore = 0, 0
     local maxRounds = 5
     
-    -- Vị trí bóng: giữa sân bên trái
-    local ballPos = MAP_POS + Vector3.new(-30, 3, 0)
+    -- Red sút ở khung +Z, Blue sút ở khung -Z
+    local goalZRed = MAP_POS.Z + PITCH_LENGTH/2
+    local goalZBlue = MAP_POS.Z - PITCH_LENGTH/2
+    local spotZRed = goalZRed - 40
+    local spotZBlue = goalZBlue + 40
     
-    -- Vị trí khung thành đích
-    local goalZRed = MAP_POS.Z - PITCH_LENGTH/2
-    local goalZBlue = MAP_POS.Z + PITCH_LENGTH/2
-    
-    -- Dồn tất cả cầu thủ ra rìa sân
-    local function moveToSidelines()
+    local function clearField()
         for idx, bot in ipairs(gameState.redTeam) do
             if bot.PrimaryPart then
-                local p = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 25, TORSO_Y - MAP_POS.Y, -60 + idx * 12)
+                local p = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 30, TORSO_Y - MAP_POS.Y, -70 + idx * 10)
                 moveCharacter(bot, p, Vector3.new(p.X + 1, p.Y, p.Z))
             end
         end
         for idx, bot in ipairs(gameState.blueTeam) do
             if bot.PrimaryPart then
-                local p = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 25, TORSO_Y - MAP_POS.Y, 20 + idx * 12)
+                local p = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 30, TORSO_Y - MAP_POS.Y, 20 + idx * 10)
                 moveCharacter(bot, p, Vector3.new(p.X + 1, p.Y, p.Z))
             end
         end
     end
     
-    moveToSidelines()
-    
+    clearField()
     if gameState.ball then
         gameState.ball.Anchored = true
-        gameState.ball.CFrame = CFrame.new(ballPos)
         gameState.ball.AssemblyLinearVelocity = Vector3.zero
         gameState.ball.AssemblyAngularVelocity = Vector3.zero
     end
@@ -1393,66 +1384,59 @@ local function runPenaltyShootout()
     task.wait(2)
     hideBigText()
     
-    -- Position GK
-    local function positionGK(team)
-        local gk = nil
+    local function findGK(team)
         for _, bot in ipairs((team == "Red") and gameState.redTeam or gameState.blueTeam) do
-            if bot.Role.Value == "Goalkeeper" then gk = bot break end
+            if bot.Role.Value == "Goalkeeper" then return bot end
         end
-        if not gk or not gk.PrimaryPart then return end
-        local goalZ = (team == "Red") and goalZRed or goalZBlue
-        local offsetZ = (team == "Red") and 8 or -8
-        local p = Vector3.new(MAP_POS.X, TORSO_Y, goalZ + offsetZ)
-        moveCharacter(gk, p, Vector3.new(ballPos.X, p.Y, ballPos.Z))
-        return gk
+        return nil
     end
     
-    -- Get shooter
+    local redUsed = {}
+    local blueUsed = {}
+    
     local function getShooter(team)
-        if team == gameState.playerTeam and not gameState.playerSuspended then
+        local usedList = (team == "Red") and redUsed or blueUsed
+        if team == gameState.playerTeam and not gameState.playerSuspended and not usedList["player"] then
             local pc = gameState.playerChar
-            if pc and pc:FindFirstChild("HumanoidRootPart") then 
-                return {isPlayer = true, char = pc} 
+            if pc and pc:FindFirstChild("HumanoidRootPart") then
+                return {isPlayer = true, char = pc, key = "player"}
             end
         end
         for _, bot in ipairs((team == "Red") and gameState.redTeam or gameState.blueTeam) do
-            if bot.Role.Value == "Striker" and bot.PrimaryPart then
-                return {isPlayer = false, bot = bot}
+            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" and not usedList[bot.Name] then
+                return {isPlayer = false, bot = bot, key = bot.Name}
             end
         end
+        if team == "Red" then redUsed = {} else blueUsed = {} end
         for _, bot in ipairs((team == "Red") and gameState.redTeam or gameState.blueTeam) do
             if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then
-                return {isPlayer = false, bot = bot}
+                return {isPlayer = false, bot = bot, key = bot.Name}
             end
         end
         return nil
     end
     
-    -- Position shooter near ball
-    local function positionShooter(shooter)
-        if shooter.isPlayer then
-            local hrp = shooter.char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local approachPos = ballPos + Vector3.new(0, 3, -10)
-                hrp.CFrame = CFrame.new(approachPos, ballPos)
-                hrp.AssemblyLinearVelocity = Vector3.zero
-            end
-        else
-            if shooter.bot.PrimaryPart then
-                local approachPos = ballPos + Vector3.new(0, TORSO_Y - MAP_POS.Y - 3, -10)
-                moveCharacter(shooter.bot, approachPos, ballPos)
-            end
-        end
+    local function positionGK(gk, goalZ)
+        if not gk or not gk.PrimaryPart then return end
+        local offsetZ = (goalZ > MAP_POS.Z) and -6 or 6
+        local p = Vector3.new(MAP_POS.X, TORSO_Y, goalZ + offsetZ)
+        moveCharacter(gk, p, Vector3.new(MAP_POS.X, p.Y, MAP_POS.Z))
     end
     
-    -- Take a shot
     local function takeShot(team, round)
         local shooter = getShooter(team)
         if not shooter then return false end
+        local usedList = (team == "Red") and redUsed or blueUsed
+        usedList[shooter.key] = true
         
+        local goalZ = (team == "Red") and goalZRed or goalZBlue
+        local spotZ = (team == "Red") and spotZRed or spotZBlue
         local opponentTeam = (team == "Red") and "Blue" or "Red"
-        positionGK(opponentTeam)
         
+        local gk = findGK(opponentTeam)
+        positionGK(gk, goalZ)
+        
+        local ballPos = Vector3.new(MAP_POS.X, MAP_POS.Y + 3, spotZ)
         if gameState.ball then
             gameState.ball.Anchored = true
             gameState.ball.CFrame = CFrame.new(ballPos)
@@ -1460,7 +1444,21 @@ local function runPenaltyShootout()
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
         end
         
-        positionShooter(shooter)
+        local approachZ = spotZ + ((goalZ > spotZ) and -8 or 8)
+        local approachPos = Vector3.new(MAP_POS.X, TORSO_Y, approachZ)
+        
+        if shooter.isPlayer then
+            local hrp = shooter.char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = CFrame.new(approachPos, Vector3.new(MAP_POS.X, approachPos.Y, goalZ))
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            end
+        else
+            if shooter.bot.PrimaryPart then
+                moveCharacter(shooter.bot, approachPos, Vector3.new(MAP_POS.X, approachPos.Y, goalZ))
+            end
+        end
+        
         task.wait(0.8)
         
         local teamName = (team == "Red") and gameState.teamRedName or gameState.teamBlueName
@@ -1471,17 +1469,16 @@ local function runPenaltyShootout()
             showBigText(teamName .. " - LƯỢT " .. round, Color3.fromRGB(255, 220, 100))
         end
         
-        -- Wait for player to press SHOOT or auto after delay
         if shooter.isPlayer then
             local startWait = tick()
             local pressed = false
+            gameState.shootCharging = false
+            gameState.knuckleCharging = false
             while not pressed and tick() - startWait < 4 do
                 if gameState.shootCharging or gameState.knuckleCharging then
                     pressed = true
                     gameState.shootCharging = false
                     gameState.knuckleCharging = false
-                    gameState.shootChargePower = 0
-                    gameState.knuckleChargePower = 0
                 end
                 task.wait(0.05)
             end
@@ -1491,34 +1488,49 @@ local function runPenaltyShootout()
         
         hideBigText()
         
-        -- Target: khung thành đối phương
-        local goalZ = (team == "Red") and goalZBlue or goalZRed
-        local targetX = MAP_POS.X + math.random(-GOAL_WIDTH/2 + 6, GOAL_WIDTH/2 - 6)
-        local targetY = MAP_POS.Y + math.random(3, 12)
+        -- Xác suất: player 45% vào, AI 35% vào
+        local scored = math.random() < (shooter.isPlayer and 0.45 or 0.35)
+        
+        local targetX = MAP_POS.X + (math.random() * 2 - 1) * (GOAL_WIDTH/2 - 8)
+        local targetY = MAP_POS.Y + math.random(3, 10)
         local targetPos = Vector3.new(targetX, targetY, goalZ)
         
-        -- Sút knuckleball
         if gameState.ball then
             gameState.ball.Anchored = false
             local dir = (targetPos - ballPos).Unit
-            applyKnuckleball(gameState.ball, dir, math.random(420, 520))
+            applyKnuckleball(gameState.ball, dir, math.random(350, 450))
         end
         
-        -- Xác suất ghi bàn: 65% AI, 40% player
-        local scored = math.random() < (shooter.isPlayer and 0.40 or 0.35)
+        -- GK lao theo bóng
+        if gk and gk.PrimaryPart then
+            task.spawn(function()
+                local startT = tick()
+                while tick() - startT < 1.2 do
+                    if gameState.ball and gameState.ball.Parent and gk.PrimaryPart then
+                        local bp = gameState.ball.Position
+                        local gkPos = gk.PrimaryPart.Position
+                        local dirX = bp.X - gkPos.X
+                        if math.abs(dirX) > 0.5 then
+                            local newPos = gkPos + Vector3.new(dirX, 0, 0).Unit * 30 * 0.04
+                            newPos = Vector3.new(newPos.X, TORSO_Y, gkPos.Z)
+                            moveCharacter(gk, newPos, Vector3.new(bp.X, newPos.Y, bp.Z))
+                        end
+                    end
+                    task.wait(0.03)
+                end
+            end)
+        end
         
-        task.wait(1.8)
+        task.wait(1.6)
         
         if scored then
             showBigText("⚽ GOAL!", Color3.fromRGB(100, 255, 100))
         else
-            showBigText("❌ BỊ ĐẨY RA!", Color3.fromRGB(255, 100, 100))
+            showBigText("🧤 THỦ MÔN CHỤP BÓNG!", Color3.fromRGB(255, 100, 100))
         end
-        
-        task.wait(1.2)
+        task.wait(1.5)
         hideBigText()
         
-        -- Reset bóng
         if gameState.ball then
             gameState.ball.Anchored = true
             gameState.ball.CFrame = CFrame.new(ballPos)
@@ -1526,15 +1538,16 @@ local function runPenaltyShootout()
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
         end
         
-        -- Đưa shooter về sidelines
         if shooter.isPlayer then
             local hrp = shooter.char:FindFirstChild("HumanoidRootPart")
             if hrp then
-                hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 25, 5, 0))
+                hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 30, 5, 0))
             end
         else
             if shooter.bot.PrimaryPart then
-                local p = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 25, TORSO_Y - MAP_POS.Y, 0)
+                local idx = shooter.bot:GetAttribute("FormationIndex") or 1
+                local zBase = (team == "Red") and -70 or 20
+                local p = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 30, TORSO_Y - MAP_POS.Y, zBase + idx * 10)
                 moveCharacter(shooter.bot, p, Vector3.new(p.X + 1, p.Y, p.Z))
             end
         end
@@ -1542,7 +1555,6 @@ local function runPenaltyShootout()
         return scored
     end
     
-    -- Main 5 rounds
     for round = 1, maxRounds do
         if takeShot("Red", round) then redScore = redScore + 1 end
         showBigText(string.format("%s %d - %d %s", gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.fromRGB(255, 255, 255))
@@ -1552,18 +1564,16 @@ local function runPenaltyShootout()
         showBigText(string.format("%s %d - %d %s", gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.fromRGB(255, 255, 255))
         task.wait(1.3)
         
-        -- Early exit
         if redScore > blueScore + (maxRounds - round) then break end
         if blueScore > redScore + (maxRounds - round) then break end
     end
     
-    -- Sudden death
-    local suddenRound = 0
+    local sdRound = 0
     while redScore == blueScore do
-        suddenRound = suddenRound + 1
-        if takeShot("Red", "SD" .. suddenRound) then redScore = redScore + 1 end
-        if takeShot("Blue", "SD" .. suddenRound) then blueScore = blueScore + 1 end
-        showBigText(string.format("SUDDEN DEATH %d\n%s %d - %d %s", suddenRound, gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.fromRGB(255, 200, 100))
+        sdRound = sdRound + 1
+        if takeShot("Red", "SD"..sdRound) then redScore = redScore + 1 end
+        if takeShot("Blue", "SD"..sdRound) then blueScore = blueScore + 1 end
+        showBigText(string.format("SUDDEN DEATH %d\n%s %d - %d %s", sdRound, gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.fromRGB(255, 200, 100))
         task.wait(1.3)
     end
     
@@ -1581,7 +1591,6 @@ local function runPenaltyShootout()
     startCelebration(winner)
     task.wait(12)
     
-    -- Reset for next match
     gameState.paused = true
     gameState.gameActive = false
     gameState.currentHalf = 1
@@ -1697,6 +1706,7 @@ local function checkRules()
     local ball=gameState.ball
     if not ball or not ball.Parent or gameState.restartCooldown or not gameState.gameActive or gameState.goalScored then return end
     if gameState.inPenaltyShootout or gameState.celebrating then return end
+    if gameState.paused or gameState.restartCountdown > 0 then return end
     local bp=ball.Position
     if math.abs(bp.X-MAP_POS.X)>PITCH_WIDTH/2+5 then
         restart("ThrowIn",bp.X>MAP_POS.X and (PITCH_WIDTH/2-3) or (-PITCH_WIDTH/2+3))
@@ -2189,13 +2199,12 @@ local function createGameUI()
     end
     
     shootBtn.MouseButton1Down:Connect(function()
-        if not canPlayerTouchBall() then return end
-        if gameState.inPenaltyShootout or gameState.celebrating then 
-            if gameState.inPenaltyShootout then
-                gameState.shootCharging = true
-            end
-            return 
+        if gameState.inPenaltyShootout then
+            gameState.shootCharging = true
+            return
         end
+        if not canPlayerTouchBall() then return end
+        if gameState.celebrating then return end
         local near=getNearBall()
         if not near then return end
         stopDribble()
@@ -2242,13 +2251,12 @@ local function createGameUI()
     end)
     
     knuckleBtn.MouseButton1Down:Connect(function()
-        if not canPlayerTouchBall() then return end
-        if gameState.inPenaltyShootout or gameState.celebrating then 
-            if gameState.inPenaltyShootout then
-                gameState.knuckleCharging = true
-            end
-            return 
+        if gameState.inPenaltyShootout then
+            gameState.knuckleCharging = true
+            return
         end
+        if not canPlayerTouchBall() then return end
+        if gameState.celebrating then return end
         local near=getNearBall()
         if not near then return end
         stopDribble()
@@ -2446,6 +2454,15 @@ local function autoStart()
     end)
     
     RunService.Heartbeat:Connect(function(dt)
+        -- Đóng băng bóng khi nghỉ
+        if (gameState.paused or gameState.restartCountdown > 0) and not gameState.inPenaltyShootout then
+            if gameState.ball and not gameState.ball.Anchored then
+                gameState.ball.Anchored = true
+                gameState.ball.AssemblyLinearVelocity = Vector3.zero
+                gameState.ball.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
+        
         updatePlayerDribble(dt)
         updateAILogic(dt)
         checkRules()
@@ -2456,12 +2473,12 @@ local function autoStart()
         end
     end)
     
-    print("=== WORLD CUP 2026 FINAL ===")
+    print("=== WORLD CUP 2026 FINAL v2 ===")
     print("🔊 Còi vàng/đỏ hoặc mãn cuộc → cổ vũ tắt")
-    print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút")
+    print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút, nghỉ bóng đứng yên")
     print("🎯 Hòa sau hiệp phụ → Sút luân lưu 5 lượt")
-    print("⚽ Sút luân lưu: cầu thủ tiến lên bóng giữa sân trái, sút knuckleball")
-    print("🥅 GK chỉ đẩy bóng ra, không chụp → mất lượt")
+    print("⚽ Red sút khung +Z, Blue sút khung -Z")
+    print("🧤 GK chụp bóng (không phải chỉ đẩy)")
     print("🎉 Đội thắng ôm nhau nhảy ăn mừng ở giữa sân")
 end
 
