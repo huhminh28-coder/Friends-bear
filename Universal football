@@ -25,25 +25,42 @@ local TORSO_Y = FEET_Y + 3
 local PENALTY_BOX_DEPTH = 60
 
 -- ═══════════════════════════════════════════════════════════
--- FIX BRIGHT LIGHTING (sân sáng như ảnh 1)
+-- FORCE BRIGHT LIGHTING (KHÔNG dùng Skybox)
 -- ═══════════════════════════════════════════════════════════
-Lighting.Brightness = 3
-Lighting.ClockTime = 14
-Lighting.Ambient = Color3.fromRGB(160, 160, 160)
-Lighting.OutdoorAmbient = Color3.fromRGB(160, 160, 160)
-Lighting.GlobalShadows = true
-Lighting.FogStart = 0
-Lighting.FogEnd = 100000
-Lighting.EnvironmentDiffuseScale = 0.6
-Lighting.EnvironmentSpecularScale = 0.6
-Lighting.ShadowSoftness = 0.2
-
-for _, v in ipairs(Lighting:GetChildren()) do
-    if v:IsA("Atmosphere") or v:IsA("ColorCorrectionEffect") 
-       or v:IsA("BlurEffect") or v:IsA("DepthOfFieldEffect") then
-        v:Destroy()
+local function forceBrightLighting()
+    for _, v in ipairs(Lighting:GetChildren()) do
+        if v:IsA("Atmosphere") or v:IsA("ColorCorrectionEffect") 
+           or v:IsA("BlurEffect") or v:IsA("DepthOfFieldEffect") 
+           or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") then
+            pcall(function() v:Destroy() end)
+        end
     end
+    
+    Lighting.Brightness = 5
+    Lighting.ClockTime = 12
+    Lighting.GeographicLatitude = 0
+    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    Lighting.EnvironmentDiffuseScale = 1
+    Lighting.EnvironmentSpecularScale = 1
+    Lighting.ExposureCompensation = 1
+    Lighting.FogStart = 0
+    Lighting.FogEnd = 1000000
+    Lighting.FogColor = Color3.fromRGB(220, 230, 255)
+    Lighting.GlobalShadows = false
+    Lighting.ShadowSoftness = 0
 end
+
+forceBrightLighting()
+
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if Lighting.Brightness < 4 then
+            forceBrightLighting()
+        end
+    end
+end)
 
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
@@ -190,7 +207,47 @@ local function createStadium()
     for _,pos in ipairs({MAP_POS+Vector3.new(-220,140,-220),MAP_POS+Vector3.new(220,140,-220),MAP_POS+Vector3.new(-220,140,220),MAP_POS+Vector3.new(220,140,220)}) do
         cp("Pole",Vector3.new(10,140,10),pos-Vector3.new(0,70,0),Color3.fromRGB(80,80,80),Enum.Material.Metal)
         local lh=cp("Head",Vector3.new(60,20,20),pos,Color3.fromRGB(255,255,255),Enum.Material.Neon)
-        local pl=Instance.new("PointLight",lh); pl.Brightness=5; pl.Range=500
+        local pl=Instance.new("PointLight",lh); pl.Brightness=10; pl.Range=800
+    end
+    
+    -- Rất nhiều PointLight chiếu sáng toàn sân
+    for x = -150, 150, 75 do
+        for z = -200, 200, 100 do
+            local lightPart = Instance.new("Part")
+            lightPart.Name = "PitchLight"
+            lightPart.Size = Vector3.new(1, 1, 1)
+            lightPart.Position = MAP_POS + Vector3.new(x, 50, z)
+            lightPart.Anchored = true
+            lightPart.CanCollide = false
+            lightPart.Transparency = 1
+            lightPart.Parent = map
+            local pl = Instance.new("PointLight", lightPart)
+            pl.Brightness = 20
+            pl.Range = 400
+            pl.Color = Color3.fromRGB(255, 255, 245)
+            pl.Shadows = false
+        end
+    end
+    
+    -- 4 đèn pha lớn trên cao
+    for _, pos in ipairs({
+        MAP_POS + Vector3.new(-180, 80, -220),
+        MAP_POS + Vector3.new(180, 80, -220),
+        MAP_POS + Vector3.new(-180, 80, 220),
+        MAP_POS + Vector3.new(180, 80, 220),
+    }) do
+        local highLight = Instance.new("Part")
+        highLight.Size = Vector3.new(1, 1, 1)
+        highLight.Position = pos
+        highLight.Anchored = true
+        highLight.CanCollide = false
+        highLight.Transparency = 1
+        highLight.Parent = map
+        local hl = Instance.new("PointLight", highLight)
+        hl.Brightness = 30
+        hl.Range = 600
+        hl.Color = Color3.fromRGB(255, 250, 240)
+        hl.Shadows = false
     end
 end
 
