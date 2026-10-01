@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 
 local MAP_POS = Vector3.new(0, 1000, 0)
@@ -24,49 +25,12 @@ local FEET_Y = MAP_POS.Y + 2.5
 local TORSO_Y = FEET_Y + 3
 local PENALTY_BOX_DEPTH = 60
 
--- ═══════════════════════════════════════════════════════════
--- FORCE BRIGHT LIGHTING (KHÔNG dùng Skybox)
--- ═══════════════════════════════════════════════════════════
-local function forceBrightLighting()
-    for _, v in ipairs(Lighting:GetChildren()) do
-        if v:IsA("Atmosphere") or v:IsA("ColorCorrectionEffect") 
-           or v:IsA("BlurEffect") or v:IsA("DepthOfFieldEffect") 
-           or v:IsA("SunRaysEffect") or v:IsA("BloomEffect") then
-            pcall(function() v:Destroy() end)
-        end
-    end
-    
-    Lighting.Brightness = 5
-    Lighting.ClockTime = 12
-    Lighting.GeographicLatitude = 0
-    Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-    Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-    Lighting.EnvironmentDiffuseScale = 1
-    Lighting.EnvironmentSpecularScale = 1
-    Lighting.ExposureCompensation = 1
-    Lighting.FogStart = 0
-    Lighting.FogEnd = 1000000
-    Lighting.FogColor = Color3.fromRGB(220, 230, 255)
-    Lighting.GlobalShadows = false
-    Lighting.ShadowSoftness = 0
-end
-
-forceBrightLighting()
-
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if Lighting.Brightness < 4 then
-            forceBrightLighting()
-        end
-    end
-end)
-
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2,
     isExtraTime=false, extraTimeWinner=nil,
     restartCountdown=0, gameActive=false, paused=false,
+    timePaused=false,
     lastTouchTeam=nil, restartCooldown=false,
     ui=nil, playerTeam="Red", playerChar=nil, lastActionTime=0,
     lastInterceptCheck=0, goalScored=false, lastBallTouchSound=0,
@@ -81,7 +45,8 @@ local gameState = {
     teamRedName="RED", teamBlueName="BLUE",
     teamRedColor=Color3.fromRGB(255,50,50),
     teamBlueColor=Color3.fromRGB(50,50,255),
-    settingsUI=nil, settingsOpen=false
+    settingsUI=nil, settingsOpen=false,
+    scoreLabel=nil, pauseLabel=nil
 }
 
 local function updatePlayerAppearance()
@@ -207,47 +172,7 @@ local function createStadium()
     for _,pos in ipairs({MAP_POS+Vector3.new(-220,140,-220),MAP_POS+Vector3.new(220,140,-220),MAP_POS+Vector3.new(-220,140,220),MAP_POS+Vector3.new(220,140,220)}) do
         cp("Pole",Vector3.new(10,140,10),pos-Vector3.new(0,70,0),Color3.fromRGB(80,80,80),Enum.Material.Metal)
         local lh=cp("Head",Vector3.new(60,20,20),pos,Color3.fromRGB(255,255,255),Enum.Material.Neon)
-        local pl=Instance.new("PointLight",lh); pl.Brightness=10; pl.Range=800
-    end
-    
-    -- Rất nhiều PointLight chiếu sáng toàn sân
-    for x = -150, 150, 75 do
-        for z = -200, 200, 100 do
-            local lightPart = Instance.new("Part")
-            lightPart.Name = "PitchLight"
-            lightPart.Size = Vector3.new(1, 1, 1)
-            lightPart.Position = MAP_POS + Vector3.new(x, 50, z)
-            lightPart.Anchored = true
-            lightPart.CanCollide = false
-            lightPart.Transparency = 1
-            lightPart.Parent = map
-            local pl = Instance.new("PointLight", lightPart)
-            pl.Brightness = 20
-            pl.Range = 400
-            pl.Color = Color3.fromRGB(255, 255, 245)
-            pl.Shadows = false
-        end
-    end
-    
-    -- 4 đèn pha lớn trên cao
-    for _, pos in ipairs({
-        MAP_POS + Vector3.new(-180, 80, -220),
-        MAP_POS + Vector3.new(180, 80, -220),
-        MAP_POS + Vector3.new(-180, 80, 220),
-        MAP_POS + Vector3.new(180, 80, 220),
-    }) do
-        local highLight = Instance.new("Part")
-        highLight.Size = Vector3.new(1, 1, 1)
-        highLight.Position = pos
-        highLight.Anchored = true
-        highLight.CanCollide = false
-        highLight.Transparency = 1
-        highLight.Parent = map
-        local hl = Instance.new("PointLight", highLight)
-        hl.Brightness = 30
-        hl.Range = 600
-        hl.Color = Color3.fromRGB(255, 250, 240)
-        hl.Shadows = false
+        local pl=Instance.new("PointLight",lh); pl.Brightness=5; pl.Range=500
     end
 end
 
@@ -745,18 +670,6 @@ local function updateGoalkeeperAI(gk,dt)
             ball.AssemblyLinearVelocity = parryDir * parryPower + Vector3.new(0, 120, 0)
             ball.AssemblyAngularVelocity = Vector3.new(math.random(-30,30),math.random(-30,30),math.random(-30,30))
             playBallKick(ball.Position, math.random(70, 85)/100)
-            local parryFX = Instance.new("Part")
-            parryFX.Anchored = true; parryFX.CanCollide = false; parryFX.Transparency = 1
-            parryFX.Size = Vector3.new(0.5, 0.5, 0.5); parryFX.Position = ball.Position
-            parryFX.Parent = workspace
-            local emitter = Instance.new("ParticleEmitter", parryFX)
-            emitter.Texture = "rbxassetid://296874871"
-            emitter.Color = ColorSequence.new(Color3.fromRGB(255, 255, 200))
-            emitter.LightEmission = 1; emitter.Lifetime = NumberRange.new(0.3, 0.7)
-            emitter.Speed = NumberRange.new(30, 60); emitter.SpreadAngle = Vector2.new(180, 180)
-            emitter.Size = NumberSequence.new(1.5); emitter.Transparency = NumberSequence.new(1)
-            emitter.Acceleration = Vector3.new(0, -50, 0); emitter:Emit(30)
-            task.delay(1, function() if parryFX then parryFX:Destroy() end end)
             gameState.ballIsCurving = false
             gameState.lastTouchTeam = team
             gameState.gkHoldCooldowns[gkId] = tick() + 0.8
@@ -1229,7 +1142,8 @@ local function startTimer()
             task.wait(1)
             if gameState.gameActive and not gameState.paused 
                and not gameState.gkHolding 
-               and not gameState.goalScored then
+               and not gameState.goalScored
+               and not gameState.timePaused then
                 gameState.timeLeft=gameState.timeLeft-1
                 if gameState.timeLeft<=0 then
                     if gameState.isExtraTime then
@@ -1305,6 +1219,475 @@ local function startTimer()
     end)
 end
 
+-- ═══════════════════════════════════════════════════════
+-- COLOR PICKER (like the one in the reference image)
+-- ═══════════════════════════════════════════════════════
+local recentColors = {}
+
+local function createColorPicker(parent, initialColor, onSave)
+    local picker = Instance.new("Frame")
+    picker.Name = "ColorPicker"
+    picker.Size = UDim2.new(0, 500, 0, 420)
+    picker.Position = UDim2.new(0.5, -250, 0.5, -210)
+    picker.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    picker.BorderSizePixel = 0
+    picker.ZIndex = 100
+    picker.Parent = parent
+    Instance.new("UICorner", picker).CornerRadius = UDim.new(0, 20)
+    local ps = Instance.new("UIStroke", picker)
+    ps.Color = Color3.fromRGB(80, 80, 90)
+    ps.Thickness = 2
+    
+    -- Tab row
+    local paletteTab = Instance.new("TextButton")
+    paletteTab.Size = UDim2.new(0.4, -10, 0, 36)
+    paletteTab.Position = UDim2.new(0.05, 0, 0, 10)
+    paletteTab.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+    paletteTab.Text = "Palette"
+    paletteTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+    paletteTab.Font = Enum.Font.GothamBold
+    paletteTab.TextSize = 14
+    paletteTab.BorderSizePixel = 0
+    paletteTab.ZIndex = 101
+    paletteTab.Parent = picker
+    Instance.new("UICorner", paletteTab).CornerRadius = UDim.new(0, 8)
+    
+    local spectrumTab = Instance.new("TextButton")
+    spectrumTab.Size = UDim2.new(0.4, -10, 0, 36)
+    spectrumTab.Position = UDim2.new(0.55, 0, 0, 10)
+    spectrumTab.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+    spectrumTab.Text = "Spectrum"
+    spectrumTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+    spectrumTab.Font = Enum.Font.GothamBold
+    spectrumTab.TextSize = 14
+    spectrumTab.BorderSizePixel = 0
+    spectrumTab.ZIndex = 101
+    spectrumTab.Parent = picker
+    Instance.new("UICorner", spectrumTab).CornerRadius = UDim.new(0, 8)
+    
+    -- Spectrum gradient frame
+    local spectrumFrame = Instance.new("Frame")
+    spectrumFrame.Size = UDim2.new(1, -40, 0, 240)
+    spectrumFrame.Position = UDim2.new(0, 20, 0, 55)
+    spectrumFrame.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    spectrumFrame.BorderSizePixel = 0
+    spectrumFrame.ZIndex = 101
+    spectrumFrame.Parent = picker
+    Instance.new("UICorner", spectrumFrame).CornerRadius = UDim.new(0, 10)
+    
+    -- Gradient background images (using 2 layered images to create rainbow)
+    local rainbow = Instance.new("ImageLabel")
+    rainbow.Size = UDim2.new(1, 0, 1, 0)
+    rainbow.BackgroundTransparency = 1
+    rainbow.Image = "rbxassetid://6095996619"
+    rainbow.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    rainbow.ZIndex = 102
+    rainbow.Parent = spectrumFrame
+    Instance.new("UICorner", rainbow).CornerRadius = UDim.new(0, 10)
+    
+    local whiteOverlay = Instance.new("Frame")
+    whiteOverlay.Size = UDim2.new(1, 0, 1, 0)
+    whiteOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    whiteOverlay.BackgroundTransparency = 0
+    whiteOverlay.BorderSizePixel = 0
+    whiteOverlay.ZIndex = 103
+    whiteOverlay.Parent = spectrumFrame
+    Instance.new("UICorner", whiteOverlay).CornerRadius = UDim.new(0, 10)
+    
+    local satGradient = Instance.new("UIGradient")
+    satGradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(1, 1)
+    })
+    satGradient.Rotation = 0
+    satGradient.Parent = whiteOverlay
+    
+    local darkOverlay = Instance.new("Frame")
+    darkOverlay.Size = UDim2.new(1, 0, 1, 0)
+    darkOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    darkOverlay.BackgroundTransparency = 0
+    darkOverlay.BorderSizePixel = 0
+    darkOverlay.ZIndex = 104
+    darkOverlay.Parent = spectrumFrame
+    Instance.new("UICorner", darkOverlay).CornerRadius = UDim.new(0, 10)
+    
+    local darkGradient = Instance.new("UIGradient")
+    darkGradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(1, 0)
+    })
+    darkGradient.Rotation = 90
+    darkGradient.Parent = darkOverlay
+    
+    -- Cursor
+    local cursor = Instance.new("Frame")
+    cursor.Size = UDim2.new(0, 24, 0, 24)
+    cursor.Position = UDim2.new(0, -12, 0, -12)
+    cursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    cursor.BackgroundTransparency = 0.2
+    cursor.BorderSizePixel = 2
+    cursor.ZIndex = 105
+    cursor.Parent = spectrumFrame
+    Instance.new("UICorner", cursor).CornerRadius = UDim.new(1, 0)
+    local cursorStroke = Instance.new("UIStroke", cursor)
+    cursorStroke.Color = Color3.fromRGB(0, 0, 0)
+    cursorStroke.Thickness = 2
+    
+    -- Brightness slider
+    local brightSlider = Instance.new("Frame")
+    brightSlider.Size = UDim2.new(0.6, 0, 0, 20)
+    brightSlider.Position = UDim2.new(0, 20, 0, 310)
+    brightSlider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    brightSlider.BorderSizePixel = 0
+    brightSlider.ZIndex = 101
+    brightSlider.Parent = picker
+    Instance.new("UICorner", brightSlider).CornerRadius = UDim.new(1, 0)
+    
+    local brightGradient = Instance.new("UIGradient")
+    brightGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+    })
+    brightGradient.Parent = brightSlider
+    
+    local brightKnob = Instance.new("Frame")
+    brightKnob.Size = UDim2.new(0, 24, 0, 24)
+    brightKnob.Position = UDim2.new(1, -12, 0.5, -12)
+    brightKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    brightKnob.BorderSizePixel = 2
+    brightKnob.ZIndex = 102
+    brightKnob.Parent = brightSlider
+    Instance.new("UICorner", brightKnob).CornerRadius = UDim.new(1, 0)
+    local bsStroke = Instance.new("UIStroke", brightKnob)
+    bsStroke.Color = Color3.fromRGB(200, 200, 200)
+    bsStroke.Thickness = 2
+    
+    -- Percent
+    local percentLabel = Instance.new("TextLabel")
+    percentLabel.Size = UDim2.new(0, 60, 0, 24)
+    percentLabel.Position = UDim2.new(0.63, 0, 0, 308)
+    percentLabel.BackgroundTransparency = 1
+    percentLabel.Text = "100%"
+    percentLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    percentLabel.Font = Enum.Font.GothamBold
+    percentLabel.TextSize = 14
+    percentLabel.TextXAlignment = Enum.TextXAlignment.Left
+    percentLabel.ZIndex = 101
+    percentLabel.Parent = picker
+    
+    -- Preview swatch
+    local preview = Instance.new("Frame")
+    preview.Size = UDim2.new(0, 70, 0, 45)
+    preview.Position = UDim2.new(0, 20, 0, 345)
+    preview.BackgroundColor3 = initialColor
+    preview.BorderSizePixel = 2
+    preview.BorderColor3 = Color3.fromRGB(80, 80, 90)
+    preview.ZIndex = 101
+    preview.Parent = picker
+    Instance.new("UICorner", preview).CornerRadius = UDim.new(0, 6)
+    
+    -- Hex input
+    local hexLabel = Instance.new("TextLabel")
+    hexLabel.Size = UDim2.new(0, 50, 0, 22)
+    hexLabel.Position = UDim2.new(0, 110, 0, 340)
+    hexLabel.BackgroundTransparency = 1
+    hexLabel.Text = "Hex"
+    hexLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+    hexLabel.Font = Enum.Font.Gotham
+    hexLabel.TextSize = 12
+    hexLabel.ZIndex = 101
+    hexLabel.Parent = picker
+    
+    local hexBox = Instance.new("TextBox")
+    hexBox.Size = UDim2.new(0, 90, 0, 26)
+    hexBox.Position = UDim2.new(0, 100, 0, 358)
+    hexBox.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+    hexBox.Text = string.format("#%02X%02X%02X", math.floor(initialColor.R*255), math.floor(initialColor.G*255), math.floor(initialColor.B*255))
+    hexBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hexBox.Font = Enum.Font.GothamBold
+    hexBox.TextSize = 12
+    hexBox.BorderSizePixel = 0
+    hexBox.ClearTextOnFocus = false
+    hexBox.ZIndex = 101
+    hexBox.Parent = picker
+    Instance.new("UICorner", hexBox).CornerRadius = UDim.new(0, 6)
+    
+    -- R/G/B inputs
+    local function makeRGBField(labelText, value, offsetX, fieldName)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0, 60, 0, 22)
+        lbl.Position = UDim2.new(0, offsetX, 0, 340)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = labelText
+        lbl.TextColor3 = Color3.fromRGB(180, 180, 200)
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextSize = 12
+        lbl.ZIndex = 101
+        lbl.Parent = picker
+        
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(0, 60, 0, 26)
+        box.Position = UDim2.new(0, offsetX, 0, 358)
+        box.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+        box.Text = tostring(value)
+        box.TextColor3 = Color3.fromRGB(255, 255, 255)
+        box.Font = Enum.Font.GothamBold
+        box.TextSize = 12
+        box.BorderSizePixel = 0
+        box.ClearTextOnFocus = false
+        box.ZIndex = 101
+        box.Parent = picker
+        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+        return box
+    end
+    
+    local rBox = makeRGBField("Red", math.floor(initialColor.R*255), 200)
+    local gBox = makeRGBField("Green", math.floor(initialColor.G*255), 268)
+    local bBox = makeRGBField("Blue", math.floor(initialColor.B*255), 336)
+    
+    -- Recent colors label
+    local recentLabel = Instance.new("TextLabel")
+    recentLabel.Size = UDim2.new(1, -40, 0, 20)
+    recentLabel.Position = UDim2.new(0, 20, 0, 388)
+    recentLabel.BackgroundTransparency = 1
+    recentLabel.Text = "Recent colors"
+    recentLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
+    recentLabel.Font = Enum.Font.GothamBold
+    recentLabel.TextSize = 12
+    recentLabel.TextXAlignment = Enum.TextXAlignment.Left
+    recentLabel.ZIndex = 101
+    recentLabel.Parent = picker
+    
+    local recentRow = Instance.new("Frame")
+    recentRow.Size = UDim2.new(1, -40, 0, 30)
+    recentRow.Position = UDim2.new(0, 20, 0, 410)
+    recentRow.BackgroundTransparency = 1
+    recentRow.ZIndex = 101
+    recentRow.Parent = picker
+    
+    for i = 1, 8 do
+        local swatch = Instance.new("Frame")
+        swatch.Size = UDim2.new(0, 28, 0, 28)
+        swatch.Position = UDim2.new(0, (i-1)*34, 0, 0)
+        swatch.BackgroundColor3 = recentColors[i] or Color3.fromRGB(60, 60, 68)
+        swatch.BorderSizePixel = 1
+        swatch.BorderColor3 = Color3.fromRGB(90, 90, 100)
+        swatch.ZIndex = 102
+        swatch.Parent = recentRow
+        Instance.new("UICorner", swatch).CornerRadius = UDim.new(1, 0)
+    end
+    
+    -- Buttons row (below picker)
+    local cancelBtn = Instance.new("TextButton")
+    cancelBtn.Size = UDim2.new(0.35, 0, 0, 40)
+    cancelBtn.Position = UDim2.new(0.1, 0, 1, -55)
+    cancelBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 70)
+    cancelBtn.Text = "Cancel"
+    cancelBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    cancelBtn.Font = Enum.Font.GothamBold
+    cancelBtn.TextSize = 15
+    cancelBtn.BorderSizePixel = 0
+    cancelBtn.ZIndex = 101
+    cancelBtn.Parent = picker
+    Instance.new("UICorner", cancelBtn).CornerRadius = UDim.new(0, 10)
+    
+    local saveBtn = Instance.new("TextButton")
+    saveBtn.Size = UDim2.new(0.35, 0, 0, 40)
+    saveBtn.Position = UDim2.new(0.55, 0, 1, -55)
+    saveBtn.BackgroundColor3 = Color3.fromRGB(80, 130, 220)
+    saveBtn.Text = "Save"
+    saveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    saveBtn.Font = Enum.Font.GothamBold
+    saveBtn.TextSize = 15
+    saveBtn.BorderSizePixel = 0
+    saveBtn.ZIndex = 101
+    saveBtn.Parent = picker
+    Instance.new("UICorner", saveBtn).CornerRadius = UDim.new(0, 10)
+    
+    -- Color state
+    local currentColor = initialColor
+    local hue = 0
+    local sat = 1
+    local val = 1
+    
+    -- Extract HSV from initial
+    local initH, initS, initV = Color3.toHSV(initialColor)
+    hue = initH
+    sat = initS
+    val = initV
+    
+    local function updateColorFromHSV()
+        currentColor = Color3.fromHSV(hue, sat, val)
+        preview.BackgroundColor3 = currentColor
+        hexBox.Text = string.format("#%02X%02X%02X", math.floor(currentColor.R*255), math.floor(currentColor.G*255), math.floor(currentColor.B*255))
+        rBox.Text = tostring(math.floor(currentColor.R*255))
+        gBox.Text = tostring(math.floor(currentColor.G*255))
+        bBox.Text = tostring(math.floor(currentColor.B*255))
+    end
+    
+    local function updateCursorFromHSV()
+        cursor.Position = UDim2.new(sat, -12, 1-val, -12)
+        darkOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    end
+    
+    -- Rainbow color based on hue
+    spectrumFrame.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+    
+    local spectrumDragging = false
+    
+    local function handleSpectrumDrag(input)
+        if not spectrumDragging then return end
+        local relX = math.clamp((input.Position.X - spectrumFrame.AbsolutePosition.X) / spectrumFrame.AbsoluteSize.X, 0, 1)
+        local relY = math.clamp((input.Position.Y - spectrumFrame.AbsolutePosition.Y) / spectrumFrame.AbsoluteSize.Y, 0, 1)
+        sat = relX
+        val = 1 - relY
+        updateCursorFromHSV()
+        updateColorFromHSV()
+    end
+    
+    spectrumFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            spectrumDragging = true
+            handleSpectrumDrag(input)
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            handleSpectrumDrag(input)
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            spectrumDragging = false
+        end
+    end)
+    
+    -- Brightness slider drag
+    local brightDragging = false
+    brightSlider.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            brightDragging = true
+        end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if brightDragging then
+            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+                local relX = math.clamp((input.Position.X - brightSlider.AbsolutePosition.X) / brightSlider.AbsoluteSize.X, 0, 1)
+                brightKnob.Position = UDim2.new(relX, -12, 0.5, -12)
+                val = relX
+                percentLabel.Text = math.floor(relX * 100) .. "%"
+                -- Update base hue spectrum color at brightness
+                updateCursorFromHSV()
+                updateColorFromHSV()
+            end
+        end
+    end)
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            brightDragging = false
+        end
+    end)
+    
+    -- Hex input
+    hexBox.FocusLost:Connect(function()
+        local hex = hexBox.Text
+        if hex:sub(1,1) == "#" then hex = hex:sub(2) end
+        if #hex == 6 then
+            local r = tonumber(hex:sub(1,2), 16)
+            local g = tonumber(hex:sub(3,4), 16)
+            local b = tonumber(hex:sub(5,6), 16)
+            if r and g and b then
+                currentColor = Color3.fromRGB(r, g, b)
+                local h, s, v = Color3.toHSV(currentColor)
+                hue, sat, val = h, s, v
+                spectrumFrame.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+                updateCursorFromHSV()
+                updateColorFromHSV()
+            end
+        end
+    end)
+    
+    local function handleRGBInput(box, channel)
+        local n = tonumber(box.Text)
+        if n then
+            n = math.clamp(n, 0, 255)
+            local r = math.floor(currentColor.R*255)
+            local g = math.floor(currentColor.G*255)
+            local b = math.floor(currentColor.B*255)
+            if channel == "R" then r = n
+            elseif channel == "G" then g = n
+            else b = n end
+            currentColor = Color3.fromRGB(r, g, b)
+            local h, s, v = Color3.toHSV(currentColor)
+            hue, sat, val = h, s, v
+            spectrumFrame.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+            updateCursorFromHSV()
+            updateColorFromHSV()
+        end
+    end
+    
+    rBox.FocusLost:Connect(function() handleRGBInput(rBox, "R") end)
+    gBox.FocusLost:Connect(function() handleRGBInput(gBox, "G") end)
+    bBox.FocusLost:Connect(function() handleRGBInput(bBox, "B") end)
+    
+    -- Recent color swatches
+    for i, swatch in ipairs(recentRow:GetChildren()) do
+        if swatch:IsA("Frame") then
+            local idx = i
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(1, 0, 1, 0)
+            btn.BackgroundTransparency = 1
+            btn.Text = ""
+            btn.ZIndex = 103
+            btn.Parent = swatch
+            btn.MouseButton1Click:Connect(function()
+                if recentColors[idx] then
+                    currentColor = recentColors[idx]
+                    local h, s, v = Color3.toHSV(currentColor)
+                    hue, sat, val = h, s, v
+                    spectrumFrame.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+                    updateCursorFromHSV()
+                    updateColorFromHSV()
+                end
+            end)
+        end
+    end
+    
+    -- Tab switching (visual only - both tabs same thing here, but styled)
+    paletteTab.MouseButton1Click:Connect(function()
+        paletteTab.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+        spectrumTab.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+    end)
+    spectrumTab.MouseButton1Click:Connect(function()
+        paletteTab.BackgroundColor3 = Color3.fromRGB(80, 80, 90)
+        spectrumTab.BackgroundColor3 = Color3.fromRGB(50, 50, 58)
+    end)
+    
+    -- Buttons
+    cancelBtn.MouseButton1Click:Connect(function()
+        picker:Destroy()
+    end)
+    
+    saveBtn.MouseButton1Click:Connect(function()
+        -- Add to recent
+        table.insert(recentColors, 1, currentColor)
+        while #recentColors > 8 do table.remove(recentColors) end
+        if onSave then onSave(currentColor) end
+        picker:Destroy()
+    end)
+    
+    -- Initial cursor
+    updateCursorFromHSV()
+    updateColorFromHSV()
+    brightKnob.Position = UDim2.new(val, -12, 0.5, -12)
+    percentLabel.Text = math.floor(val * 100) .. "%"
+    
+    return picker
+end
+
+-- ═══════════════════════════════════════════════════════
+-- SETTINGS UI (redesigned with color picker)
+-- ═══════════════════════════════════════════════════════
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     
@@ -1314,218 +1697,352 @@ local function createSettingsUI()
     gui.Parent = player.PlayerGui
     gameState.settingsUI = gui
     
+    -- Gear button (top right)
     local gearBtn = Instance.new("TextButton")
     gearBtn.Name = "GearBtn"
-    gearBtn.Size = UDim2.new(0, 44, 0, 44)
+    gearBtn.Size = UDim2.new(0, 46, 0, 46)
     gearBtn.Position = UDim2.new(1, -60, 0, 15)
-    gearBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+    gearBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
     gearBtn.Text = "⚙"
     gearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
     gearBtn.TextScaled = true
-    gearBtn.Font = Enum.Font.FredokaOne
+    gearBtn.Font = Enum.Font.GothamBold
+    gearBtn.ZIndex = 90
     gearBtn.Parent = gui
-    local gc = Instance.new("UICorner"); gc.CornerRadius = UDim.new(0, 10); gc.Parent = gearBtn
-    local gs = Instance.new("UIStroke"); gs.Color = Color3.fromRGB(100, 100, 120); gs.Thickness = 2; gs.Parent = gearBtn
+    Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 12)
+    local gs = Instance.new("UIStroke", gearBtn)
+    gs.Color = Color3.fromRGB(100, 150, 255)
+    gs.Thickness = 2
     
+    -- Pause button (below gear)
+    local pauseBtn = Instance.new("TextButton")
+    pauseBtn.Name = "PauseBtn"
+    pauseBtn.Size = UDim2.new(0, 46, 0, 46)
+    pauseBtn.Position = UDim2.new(1, -60, 0, 70)
+    pauseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    pauseBtn.Text = "⏸"
+    pauseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pauseBtn.TextScaled = true
+    pauseBtn.Font = Enum.Font.GothamBold
+    pauseBtn.ZIndex = 90
+    pauseBtn.Parent = gui
+    Instance.new("UICorner", pauseBtn).CornerRadius = UDim.new(0, 12)
+    local psb = Instance.new("UIStroke", pauseBtn)
+    psb.Color = Color3.fromRGB(255, 180, 100)
+    psb.Thickness = 2
+    
+    -- Main settings panel
     local panel = Instance.new("Frame")
     panel.Name = "SettingsPanel"
-    panel.Size = UDim2.new(0, 400, 0, 480)
-    panel.Position = UDim2.new(0.5, -200, 0.5, -240)
-    panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    panel.Size = UDim2.new(0, 480, 0, 560)
+    panel.Position = UDim2.new(0.5, -240, 0.5, -280)
+    panel.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
     panel.BorderSizePixel = 0
     panel.Visible = false
+    panel.ZIndex = 95
     panel.Parent = gui
-    local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 15); pc.Parent = panel
-    local ps = Instance.new("UIStroke"); ps.Color = Color3.fromRGB(100, 150, 255); ps.Thickness = 2; ps.Parent = panel
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 18)
+    local ps = Instance.new("UIStroke", panel)
+    ps.Color = Color3.fromRGB(100, 150, 255)
+    ps.Thickness = 2
     
+    -- Title
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 45)
-    title.Position = UDim2.new(0, 0, 0, 10)
+    title.Size = UDim2.new(1, 0, 0, 50)
+    title.Position = UDim2.new(0, 0, 0, 5)
     title.BackgroundTransparency = 1
     title.Text = "⚙ MATCH SETTINGS"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
-    title.Font = Enum.Font.FredokaOne
+    title.Font = Enum.Font.GothamBlack
+    title.ZIndex = 96
     title.Parent = panel
     
-    local teamNameLabel = Instance.new("TextLabel")
-    teamNameLabel.Size = UDim2.new(0.9, 0, 0, 25)
-    teamNameLabel.Position = UDim2.new(0.05, 0, 0, 65)
-    teamNameLabel.BackgroundTransparency = 1
-    teamNameLabel.Text = "Team Red Name:"
-    teamNameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    teamNameLabel.TextScaled = true
-    teamNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    teamNameLabel.Font = Enum.Font.FredokaOne
-    teamNameLabel.Parent = panel
+    local function makeSectionLabel(text, y)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -40, 0, 22)
+        lbl.Position = UDim2.new(0, 20, 0, y)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = text
+        lbl.TextColor3 = Color3.fromRGB(160, 180, 220)
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 13
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.ZIndex = 96
+        lbl.Parent = panel
+        return lbl
+    end
     
-    local teamNameBox = Instance.new("TextBox")
-    teamNameBox.Size = UDim2.new(0.9, 0, 0, 38)
-    teamNameBox.Position = UDim2.new(0.05, 0, 0, 92)
-    teamNameBox.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    teamNameBox.Text = gameState.teamRedName
-    teamNameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    teamNameBox.TextScaled = true
-    teamNameBox.Font = Enum.Font.FredokaOne
-    teamNameBox.Parent = panel
-    local onc = Instance.new("UICorner"); onc.CornerRadius = UDim.new(0, 8); onc.Parent = teamNameBox
+    local function makeNameInput(labelText, defaultText, y)
+        makeSectionLabel(labelText, y)
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(1, -40, 0, 38)
+        box.Position = UDim2.new(0, 20, 0, y + 24)
+        box.BackgroundColor3 = Color3.fromRGB(45, 45, 58)
+        box.Text = defaultText
+        box.TextColor3 = Color3.fromRGB(255, 255, 255)
+        box.Font = Enum.Font.GothamBold
+        box.TextSize = 15
+        box.BorderSizePixel = 0
+        box.ClearTextOnFocus = false
+        box.ZIndex = 96
+        box.Parent = panel
+        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 8)
+        return box
+    end
     
-    local oppNameLabel = Instance.new("TextLabel")
-    oppNameLabel.Size = UDim2.new(0.9, 0, 0, 25)
-    oppNameLabel.Position = UDim2.new(0.05, 0, 0, 140)
-    oppNameLabel.BackgroundTransparency = 1
-    oppNameLabel.Text = "Team Blue Name:"
-    oppNameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    oppNameLabel.TextScaled = true
-    oppNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-    oppNameLabel.Font = Enum.Font.FredokaOne
-    oppNameLabel.Parent = panel
+    -- Team names
+    local redNameBox = makeNameInput("Team Red Name:", gameState.teamRedName, 55)
+    local blueNameBox = makeNameInput("Team Blue Name:", gameState.teamBlueName, 130)
     
-    local oppNameBox = Instance.new("TextBox")
-    oppNameBox.Size = UDim2.new(0.9, 0, 0, 38)
-    oppNameBox.Position = UDim2.new(0.05, 0, 0, 167)
-    oppNameBox.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
-    oppNameBox.Text = gameState.teamBlueName
-    oppNameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-    oppNameBox.TextScaled = true
-    oppNameBox.Font = Enum.Font.FredokaOne
-    oppNameBox.Parent = panel
-    local opc = Instance.new("UICorner"); opc.CornerRadius = UDim.new(0, 8); opc.Parent = oppNameBox
+    -- Color pickers
+    makeSectionLabel("Team Red Shirt Color:", 205)
+    local redColorBtn = Instance.new("TextButton")
+    redColorBtn.Size = UDim2.new(0, 100, 0, 34)
+    redColorBtn.Position = UDim2.new(0, 20, 0, 229)
+    redColorBtn.BackgroundColor3 = gameState.teamRedColor
+    redColorBtn.Text = "Pick..."
+    redColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    redColorBtn.Font = Enum.Font.GothamBold
+    redColorBtn.TextSize = 13
+    redColorBtn.BorderSizePixel = 2
+    redColorBtn.BorderColor3 = Color3.fromRGB(90, 90, 100)
+    redColorBtn.ZIndex = 96
+    redColorBtn.Parent = panel
+    Instance.new("UICorner", redColorBtn).CornerRadius = UDim.new(0, 8)
     
-    local colorLabel1 = Instance.new("TextLabel")
-    colorLabel1.Size = UDim2.new(0.9, 0, 0, 25)
-    colorLabel1.Position = UDim2.new(0.05, 0, 0, 215)
-    colorLabel1.BackgroundTransparency = 1
-    colorLabel1.Text = "Team Red Shirt Color:"
-    colorLabel1.TextColor3 = Color3.fromRGB(200, 200, 200)
-    colorLabel1.TextScaled = true
-    colorLabel1.TextXAlignment = Enum.TextXAlignment.Left
-    colorLabel1.Font = Enum.Font.FredokaOne
-    colorLabel1.Parent = panel
+    local redColorPreview = Instance.new("Frame")
+    redColorPreview.Size = UDim2.new(0, 60, 0, 34)
+    redColorPreview.Position = UDim2.new(0, 130, 0, 229)
+    redColorPreview.BackgroundColor3 = gameState.teamRedColor
+    redColorPreview.BorderSizePixel = 2
+    redColorPreview.BorderColor3 = Color3.fromRGB(90, 90, 100)
+    redColorPreview.ZIndex = 96
+    redColorPreview.Parent = panel
+    Instance.new("UICorner", redColorPreview).CornerRadius = UDim.new(0, 8)
     
-    local preview1 = Instance.new("Frame")
-    preview1.Size = UDim2.new(0, 60, 0, 30)
-    preview1.Position = UDim2.new(0.75, 0, 0, 213)
-    preview1.BackgroundColor3 = gameState.teamRedColor
-    preview1.Parent = panel
-    local prc1 = Instance.new("UICorner"); prc1.CornerRadius = UDim.new(0, 6); prc1.Parent = preview1
+    makeSectionLabel("Team Blue Shirt Color:", 275)
+    local blueColorBtn = Instance.new("TextButton")
+    blueColorBtn.Size = UDim2.new(0, 100, 0, 34)
+    blueColorBtn.Position = UDim2.new(0, 20, 0, 299)
+    blueColorBtn.BackgroundColor3 = gameState.teamBlueColor
+    blueColorBtn.Text = "Pick..."
+    blueColorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    blueColorBtn.Font = Enum.Font.GothamBold
+    blueColorBtn.TextSize = 13
+    blueColorBtn.BorderSizePixel = 2
+    blueColorBtn.BorderColor3 = Color3.fromRGB(90, 90, 100)
+    blueColorBtn.ZIndex = 96
+    blueColorBtn.Parent = panel
+    Instance.new("UICorner", blueColorBtn).CornerRadius = UDim.new(0, 8)
     
-    local colorRow1 = Instance.new("Frame")
-    colorRow1.Size = UDim2.new(0.9, 0, 0, 30)
-    colorRow1.Position = UDim2.new(0.05, 0, 0, 245)
-    colorRow1.BackgroundTransparency = 1
-    colorRow1.Parent = panel
+    local blueColorPreview = Instance.new("Frame")
+    blueColorPreview.Size = UDim2.new(0, 60, 0, 34)
+    blueColorPreview.Position = UDim2.new(0, 130, 0, 299)
+    blueColorPreview.BackgroundColor3 = gameState.teamBlueColor
+    blueColorPreview.BorderSizePixel = 2
+    blueColorPreview.BorderColor3 = Color3.fromRGB(90, 90, 100)
+    blueColorPreview.ZIndex = 96
+    blueColorPreview.Parent = panel
+    Instance.new("UICorner", blueColorPreview).CornerRadius = UDim.new(0, 8)
     
-    local presetColors = {
-        Color3.fromRGB(255, 50, 50),
-        Color3.fromRGB(50, 50, 255),
-        Color3.fromRGB(255, 200, 0),
-        Color3.fromRGB(0, 200, 100),
-        Color3.fromRGB(255, 100, 0),
-        Color3.fromRGB(150, 50, 200),
-        Color3.fromRGB(255, 255, 255),
-        Color3.fromRGB(0, 0, 0),
+    -- Quick preset palette row
+    local presetRow = Instance.new("Frame")
+    presetRow.Size = UDim2.new(1, -40, 0, 36)
+    presetRow.Position = UDim2.new(0, 20, 0, 345)
+    presetRow.BackgroundTransparency = 1
+    presetRow.ZIndex = 96
+    presetRow.Parent = panel
+    
+    local presets = {
+        Color3.fromRGB(255, 50, 50), Color3.fromRGB(50, 50, 255),
+        Color3.fromRGB(255, 200, 0), Color3.fromRGB(0, 200, 100),
+        Color3.fromRGB(255, 100, 0), Color3.fromRGB(150, 50, 200),
+        Color3.fromRGB(255, 255, 255), Color3.fromRGB(30, 30, 30),
+        Color3.fromRGB(0, 200, 200), Color3.fromRGB(255, 150, 200),
     }
     
-    for i, c in ipairs(presetColors) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 40, 0, 30)
-        btn.Position = UDim2.new(0, (i-1)*42, 0, 0)
-        btn.BackgroundColor3 = c
-        btn.Text = ""
-        btn.Parent = colorRow1
-        local bcorner = Instance.new("UICorner"); bcorner.CornerRadius = UDim.new(0, 6); bcorner.Parent = btn
-        btn.MouseButton1Click:Connect(function()
+    for i, c in ipairs(presets) do
+        local swatch = Instance.new("TextButton")
+        swatch.Size = UDim2.new(0, 30, 0, 30)
+        swatch.Position = UDim2.new(0, (i-1)*36, 0, 3)
+        swatch.BackgroundColor3 = c
+        swatch.Text = ""
+        swatch.BorderSizePixel = 1
+        swatch.BorderColor3 = Color3.fromRGB(90, 90, 100)
+        swatch.ZIndex = 97
+        swatch.Parent = presetRow
+        Instance.new("UICorner", swatch).CornerRadius = UDim.new(0, 6)
+        swatch.MouseButton1Click:Connect(function()
+            -- Default to red team when tapping preset (user picks which)
             gameState.teamRedColor = c
-            preview1.BackgroundColor3 = c
+            redColorPreview.BackgroundColor3 = c
+            redColorBtn.BackgroundColor3 = c
         end)
     end
     
-    local colorLabel2 = Instance.new("TextLabel")
-    colorLabel2.Size = UDim2.new(0.9, 0, 0, 25)
-    colorLabel2.Position = UDim2.new(0.05, 0, 0, 285)
-    colorLabel2.BackgroundTransparency = 1
-    colorLabel2.Text = "Team Blue Shirt Color:"
-    colorLabel2.TextColor3 = Color3.fromRGB(200, 200, 200)
-    colorLabel2.TextScaled = true
-    colorLabel2.TextXAlignment = Enum.TextXAlignment.Left
-    colorLabel2.Font = Enum.Font.FredokaOne
-    colorLabel2.Parent = panel
+    -- Controls
+    makeSectionLabel("Match Controls:", 395)
     
-    local preview2 = Instance.new("Frame")
-    preview2.Size = UDim2.new(0, 60, 0, 30)
-    preview2.Position = UDim2.new(0.75, 0, 0, 283)
-    preview2.BackgroundColor3 = gameState.teamBlueColor
-    preview2.Parent = panel
-    local prc2 = Instance.new("UICorner"); prc2.CornerRadius = UDim.new(0, 6); prc2.Parent = preview2
+    local pauseTimeBtn = Instance.new("TextButton")
+    pauseTimeBtn.Size = UDim2.new(0, 130, 0, 40)
+    pauseTimeBtn.Position = UDim2.new(0, 20, 0, 419)
+    pauseTimeBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 40)
+    pauseTimeBtn.Text = "⏸ Pause Time"
+    pauseTimeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    pauseTimeBtn.Font = Enum.Font.GothamBold
+    pauseTimeBtn.TextSize = 13
+    pauseTimeBtn.BorderSizePixel = 0
+    pauseTimeBtn.ZIndex = 96
+    pauseTimeBtn.Parent = panel
+    Instance.new("UICorner", pauseTimeBtn).CornerRadius = UDim.new(0, 10)
     
-    local colorRow2 = Instance.new("Frame")
-    colorRow2.Size = UDim2.new(0.9, 0, 0, 30)
-    colorRow2.Position = UDim2.new(0.05, 0, 0, 315)
-    colorRow2.BackgroundTransparency = 1
-    colorRow2.Parent = panel
+    local resetBtn = Instance.new("TextButton")
+    resetBtn.Size = UDim2.new(0, 130, 0, 40)
+    resetBtn.Position = UDim2.new(0, 160, 0, 419)
+    resetBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    resetBtn.Text = "↺ Reset Match"
+    resetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    resetBtn.Font = Enum.Font.GothamBold
+    resetBtn.TextSize = 13
+    resetBtn.BorderSizePixel = 0
+    resetBtn.ZIndex = 96
+    resetBtn.Parent = panel
+    Instance.new("UICorner", resetBtn).CornerRadius = UDim.new(0, 10)
     
-    for i, c in ipairs(presetColors) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 40, 0, 30)
-        btn.Position = UDim2.new(0, (i-1)*42, 0, 0)
-        btn.BackgroundColor3 = c
-        btn.Text = ""
-        btn.Parent = colorRow2
-        local bcorner = Instance.new("UICorner"); bcorner.CornerRadius = UDim.new(0, 6); bcorner.Parent = btn
-        btn.MouseButton1Click:Connect(function()
-            gameState.teamBlueColor = c
-            preview2.BackgroundColor3 = c
-        end)
-    end
+    local swapBtn = Instance.new("TextButton")
+    swapBtn.Size = UDim2.new(0, 130, 0, 40)
+    swapBtn.Position = UDim2.new(0, 300, 0, 419)
+    swapBtn.BackgroundColor3 = Color3.fromRGB(120, 60, 200)
+    swapBtn.Text = "⇄ Swap Side"
+    swapBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    swapBtn.Font = Enum.Font.GothamBold
+    swapBtn.TextSize = 13
+    swapBtn.BorderSizePixel = 0
+    swapBtn.ZIndex = 96
+    swapBtn.Parent = panel
+    Instance.new("UICorner", swapBtn).CornerRadius = UDim.new(0, 10)
     
+    -- Apply / Close buttons
     local applyBtn = Instance.new("TextButton")
-    applyBtn.Size = UDim2.new(0, 160, 0, 45)
-    applyBtn.Position = UDim2.new(0.05, 0, 0, 370)
+    applyBtn.Size = UDim2.new(0, 200, 0, 44)
+    applyBtn.Position = UDim2.new(0, 20, 1, -60)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
-    applyBtn.Text = "✓ APPLY"
+    applyBtn.Text = "✓ Apply Changes"
     applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    applyBtn.TextScaled = true
-    applyBtn.Font = Enum.Font.FredokaOne
+    applyBtn.Font = Enum.Font.GothamBold
+    applyBtn.TextSize = 15
+    applyBtn.BorderSizePixel = 0
+    applyBtn.ZIndex = 96
     applyBtn.Parent = panel
-    local abc = Instance.new("UICorner"); abc.CornerRadius = UDim.new(0, 10); abc.Parent = applyBtn
+    Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 12)
     
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 200, 0, 44)
+    closeBtn.Position = UDim2.new(0, 240, 1, -60)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    closeBtn.Text = "✕ Close"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 15
+    closeBtn.BorderSizePixel = 0
+    closeBtn.ZIndex = 96
+    closeBtn.Parent = panel
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 12)
+    
+    -- Color picker for red team
+    redColorBtn.MouseButton1Click:Connect(function()
+        createColorPicker(gui, gameState.teamRedColor, function(color)
+            gameState.teamRedColor = color
+            redColorPreview.BackgroundColor3 = color
+            redColorBtn.BackgroundColor3 = color
+        end)
+    end)
+    
+    -- Color picker for blue team
+    blueColorBtn.MouseButton1Click:Connect(function()
+        createColorPicker(gui, gameState.teamBlueColor, function(color)
+            gameState.teamBlueColor = color
+            blueColorPreview.BackgroundColor3 = color
+            blueColorBtn.BackgroundColor3 = color
+        end)
+    end)
+    
+    -- Apply
     applyBtn.MouseButton1Click:Connect(function()
-        if teamNameBox.Text ~= "" then
-            gameState.teamRedName = string.upper(teamNameBox.Text)
-        end
-        if oppNameBox.Text ~= "" then
-            gameState.teamBlueName = string.upper(oppNameBox.Text)
-        end
+        if redNameBox.Text ~= "" then gameState.teamRedName = string.upper(redNameBox.Text) end
+        if blueNameBox.Text ~= "" then gameState.teamBlueName = string.upper(blueNameBox.Text) end
         applyTeamColors()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
-    
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 160, 0, 45)
-    closeBtn.Position = UDim2.new(0.55, 0, 0, 370)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    closeBtn.Text = "✕ CLOSE"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.TextScaled = true
-    closeBtn.Font = Enum.Font.FredokaOne
-    closeBtn.Parent = panel
-    local cbc = Instance.new("UICorner"); cbc.CornerRadius = UDim.new(0, 10); cbc.Parent = closeBtn
     
     closeBtn.MouseButton1Click:Connect(function()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
     
+    -- Pause time toggle
+    pauseTimeBtn.MouseButton1Click:Connect(function()
+        gameState.timePaused = not gameState.timePaused
+        if gameState.timePaused then
+            pauseTimeBtn.Text = "▶ Resume Time"
+            pauseTimeBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+            pauseBtn.Text = "▶"
+        else
+            pauseTimeBtn.Text = "⏸ Pause Time"
+            pauseTimeBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 40)
+            pauseBtn.Text = "⏸"
+        end
+    end)
+    
+    -- Reset match
+    resetBtn.MouseButton1Click:Connect(function()
+        gameState.scoreRed = 0
+        gameState.scoreBlue = 0
+        gameState.timeLeft = HALF_TIME
+        gameState.currentHalf = 1
+        gameState.isExtraTime = false
+        resetPositions("Red")
+    end)
+    
+    -- Swap side
+    swapBtn.MouseButton1Click:Connect(function()
+        gameState.playerTeam = (gameState.playerTeam == "Red") and "Blue" or "Red"
+        gameState.playerDribbling = false
+        updatePlayerAppearance()
+        local pc = gameState.playerChar
+        if pc and pc:FindFirstChild("HumanoidRootPart") then
+            local zOffset = (gameState.playerTeam == "Red") and -150 or 150
+            pc:PivotTo(CFrame.new(MAP_POS + Vector3.new(0, 10, zOffset)))
+        end
+    end)
+    
+    -- Toggle settings
     gearBtn.MouseButton1Click:Connect(function()
         gameState.settingsOpen = not gameState.settingsOpen
         panel.Visible = gameState.settingsOpen
         if gameState.settingsOpen then
-            teamNameBox.Text = gameState.teamRedName
-            oppNameBox.Text = gameState.teamBlueName
-            preview1.BackgroundColor3 = gameState.teamRedColor
-            preview2.BackgroundColor3 = gameState.teamBlueColor
+            redNameBox.Text = gameState.teamRedName
+            blueNameBox.Text = gameState.teamBlueName
+            redColorPreview.BackgroundColor3 = gameState.teamRedColor
+            blueColorPreview.BackgroundColor3 = gameState.teamBlueColor
+        end
+    end)
+    
+    -- Quick pause toggle
+    pauseBtn.MouseButton1Click:Connect(function()
+        gameState.timePaused = not gameState.timePaused
+        if gameState.timePaused then
+            pauseBtn.Text = "▶"
+            pauseBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+            pauseTimeBtn.Text = "▶ Resume Time"
+            pauseTimeBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
+        else
+            pauseBtn.Text = "⏸"
+            pauseBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+            pauseTimeBtn.Text = "⏸ Pause Time"
+            pauseTimeBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 40)
         end
     end)
     
@@ -1538,13 +2055,34 @@ local function createGameUI()
     gui.Name="WC2026UI"; gui.ResetOnSpawn=false; gui.Parent=player.PlayerGui
     gameState.ui=gui
     
+    -- Main scoreboard
     local board=Instance.new("TextLabel")
-    board.Name="Board"; board.Size=UDim2.new(0,380,0,55)
-    board.Position=UDim2.new(0.5,-190,0,15)
-    board.BackgroundColor3=Color3.fromRGB(0,0,0); board.BackgroundTransparency=0.4
+    board.Name="Board"; board.Size=UDim2.new(0,440,0,65)
+    board.Position=UDim2.new(0.5,-220,0,15)
+    board.BackgroundColor3=Color3.fromRGB(0,0,0); board.BackgroundTransparency=0.35
     board.Text="H1 | RED 0 - 0 BLUE | 3:00"; board.TextColor3=Color3.fromRGB(255,255,255)
-    board.TextScaled=true; board.Font=Enum.Font.FredokaOne; board.Parent=gui
-    Instance.new("UICorner",board).CornerRadius=UDim.new(0,10)
+    board.TextScaled=true; board.Font=Enum.Font.GothamBlack; board.Parent=gui
+    Instance.new("UICorner",board).CornerRadius=UDim.new(0,12)
+    local boardStroke = Instance.new("UIStroke", board)
+    boardStroke.Color = Color3.fromRGB(100, 150, 255)
+    boardStroke.Thickness = 2
+    board.Name = "Scoreboard"
+    gameState.scoreLabel = board
+    
+    -- Separate score display (big)
+    local scoreDisplay = Instance.new("TextLabel")
+    scoreDisplay.Name = "ScoreDisplay"
+    scoreDisplay.Size = UDim2.new(0, 300, 0, 50)
+    scoreDisplay.Position = UDim2.new(0.5, -150, 0, 88)
+    scoreDisplay.BackgroundTransparency = 0.4
+    scoreDisplay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    scoreDisplay.Text = "0 - 0"
+    scoreDisplay.TextColor3 = Color3.fromRGB(255, 220, 100)
+    scoreDisplay.TextScaled = true
+    scoreDisplay.Font = Enum.Font.GothamBlack
+    scoreDisplay.ZIndex = 60
+    scoreDisplay.Parent = gui
+    Instance.new("UICorner", scoreDisplay).CornerRadius = UDim.new(0, 10)
     
     local goalLabel=Instance.new("TextLabel")
     goalLabel.Name="GoalText"
@@ -1576,6 +2114,23 @@ local function createGameUI()
     bigLabel.Parent=gui
     gameState.bigTextLabel=bigLabel
     
+    -- Pause overlay indicator
+    local pauseOverlay = Instance.new("TextLabel")
+    pauseOverlay.Name = "PauseOverlay"
+    pauseOverlay.Size = UDim2.new(0, 400, 0, 80)
+    pauseOverlay.Position = UDim2.new(0.5, -200, 0.5, -40)
+    pauseOverlay.BackgroundTransparency = 0.3
+    pauseOverlay.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+    pauseOverlay.Text = "⏸ TIME PAUSED"
+    pauseOverlay.TextColor3 = Color3.fromRGB(255, 220, 100)
+    pauseOverlay.TextScaled = true
+    pauseOverlay.Font = Enum.Font.GothamBlack
+    pauseOverlay.Visible = false
+    pauseOverlay.ZIndex = 80
+    pauseOverlay.Parent = gui
+    Instance.new("UICorner", pauseOverlay).CornerRadius = UDim.new(0, 15)
+    gameState.pauseLabel = pauseOverlay
+    
     task.spawn(function()
         while gui.Parent do
             if gameState.gameActive or gameState.paused then
@@ -1590,12 +2145,19 @@ local function createGameUI()
                         halfLabel, gameState.teamRedName, gameState.scoreRed,
                         gameState.scoreBlue, gameState.teamBlueName, m, s)
                     board.TextColor3=gameState.isExtraTime and Color3.fromRGB(255,200,100) or Color3.fromRGB(255,255,255)
+                    
+                    scoreDisplay.Text = gameState.scoreRed .. " - " .. gameState.scoreBlue
                 end
             else
                 board.Text=string.format("%s %d - %d %s", gameState.teamRedName, gameState.scoreRed, gameState.scoreBlue, gameState.teamBlueName)
                 board.TextColor3=Color3.fromRGB(255,255,255)
+                scoreDisplay.Text = gameState.scoreRed .. " - " .. gameState.scoreBlue
             end
-            task.wait(0.4)
+            
+            -- Pause indicator
+            pauseOverlay.Visible = gameState.timePaused
+            
+            task.wait(0.3)
         end
     end)
     
@@ -1614,8 +2176,7 @@ local function createGameUI()
     local lobBtn=makeBtn("LobBtn","LOB",Color3.fromRGB(255,215,0),UDim2.new(0.8,-50,0.8,-112))
     local knuckleBtn=makeBtn("KnuckleBtn","KNUCKLE\n(Hold)",Color3.fromRGB(255,100,0),UDim2.new(0.8,-50,0.8,-158))
     local dribbleBtn=makeBtn("DribbleBtn","DRIBBLE",Color3.fromRGB(0,150,255),UDim2.new(0.8,-50,0.8,-204))
-    local switchTeamBtn=makeBtn("SwitchTeamBtn","SWITCH",Color3.fromRGB(200,100,200),UDim2.new(0.2,-50,0.8,-20))
-    local sprintBtn=makeBtn("SprintBtn","SPRINT 40",Color3.fromRGB(60,60,60),UDim2.new(0.2,-50,0.8,-66))
+    local sprintBtn=makeBtn("SprintBtn","SPRINT 40",Color3.fromRGB(60,60,60),UDim2.new(0.2,-50,0.8,-20))
     
     local function getNearBall()
         local char=gameState.playerChar
@@ -1760,17 +2321,6 @@ local function createGameUI()
         end
     end)
     
-    switchTeamBtn.MouseButton1Click:Connect(function()
-        gameState.playerTeam=(gameState.playerTeam=="Red") and "Blue" or "Red"
-        gameState.playerDribbling=false
-        updatePlayerAppearance()
-        local pc=gameState.playerChar
-        if pc and pc:FindFirstChild("HumanoidRootPart") then
-            local zOffset=(gameState.playerTeam=="Red") and -150 or 150
-            pc:PivotTo(CFrame.new(MAP_POS+Vector3.new(0,10,zOffset)))
-        end
-    end)
-    
     sprintBtn.MouseButton1Click:Connect(function()
         gameState.sprinting=not gameState.sprinting
         local char=gameState.playerChar
@@ -1840,8 +2390,9 @@ local function autoStart()
         end
     end)
     print("=== WORLD CUP 2026 ===")
-    print("⚙ Click gear icon at top-right to change team names & shirt colors")
-    print("🎯 When you dribble, AI teammates will run to ideal positions!")
+    print("⚙ Click gear icon → Color picker with spectrum, hex, RGB, recent colors")
+    print("⏸ Click pause icon → Freeze match timer")
+    print("📊 Big score display + match clock at top of screen")
 end
 
 autoStart()
