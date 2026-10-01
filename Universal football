@@ -20,8 +20,9 @@ local NORMAL_WALKSPEED = 16
 local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local CROWD_CHEER_SOUND = "rbxassetid://7755719721"
-local WHISTLE_SOUND = "rbxassetid://9114221324"
-local FINAL_WHISTLE_SOUND = "rbxassetid://5801283728"
+local WHISTLE_SOUND = "rbxassetid://9117260208"
+local FINAL_WHISTLE_SOUND = "rbxassetid://9117260208"
+local CARD_TEXT_DURATION = 3
 
 local FEET_Y = MAP_POS.Y + 2.5
 local TORSO_Y = FEET_Y + 3
@@ -81,7 +82,7 @@ local function playWhistle()
 end
 
 local function playFinalWhistle()
-    playSoundOnce(FINAL_WHISTLE_SOUND, 10, 6)
+    playSoundOnce(FINAL_WHISTLE_SOUND, 10, 5)
 end
 
 local function createCrowdSound()
@@ -151,10 +152,22 @@ local function updateCardUI()
         gameState.cardUILabel.Text = "🟨 YELLOW CARD"
         gameState.cardUILabel.TextColor3 = Color3.fromRGB(255, 220, 0)
         gameState.cardUILabel.Visible = true
+        gameState.cardUILabel.TextTransparency = 0
+        task.delay(CARD_TEXT_DURATION, function()
+            if gameState.cardUILabel then
+                gameState.cardUILabel.Visible = false
+            end
+        end)
     elseif gameState.playerCard == "red" then
         gameState.cardUILabel.Text = "🟥 RED CARD — SUSPENDED"
         gameState.cardUILabel.TextColor3 = Color3.fromRGB(255, 50, 50)
         gameState.cardUILabel.Visible = true
+        gameState.cardUILabel.TextTransparency = 0
+        task.delay(CARD_TEXT_DURATION, function()
+            if gameState.cardUILabel then
+                gameState.cardUILabel.Visible = false
+            end
+        end)
     else
         gameState.cardUILabel.Visible = false
     end
@@ -170,7 +183,7 @@ local function showCardAnimation(text, color)
     lbl.Visible = true
     lbl.TextTransparency = 0
     lbl.TextStrokeTransparency = 0.3
-    task.delay(2.5, function()
+    task.delay(CARD_TEXT_DURATION, function()
         if lbl then
             lbl.Text = origText
             lbl.TextColor3 = origColor
@@ -211,7 +224,7 @@ local function onPlayerViolation()
         playWhistle()
         showCardAnimation("🟨 THẺ VÀNG — CẢNH CÁO!", Color3.fromRGB(255, 220, 0))
         updateCardUI()
-        task.delay(2.5, function()
+        task.delay(CARD_TEXT_DURATION, function()
             showCardAnimation("LẦN NỮA SẼ BỊ THẺ ĐỎ!", Color3.fromRGB(255, 100, 100))
         end)
     elseif gameState.playerCard == "yellow" then
