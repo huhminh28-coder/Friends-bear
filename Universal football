@@ -24,6 +24,27 @@ local FEET_Y = MAP_POS.Y + 2.5
 local TORSO_Y = FEET_Y + 3
 local PENALTY_BOX_DEPTH = 60
 
+-- ═══════════════════════════════════════════════════════════
+-- FIX BRIGHT LIGHTING (sân sáng như ảnh 1)
+-- ═══════════════════════════════════════════════════════════
+Lighting.Brightness = 3
+Lighting.ClockTime = 14
+Lighting.Ambient = Color3.fromRGB(160, 160, 160)
+Lighting.OutdoorAmbient = Color3.fromRGB(160, 160, 160)
+Lighting.GlobalShadows = true
+Lighting.FogStart = 0
+Lighting.FogEnd = 100000
+Lighting.EnvironmentDiffuseScale = 0.6
+Lighting.EnvironmentSpecularScale = 0.6
+Lighting.ShadowSoftness = 0.2
+
+for _, v in ipairs(Lighting:GetChildren()) do
+    if v:IsA("Atmosphere") or v:IsA("ColorCorrectionEffect") 
+       or v:IsA("BlurEffect") or v:IsA("DepthOfFieldEffect") then
+        v:Destroy()
+    end
+end
+
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2,
