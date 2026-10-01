@@ -40,15 +40,16 @@ local gameState = {
     passCooldowns={}, gkHolding=false,
     playerDribbling=false, aiDribbleState={},
     goalTextLabel=nil, bigTextLabel=nil, lastDribbleTime=0,
-    redColor=Color3.fromRGB(255,50,50),
-    blueColor=Color3.fromRGB(50,50,255),
+    teamRedName="RED", teamBlueName="BLUE",
+    teamRedColor=Color3.fromRGB(255,50,50),
+    teamBlueColor=Color3.fromRGB(50,50,255),
     settingsUI=nil, settingsOpen=false
 }
 
 local function updatePlayerAppearance()
     local char=gameState.playerChar
     if not char then return end
-    local newColor=(gameState.playerTeam=="Red") and gameState.redColor or gameState.blueColor
+    local newColor=(gameState.playerTeam=="Red") and gameState.teamRedColor or gameState.teamBlueColor
     for _,part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and (part.Name=="Torso" or part.Name:find("Arm")) then
             part.Color=newColor
@@ -63,7 +64,7 @@ local function applyTeamColors()
         for _, part in ipairs(bot:GetChildren()) do
             if part:IsA("BasePart") then
                 if part.Name == "Torso" or part.Name == "LeftArm" or part.Name == "RightArm" then
-                    part.Color = gameState.redColor
+                    part.Color = gameState.teamRedColor
                 end
             end
         end
@@ -72,7 +73,7 @@ local function applyTeamColors()
         for _, part in ipairs(bot:GetChildren()) do
             if part:IsA("BasePart") then
                 if part.Name == "Torso" or part.Name == "LeftArm" or part.Name == "RightArm" then
-                    part.Color = gameState.blueColor
+                    part.Color = gameState.teamBlueColor
                 end
             end
         end
@@ -186,7 +187,7 @@ end
 local function createAIPlayer(team, role, idx)
     local bot=Instance.new("Model")
     bot.Name=team.."_"..role.."_"..idx
-    local teamColor=(team=="Red") and gameState.redColor or gameState.blueColor
+    local teamColor=(team=="Red") and gameState.teamRedColor or gameState.teamBlueColor
     local skinColor = Color3.fromRGB(255,215,170)
     local shortsColor = Color3.fromRGB(255,255,255)
     local function mp(name,size,color,offX,offY,offZ)
@@ -865,7 +866,6 @@ local function updateAILogic(dt)
             updateGoalkeeperAI(bot,dt)
         else
             local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value)
-            
             local isStriker=(bot.Role.Value=="Striker")
             local shouldChase=(bot==closestBot and not canTouch and not playerDribbling)
             if isStriker and (bot.PrimaryPart.Position-ball.Position).Magnitude>60 then
@@ -1080,7 +1080,7 @@ local function onGoalScored(scoringTeam)
     local goalZ=(scoringTeam=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     createFireworks(Vector3.new(MAP_POS.X,MAP_POS.Y+30,goalZ))
     if gameState.isExtraTime then
-        local winnerName = (scoringTeam=="Red") and "TEAM RED WINS!" or "TEAM BLUE WINS!"
+        local winnerName=(scoringTeam=="Red") and (gameState.teamRedName.." WINS!") or (gameState.teamBlueName.." WINS!")
         gameState.extraTimeWinner=scoringTeam
         task.wait(3)
         hideGoalText()
@@ -1214,8 +1214,8 @@ local function startTimer()
                             gameState.paused=false
                             gameState.gameActive=true
                         else
-                            local w="TEAM RED WINS!"
-                            if gameState.scoreBlue>gameState.scoreRed then w="TEAM BLUE WINS!" end
+                            local w=gameState.teamRedName.." WINS!"
+                            if gameState.scoreBlue>gameState.scoreRed then w=gameState.teamBlueName.." WINS!" end
                             task.spawn(function()
                                 endMatch("FULL TIME\n"..w)
                             end)
@@ -1227,9 +1227,6 @@ local function startTimer()
     end)
 end
 
--- ==========================================
--- SETTINGS UI
--- ==========================================
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     
@@ -1254,8 +1251,8 @@ local function createSettingsUI()
     
     local panel = Instance.new("Frame")
     panel.Name = "SettingsPanel"
-    panel.Size = UDim2.new(0, 400, 0, 400)
-    panel.Position = UDim2.new(0.5, -200, 0.5, -200)
+    panel.Size = UDim2.new(0, 400, 0, 480)
+    panel.Position = UDim2.new(0.5, -200, 0.5, -240)
     panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     panel.BorderSizePixel = 0
     panel.Visible = false
@@ -1267,116 +1264,146 @@ local function createSettingsUI()
     title.Size = UDim2.new(1, 0, 0, 45)
     title.Position = UDim2.new(0, 0, 0, 10)
     title.BackgroundTransparency = 1
-    title.Text = "⚙ SETTINGS"
+    title.Text = "⚙ MATCH SETTINGS"
     title.TextColor3 = Color3.fromRGB(255, 255, 255)
     title.TextScaled = true
     title.Font = Enum.Font.FredokaOne
     title.Parent = panel
     
-    -- Team Red Color
-    local redLabel = Instance.new("TextLabel")
-    redLabel.Size = UDim2.new(0.9, 0, 0, 25)
-    redLabel.Position = UDim2.new(0.05, 0, 0, 65)
-    redLabel.BackgroundTransparency = 1
-    redLabel.Text = "Team Red Jersey Color:"
-    redLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    redLabel.TextScaled = true
-    redLabel.TextXAlignment = Enum.TextXAlignment.Left
-    redLabel.Font = Enum.Font.FredokaOne
-    redLabel.Parent = panel
+    local teamNameLabel = Instance.new("TextLabel")
+    teamNameLabel.Size = UDim2.new(0.9, 0, 0, 25)
+    teamNameLabel.Position = UDim2.new(0.05, 0, 0, 65)
+    teamNameLabel.BackgroundTransparency = 1
+    teamNameLabel.Text = "Team Red Name:"
+    teamNameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    teamNameLabel.TextScaled = true
+    teamNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    teamNameLabel.Font = Enum.Font.FredokaOne
+    teamNameLabel.Parent = panel
     
-    local redPreview = Instance.new("Frame")
-    redPreview.Size = UDim2.new(0, 60, 0, 30)
-    redPreview.Position = UDim2.new(0.75, 0, 0, 63)
-    redPreview.BackgroundColor3 = gameState.redColor
-    redPreview.Parent = panel
-    local rpc = Instance.new("UICorner"); rpc.CornerRadius = UDim.new(0, 6); rpc.Parent = redPreview
+    local teamNameBox = Instance.new("TextBox")
+    teamNameBox.Size = UDim2.new(0.9, 0, 0, 38)
+    teamNameBox.Position = UDim2.new(0.05, 0, 0, 92)
+    teamNameBox.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    teamNameBox.Text = gameState.teamRedName
+    teamNameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teamNameBox.TextScaled = true
+    teamNameBox.Font = Enum.Font.FredokaOne
+    teamNameBox.Parent = panel
+    local onc = Instance.new("UICorner"); onc.CornerRadius = UDim.new(0, 8); onc.Parent = teamNameBox
     
-    local redRow = Instance.new("Frame")
-    redRow.Size = UDim2.new(0.9, 0, 0, 30)
-    redRow.Position = UDim2.new(0.05, 0, 0, 95)
-    redRow.BackgroundTransparency = 1
-    redRow.Parent = panel
+    local oppNameLabel = Instance.new("TextLabel")
+    oppNameLabel.Size = UDim2.new(0.9, 0, 0, 25)
+    oppNameLabel.Position = UDim2.new(0.05, 0, 0, 140)
+    oppNameLabel.BackgroundTransparency = 1
+    oppNameLabel.Text = "Team Blue Name:"
+    oppNameLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    oppNameLabel.TextScaled = true
+    oppNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    oppNameLabel.Font = Enum.Font.FredokaOne
+    oppNameLabel.Parent = panel
     
-    local redColors = {
+    local oppNameBox = Instance.new("TextBox")
+    oppNameBox.Size = UDim2.new(0.9, 0, 0, 38)
+    oppNameBox.Position = UDim2.new(0.05, 0, 0, 167)
+    oppNameBox.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+    oppNameBox.Text = gameState.teamBlueName
+    oppNameBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    oppNameBox.TextScaled = true
+    oppNameBox.Font = Enum.Font.FredokaOne
+    oppNameBox.Parent = panel
+    local opc = Instance.new("UICorner"); opc.CornerRadius = UDim.new(0, 8); opc.Parent = oppNameBox
+    
+    local colorLabel1 = Instance.new("TextLabel")
+    colorLabel1.Size = UDim2.new(0.9, 0, 0, 25)
+    colorLabel1.Position = UDim2.new(0.05, 0, 0, 215)
+    colorLabel1.BackgroundTransparency = 1
+    colorLabel1.Text = "Team Red Shirt Color:"
+    colorLabel1.TextColor3 = Color3.fromRGB(200, 200, 200)
+    colorLabel1.TextScaled = true
+    colorLabel1.TextXAlignment = Enum.TextXAlignment.Left
+    colorLabel1.Font = Enum.Font.FredokaOne
+    colorLabel1.Parent = panel
+    
+    local preview1 = Instance.new("Frame")
+    preview1.Size = UDim2.new(0, 60, 0, 30)
+    preview1.Position = UDim2.new(0.75, 0, 0, 213)
+    preview1.BackgroundColor3 = gameState.teamRedColor
+    preview1.Parent = panel
+    local prc1 = Instance.new("UICorner"); prc1.CornerRadius = UDim.new(0, 6); prc1.Parent = preview1
+    
+    local colorRow1 = Instance.new("Frame")
+    colorRow1.Size = UDim2.new(0.9, 0, 0, 30)
+    colorRow1.Position = UDim2.new(0.05, 0, 0, 245)
+    colorRow1.BackgroundTransparency = 1
+    colorRow1.Parent = panel
+    
+    local presetColors = {
         Color3.fromRGB(255, 50, 50),
-        Color3.fromRGB(200, 0, 0),
-        Color3.fromRGB(255, 100, 0),
-        Color3.fromRGB(255, 200, 0),
-        Color3.fromRGB(255, 105, 180),
-        Color3.fromRGB(150, 0, 100),
-        Color3.fromRGB(255, 255, 255),
-        Color3.fromRGB(0, 0, 0),
-    }
-    
-    for i, c in ipairs(redColors) do
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(0, 40, 0, 30)
-        btn.Position = UDim2.new(0, (i-1)*42, 0, 0)
-        btn.BackgroundColor3 = c
-        btn.Text = ""
-        btn.Parent = redRow
-        local bcorner = Instance.new("UICorner"); bcorner.CornerRadius = UDim.new(0, 6); bcorner.Parent = btn
-        btn.MouseButton1Click:Connect(function()
-            gameState.redColor = c
-            redPreview.BackgroundColor3 = c
-        end)
-    end
-    
-    -- Team Blue Color
-    local blueLabel = Instance.new("TextLabel")
-    blueLabel.Size = UDim2.new(0.9, 0, 0, 25)
-    blueLabel.Position = UDim2.new(0.05, 0, 0, 145)
-    blueLabel.BackgroundTransparency = 1
-    blueLabel.Text = "Team Blue Jersey Color:"
-    blueLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    blueLabel.TextScaled = true
-    blueLabel.TextXAlignment = Enum.TextXAlignment.Left
-    blueLabel.Font = Enum.Font.FredokaOne
-    blueLabel.Parent = panel
-    
-    local bluePreview = Instance.new("Frame")
-    bluePreview.Size = UDim2.new(0, 60, 0, 30)
-    bluePreview.Position = UDim2.new(0.75, 0, 0, 143)
-    bluePreview.BackgroundColor3 = gameState.blueColor
-    bluePreview.Parent = panel
-    local bpc = Instance.new("UICorner"); bpc.CornerRadius = UDim.new(0, 6); bpc.Parent = bluePreview
-    
-    local blueRow = Instance.new("Frame")
-    blueRow.Size = UDim2.new(0.9, 0, 0, 30)
-    blueRow.Position = UDim2.new(0.05, 0, 0, 175)
-    blueRow.BackgroundTransparency = 1
-    blueRow.Parent = panel
-    
-    local blueColors = {
         Color3.fromRGB(50, 50, 255),
-        Color3.fromRGB(0, 100, 255),
-        Color3.fromRGB(0, 200, 255),
+        Color3.fromRGB(255, 200, 0),
         Color3.fromRGB(0, 200, 100),
+        Color3.fromRGB(255, 100, 0),
         Color3.fromRGB(150, 50, 200),
-        Color3.fromRGB(100, 100, 100),
         Color3.fromRGB(255, 255, 255),
         Color3.fromRGB(0, 0, 0),
     }
     
-    for i, c in ipairs(blueColors) do
+    for i, c in ipairs(presetColors) do
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 40, 0, 30)
         btn.Position = UDim2.new(0, (i-1)*42, 0, 0)
         btn.BackgroundColor3 = c
         btn.Text = ""
-        btn.Parent = blueRow
+        btn.Parent = colorRow1
         local bcorner = Instance.new("UICorner"); bcorner.CornerRadius = UDim.new(0, 6); bcorner.Parent = btn
         btn.MouseButton1Click:Connect(function()
-            gameState.blueColor = c
-            bluePreview.BackgroundColor3 = c
+            gameState.teamRedColor = c
+            preview1.BackgroundColor3 = c
         end)
     end
     
-    -- Apply Button
+    local colorLabel2 = Instance.new("TextLabel")
+    colorLabel2.Size = UDim2.new(0.9, 0, 0, 25)
+    colorLabel2.Position = UDim2.new(0.05, 0, 0, 285)
+    colorLabel2.BackgroundTransparency = 1
+    colorLabel2.Text = "Team Blue Shirt Color:"
+    colorLabel2.TextColor3 = Color3.fromRGB(200, 200, 200)
+    colorLabel2.TextScaled = true
+    colorLabel2.TextXAlignment = Enum.TextXAlignment.Left
+    colorLabel2.Font = Enum.Font.FredokaOne
+    colorLabel2.Parent = panel
+    
+    local preview2 = Instance.new("Frame")
+    preview2.Size = UDim2.new(0, 60, 0, 30)
+    preview2.Position = UDim2.new(0.75, 0, 0, 283)
+    preview2.BackgroundColor3 = gameState.teamBlueColor
+    preview2.Parent = panel
+    local prc2 = Instance.new("UICorner"); prc2.CornerRadius = UDim.new(0, 6); prc2.Parent = preview2
+    
+    local colorRow2 = Instance.new("Frame")
+    colorRow2.Size = UDim2.new(0.9, 0, 0, 30)
+    colorRow2.Position = UDim2.new(0.05, 0, 0, 315)
+    colorRow2.BackgroundTransparency = 1
+    colorRow2.Parent = panel
+    
+    for i, c in ipairs(presetColors) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, 40, 0, 30)
+        btn.Position = UDim2.new(0, (i-1)*42, 0, 0)
+        btn.BackgroundColor3 = c
+        btn.Text = ""
+        btn.Parent = colorRow2
+        local bcorner = Instance.new("UICorner"); bcorner.CornerRadius = UDim.new(0, 6); bcorner.Parent = btn
+        btn.MouseButton1Click:Connect(function()
+            gameState.teamBlueColor = c
+            preview2.BackgroundColor3 = c
+        end)
+    end
+    
     local applyBtn = Instance.new("TextButton")
     applyBtn.Size = UDim2.new(0, 160, 0, 45)
-    applyBtn.Position = UDim2.new(0.05, 0, 0, 235)
+    applyBtn.Position = UDim2.new(0.05, 0, 0, 370)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 100)
     applyBtn.Text = "✓ APPLY"
     applyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1386,15 +1413,20 @@ local function createSettingsUI()
     local abc = Instance.new("UICorner"); abc.CornerRadius = UDim.new(0, 10); abc.Parent = applyBtn
     
     applyBtn.MouseButton1Click:Connect(function()
+        if teamNameBox.Text ~= "" then
+            gameState.teamRedName = string.upper(teamNameBox.Text)
+        end
+        if oppNameBox.Text ~= "" then
+            gameState.teamBlueName = string.upper(oppNameBox.Text)
+        end
         applyTeamColors()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
     
-    -- Close Button
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 160, 0, 45)
-    closeBtn.Position = UDim2.new(0.55, 0, 0, 235)
+    closeBtn.Position = UDim2.new(0.55, 0, 0, 370)
     closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
     closeBtn.Text = "✕ CLOSE"
     closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1412,8 +1444,10 @@ local function createSettingsUI()
         gameState.settingsOpen = not gameState.settingsOpen
         panel.Visible = gameState.settingsOpen
         if gameState.settingsOpen then
-            redPreview.BackgroundColor3 = gameState.redColor
-            bluePreview.BackgroundColor3 = gameState.blueColor
+            teamNameBox.Text = gameState.teamRedName
+            oppNameBox.Text = gameState.teamBlueName
+            preview1.BackgroundColor3 = gameState.teamRedColor
+            preview2.BackgroundColor3 = gameState.teamBlueColor
         end
     end)
     
@@ -1430,7 +1464,7 @@ local function createGameUI()
     board.Name="Board"; board.Size=UDim2.new(0,380,0,55)
     board.Position=UDim2.new(0.5,-190,0,15)
     board.BackgroundColor3=Color3.fromRGB(0,0,0); board.BackgroundTransparency=0.4
-    board.Text="H1 | TEAM RED 0 - 0 TEAM BLUE | 3:00"; board.TextColor3=Color3.fromRGB(255,255,255)
+    board.Text="H1 | RED 0 - 0 BLUE | 3:00"; board.TextColor3=Color3.fromRGB(255,255,255)
     board.TextScaled=true; board.Font=Enum.Font.FredokaOne; board.Parent=gui
     Instance.new("UICorner",board).CornerRadius=UDim.new(0,10)
     
@@ -1474,12 +1508,13 @@ local function createGameUI()
                     local m=math.floor(math.max(0,gameState.timeLeft)/60)
                     local s=math.max(0,gameState.timeLeft)%60
                     local halfLabel=gameState.isExtraTime and "ET" or ("H"..gameState.currentHalf)
-                    board.Text=string.format("%s | TEAM RED %d - %d TEAM BLUE | %d:%02d",
-                        halfLabel, gameState.scoreRed, gameState.scoreBlue, m, s)
+                    board.Text=string.format("%s | %s %d - %d %s | %d:%02d",
+                        halfLabel, gameState.teamRedName, gameState.scoreRed,
+                        gameState.scoreBlue, gameState.teamBlueName, m, s)
                     board.TextColor3=gameState.isExtraTime and Color3.fromRGB(255,200,100) or Color3.fromRGB(255,255,255)
                 end
             else
-                board.Text=string.format("TEAM RED %d - %d TEAM BLUE", gameState.scoreRed, gameState.scoreBlue)
+                board.Text=string.format("%s %d - %d %s", gameState.teamRedName, gameState.scoreRed, gameState.scoreBlue, gameState.teamBlueName)
                 board.TextColor3=Color3.fromRGB(255,255,255)
             end
             task.wait(0.4)
@@ -1727,8 +1762,8 @@ local function autoStart()
         end
     end)
     print("=== WORLD CUP 2026 ===")
-    print("Click the gear button (top right) to change Team Red / Team Blue jersey colors")
-    print("When you dribble, teammates move to ideal positions for a pass")
+    print("⚙ Click gear icon at top-right to change team names & shirt colors")
+    print("🎯 When you dribble, AI teammates will run to ideal positions!")
 end
 
 autoStart()
