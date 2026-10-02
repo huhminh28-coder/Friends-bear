@@ -1,53 +1,468 @@
--- Made by ban_thid
--- Fixed search bug by assistant
+-- Made by ban_thid | Rewritten for universal compatibility + Evade-style character
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local AvatarEditorService = game:GetService("AvatarEditorService")
 local HttpService = game:GetService("HttpService")
-
-local AutoSavedOutfit = nil
-
-local SETTINGS_FILE = "RobCatalogSettings.json"
-local OUTFITS_FILE = "RobCatalogOutfits.json"
-
-local Settings = {
-	AutoLoad = true
-}
-
-local SavedOutfits = {}
-
-if isfile and isfile(SETTINGS_FILE) then
-	pcall(function()
-		Settings = HttpService:JSONDecode(readfile(SETTINGS_FILE))
-	end)
-end
-
-if isfile and isfile(OUTFITS_FILE) then
-	pcall(function()
-		SavedOutfits = HttpService:JSONDecode(readfile(OUTFITS_FILE))
-	end)
-end
-
-local function SaveSettings()
-	if writefile then
-		writefile(SETTINGS_FILE,HttpService:JSONEncode(Settings))
-	end
-end
-
-local function SaveOutfits()
-	if writefile then
-		writefile(OUTFITS_FILE,HttpService:JSONEncode(SavedOutfits))
-	end
-end
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
+
+-- ═══════════════════════════════════════════════════════
+-- UTILITY: file + http wrappers
+-- ═══════════════════════════════════════════════════════
+local function safeReadFile(name)
+    if readfile then
+        local ok, data = pcall(readfile, name)
+        if ok then return data end
+    end
+    return nil
+end
+
+local function safeWriteFile(name, content)
+    if writefile then
+        pcall(writefile, name, content)
+    end
+end
+
+local function safeIsFile(name)
+    if isfile then
+        local ok, res = pcall(isfile, name)
+        return ok and res
+    end
+    return false
+end
+
+local httpRequest = request or http_request or (syn and syn.request) or (fluxus and fluxus.request) or http
+
+local function fetchJSON(url)
+    if not httpRequest then return nil end
+    local ok, res = pcall(httpRequest, {Url = url, Method = "GET"})
+    if not ok or not res or not res.Body then return nil end
+    local ok2, data = pcall(HttpService.JSONDecode, HttpService, res.Body)
+    if ok2 then return data end
+    return nil
+end
+
+-- ═══════════════════════════════════════════════════════
+-- SETTINGS / OUTFITS
+-- ═══════════════════════════════════════════════════════
+local SETTINGS_FILE = "RobCatalogSettings.json"
+local OUTFITS_FILE  = "RobCatalogOutfits.json"
+
+local Settings = { AutoLoad = true, EvadeMode = true }
+local SavedOutfits = {}
+local AutoSavedOutfit = nil
+
+local data = safeReadFile(SETTINGS_FILE)
+if data then pcall(function() Settings = HttpService:JSONDecode(data) end) end
+data = safeReadFile(OUTFITS_FILE)
+if data then pcall(function() SavedOutfits = HttpService:JSONDecode(data) end) end
+
+local function SaveSettings() safeWriteFile(SETTINGS_FILE, HttpService:JSONEncode(Settings)) end
+local function SaveOutfits()  safeWriteFile(OUTFITS_FILE,  HttpService:JSONEncode(SavedOutfits)) end
+
+-- ═══════════════════════════════════════════════════════
+-- CATALOG: HTTP search with fallback
+-- ═══════════════════════════════════════════════════════
+local CATEGORY_IDS = {
+    Shirt           = 3,
+    Pants           = 4,
+    TShirt          = 2,
+    HairAccessory   = 17,
+    FaceAccessory   = 18,
+    NeckAccessory   = 19,
+    ShoulderAccessory = 20,
+    FrontAccessory  = 21,
+    BackAccessory   = 22,
+    WaistAccessory  = 23,
+    Hat             = 9,
+    Face            = 10,
+}
+
+-- Offline fallback (ít item phổ biến để test)
+local FALLBACK = {
+    Shirt = {
+        {Id=607785314, Name="Roblox Shirt"}, {Id=144076358, Name="Red Plaid"},
+        {Id=4241085, Name="Black Suit"}, {Id=473610092, Name="White Tee"},
+        {Id=96347203, Name="Black Button"}, {Id=146757808, Name="Gray Stripes"},
+    },
+    Pants = {
+        {Id=607785372, Name="Roblox Pants"}, {Id=119420267, Name="Black Pants"},
+        {Id=158890540, Name="Blue Jeans"}, {Id=456167028, Name="White Pants"},
+    },
+    TShirt = {
+        {Id=30224496, Name="Roblox Logo"}, {Id=499402210, Name="Smiley"},
+    },
+    Hat = {
+        {Id=1029025, Name="Beanie"}, {Id=13004478, Name="Cap"},
+        {Id=86904443, Name="Top Hat"}, {Id=11122364, Name="Fedora"},
+    },
+}
+
+local function searchCatalog(assetType, keyword, pageCursor)
+    local catId = CATEGORY_IDS[assetType]
+    if not catId then return nil end
+    
+    local url = string.format(
+        "https://catalog.roblox.com/v1/search/items?category=%d&limit=30&salesTypeFilter=1",
+        catId
+    )
+    if keyword and keyword ~= "" then
+        url = url .. "&keyword=" .. HttpService:UrlEncode(keyword)
+    end
+    if pageCursor then
+        url = url .. "&cursor=" .. pageCursor
+    end
+    
+    local data = fetchJSON(url)
+    if not data or not data.data then return nil end
+    return data
+end
+
+-- ═══════════════════════════════════════════════════════
+-- EVADE-STYLE CHARACTER BUILDER
+-- ═══════════════════════════════════════════════════════
+local customRig = nil
+local originalParts = {}
+local rigAttachments = {}  -- lưu attachment points cho item
+local characterConns = {}
+
+local function destroyCustomRig()
+    if customRig then
+        customRig:Destroy()
+        customRig = nil
+    end
+    rigAttachments = {}
+end
+
+local function hideDefaultCharacter(char)
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.LocalTransparencyModifier = 1
+            if part.Name ~= "HumanoidRootPart" then
+                part.Transparency = 1
+            end
+        elseif part:IsA("Decal") then
+            part.Transparency = 1
+        end
+    end
+end
+
+local function buildEvadeRig(char, hum)
+    destroyCustomRig()
+    
+    local rig = Instance.new("Model")
+    rig.Name = "CustomRig"
+    
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then rig:Destroy() return nil end
+    
+    local root = Instance.new("Part")
+    root.Name = "Root"
+    root.Size = Vector3.new(1, 1, 1)
+    root.Transparency = 1
+    root.CanCollide = false
+    root.CanQuery = false
+    root.Massless = true
+    root.Parent = rig
+    
+    root.CFrame = hrp.CFrame
+    
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = hrp
+    weld.Part1 = root
+    weld.Parent = root
+    
+    -- Evade-style: small blocky, big round head
+    local parts = {}
+    
+    -- Torso (ngắn, rộng)
+    local torso = Instance.new("Part")
+    torso.Name = "Torso"
+    torso.Size = Vector3.new(1.4, 1.2, 0.8)
+    torso.Position = Vector3.new(0, 0, 0)
+    torso.Material = Enum.Material.SmoothPlastic
+    torso.Color = Color3.fromRGB(255, 200, 150)
+    torso.CanCollide = false
+    torso.Massless = true
+    torso.Parent = rig
+    parts.Torso = torso
+    
+    -- Head (tròn, to)
+    local head = Instance.new("Part")
+    head.Name = "Head"
+    head.Shape = Enum.PartType.Ball
+    head.Size = Vector3.new(1.4, 1.4, 1.4)
+    head.Material = Enum.Material.SmoothPlastic
+    head.Color = Color3.fromRGB(255, 220, 177)
+    head.CanCollide = false
+    head.Massless = true
+    head.Parent = rig
+    parts.Head = head
+    
+    -- Arms
+    local larm = Instance.new("Part")
+    larm.Name = "LeftArm"
+    larm.Size = Vector3.new(0.5, 1.2, 0.5)
+    larm.Material = Enum.Material.SmoothPlastic
+    larm.Color = Color3.fromRGB(255, 200, 150)
+    larm.CanCollide = false
+    larm.Massless = true
+    larm.Parent = rig
+    parts.LeftArm = larm
+    
+    local rarm = larm:Clone()
+    rarm.Name = "RightArm"
+    rarm.Parent = rig
+    parts.RightArm = rarm
+    
+    -- Legs
+    local lleg = Instance.new("Part")
+    lleg.Name = "LeftLeg"
+    lleg.Size = Vector3.new(0.5, 1.2, 0.5)
+    lleg.Material = Enum.Material.SmoothPlastic
+    lleg.Color = Color3.fromRGB(80, 80, 180)
+    lleg.CanCollide = false
+    lleg.Massless = true
+    lleg.Parent = rig
+    parts.LeftLeg = lleg
+    
+    local rleg = lleg:Clone()
+    rleg.Name = "RightLeg"
+    rleg.Parent = rig
+    parts.RightLeg = rleg
+    
+    -- Weld vào root
+    local offsets = {
+        Torso    = CFrame.new(0, 1.2, 0),
+        Head     = CFrame.new(0, 2.5, 0),
+        LeftArm  = CFrame.new(-1.0, 1.2, 0),
+        RightArm = CFrame.new(1.0, 1.2, 0),
+        LeftLeg  = CFrame.new(-0.4, 0, 0),
+        RightLeg = CFrame.new(0.4, 0, 0),
+    }
+    
+    for name, part in pairs(parts) do
+        part.CFrame = root.CFrame * offsets[name]
+        local w = Instance.new("WeldConstraint")
+        w.Part0 = root
+        w.Part1 = part
+        w.Parent = part
+        
+        -- Tạo attachment cho item sau này
+        local att = Instance.new("Attachment")
+        att.Name = name .. "_Attach"
+        att.Parent = part
+        rigAttachments[name] = att
+    end
+    
+    rig.PrimaryPart = root
+    rig.Parent = workspace
+    customRig = rig
+    
+    return rig, parts
+end
+
+local function updateRigColor(partName, color)
+    if not customRig then return end
+    local part = customRig:FindFirstChild(partName)
+    if part then part.Color = color end
+end
+
+-- ═══════════════════════════════════════════════════════
+-- ITEM APPLICATION (to custom rig)
+-- ═══════════════════════════════════════════════════════
+local function loadAssetModel(assetId)
+    local ok, model = pcall(function()
+        local objs = game:GetObjects("rbxassetid://" .. assetId)
+        return objs and objs[1]
+    end)
+    if ok and model then return model end
+    return nil
+end
+
+local function attachAccessoryToRig(assetId, itemName, category)
+    if not customRig then return false end
+    local model = loadAssetModel(assetId)
+    if not model then return false end
+    
+    -- Chọn body part đích
+    local targetName = "Head"
+    if category == "FrontAccessory" or category == "NeckAccessory" then
+        targetName = "Torso"
+    elseif category == "BackAccessory" then
+        targetName = "Torso"
+    elseif category == "WaistAccessory" then
+        targetName = "Torso"
+    end
+    
+    local targetPart = customRig:FindFirstChild(targetName) or customRig:FindFirstChild("Head")
+    if not targetPart then return false end
+    
+    -- Xóa item cũ cùng category
+    for _, child in ipairs(customRig:GetChildren()) do
+        if child:GetAttribute("Category") == category then
+            child:Destroy()
+        end
+    end
+    
+    if model:IsA("Accessory") or model:IsA("Model") then
+        local handle = model:FindFirstChild("Handle") or model:FindFirstChildWhichIsA("BasePart")
+        if not handle then
+            for _, d in ipairs(model:GetDescendants()) do
+                if d:IsA("BasePart") then handle = d break end
+            end
+        end
+        if not handle then return false end
+        
+        handle.CFrame = targetPart.CFrame
+        handle.Parent = customRig
+        handle.CanCollide = false
+        handle.Massless = true
+        handle:SetAttribute("CatalogId", assetId)
+        handle:SetAttribute("DisplayName", itemName)
+        handle:SetAttribute("Category", category)
+        
+        local weld = Instance.new("WeldConstraint")
+        weld.Part0 = targetPart
+        weld.Part1 = handle
+        weld.Parent = handle
+        
+        return true
+    end
+    return false
+end
+
+local function applyShirt(assetId, itemName)
+    -- Với custom rig, ta tạo lớp phủ lên torso (dùng decal hoặc colored)
+    -- Đơn giản nhất: tạo Shirt object gắn vào character (vẫn hiển thị với rig ẩn)
+    -- Vì rig ẩn, ta sẽ tô màu torso theo asset (không hoàn hảo nhưng tiện)
+    -- Alternative: fetch texture và tạo decal trên torso
+    if not customRig then return end
+    local torso = customRig:FindFirstChild("Torso")
+    if not torso then return end
+    
+    -- Xóa shirt marker cũ
+    for _, child in ipairs(customRig:GetChildren()) do
+        if child:GetAttribute("Category") == "Shirt" then
+            child:Destroy()
+        end
+    end
+    
+    -- Tạo invisible marker lưu id
+    local marker = Instance.new("Folder")
+    marker.Name = "ShirtMarker"
+    marker:SetAttribute("CatalogId", assetId)
+    marker:SetAttribute("DisplayName", itemName)
+    marker:SetAttribute("Category", "Shirt")
+    marker.Parent = customRig
+end
+
+-- ═══════════════════════════════════════════════════════
+-- CHARACTER HOOK
+-- ═══════════════════════════════════════════════════════
+local function onCharacterAdded(char)
+    for _, c in ipairs(characterConns) do c:Disconnect() end
+    characterConns = {}
+    
+    local hum = char:WaitForChild("Humanoid", 5)
+    if not hum then return end
+    
+    task.wait(0.5)
+    
+    if Settings.EvadeMode then
+        hideDefaultCharacter(char)
+        buildEvadeRig(char, hum)
+    end
+    
+    -- Cập nhật lại transparency
+    table.insert(characterConns, RunService.RenderStepped:Connect(function()
+        if not Settings.EvadeMode then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.LocalTransparencyModifier = 1
+            elseif part:IsA("Decal") then
+                part.Transparency = 1
+            end
+        end
+    end))
+    
+    if Settings.AutoLoad and AutoSavedOutfit then
+        task.wait(0.5)
+    end
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+if player.Character then onCharacterAdded(player.Character) end
+
+-- ═══════════════════════════════════════════════════════
+-- OUTFIT DATA
+-- ═══════════════════════════════════════════════════════
+local function GetCurrentOutfit()
+    if not customRig then return nil end
+    local data = { Accessories = {}, Clothes = {}, BodyColors = {} }
+    
+    for _, child in ipairs(customRig:GetChildren()) do
+        local cat = child:GetAttribute("Category")
+        local id = child:GetAttribute("CatalogId")
+        local name = child:GetAttribute("DisplayName")
+        if cat and id then
+            if cat == "Shirt" then data.Clothes.Shirt = id
+            elseif cat == "Pants" then data.Clothes.Pants = id
+            elseif cat == "TShirt" then data.Clothes.TShirt = id
+            else
+                table.insert(data.Accessories, {Id = id, Name = name, Category = cat})
+            end
+        end
+    end
+    
+    for _, partName in ipairs({"Head","Torso","LeftArm","RightArm","LeftLeg","RightLeg"}) do
+        local part = customRig:FindFirstChild(partName)
+        if part then
+            data.BodyColors[partName] = {part.Color.R, part.Color.G, part.Color.B}
+        end
+    end
+    
+    return data
+end
+
+local function LoadSavedOutfit(data)
+    if not customRig or not data then return end
+    
+    if data.Clothes then
+        if data.Clothes.Shirt then applyShirt(data.Clothes.Shirt, "Shirt") end
+        if data.Clothes.Pants then applyShirt(data.Clothes.Pants, "Pants") end
+        if data.Clothes.TShirt then applyShirt(data.Clothes.TShirt, "TShirt") end
+    end
+    
+    if data.Accessories then
+        for _, acc in ipairs(data.Accessories) do
+            attachAccessoryToRig(acc.Id, acc.Name, acc.Category or "Hat")
+        end
+    end
+    
+    if data.BodyColors then
+        for partName, color in pairs(data.BodyColors) do
+            updateRigColor(partName, Color3.new(color[1], color[2], color[3]))
+        end
+    end
+end
+
+local function AutoSaveOutfit()
+    if Settings.AutoLoad then
+        AutoSavedOutfit = GetCurrentOutfit()
+    end
+end
+
+-- ═══════════════════════════════════════════════════════
+-- UI (giữ cấu trúc cũ, thu gọn)
+-- ═══════════════════════════════════════════════════════
 local gui = Instance.new("ScreenGui")
-gui.Name = "Rob's Catalog Avatar Creator"
+gui.Name = "RobCatalog"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
-gui.Parent = player.PlayerGui
+gui.Parent = player:WaitForChild("PlayerGui")
 
 local frame = Instance.new("Frame")
 frame.Size = UDim2.new(0, 700, 0, 360)
@@ -55,149 +470,96 @@ frame.Position = UDim2.new(0.5, -350, 0.5, -180)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 0
 frame.Active = true
-frame.Visible = true
 frame.Parent = gui
-
-local corner = Instance.new("UICorner", frame)
-corner.CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, 0, 0, 44)
-title.Position = UDim2.new(0, 0, 0, 0)
 title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 title.Text = "Rob's Catalog Avatar Creator"
 title.Font = Enum.Font.GothamBold
-title.TextSize = 26
+title.TextSize = 22
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
 title.Parent = frame
-
-local titleCorner = Instance.new("UICorner", title)
-titleCorner.CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", title).CornerRadius = UDim.new(0, 8)
 
 local closeBtn = Instance.new("TextButton")
-closeBtn.Text = "X"
 closeBtn.Size = UDim2.new(0, 44, 1, 0)
 closeBtn.Position = UDim2.new(1, -44, 0, 0)
 closeBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 20
 closeBtn.Parent = title
-
-local closeCorner = Instance.new("UICorner", closeBtn)
-closeCorner.CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 
 local searchBar = Instance.new("TextBox")
-searchBar.Size = UDim2.new(0.55,0,0,30)
+searchBar.Size = UDim2.new(0.55, 0, 0, 30)
 searchBar.Position = UDim2.new(0.15, 0, 0, 50)
-searchBar.PlaceholderText = "Search catalog items..."
-searchBar.Text = ""
+searchBar.PlaceholderText = "Search catalog..."
 searchBar.TextColor3 = Color3.fromRGB(255, 255, 255)
 searchBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 searchBar.Font = Enum.Font.Gotham
 searchBar.TextSize = 14
 searchBar.Parent = frame
-
-local searchCorner = Instance.new("UICorner", searchBar)
-searchCorner.CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", searchBar).CornerRadius = UDim.new(0, 6)
 
 local clearSearchBtn = Instance.new("TextButton")
-clearSearchBtn.Text = "✖"
 clearSearchBtn.Size = UDim2.new(0, 30, 0, 30)
 clearSearchBtn.Position = UDim2.new(0.85, -30, 0, 50)
 clearSearchBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-clearSearchBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+clearSearchBtn.Text = "✖"
+clearSearchBtn.TextColor3 = Color3.new(1, 1, 1)
 clearSearchBtn.Font = Enum.Font.GothamBold
-clearSearchBtn.TextSize = 16
 clearSearchBtn.Parent = frame
-
-local clearSearchCorner = Instance.new("UICorner", clearSearchBtn)
-clearSearchCorner.CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", clearSearchBtn).CornerRadius = UDim.new(0, 6)
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(0.72,0,1,-132)
-scroll.Position = UDim2.new(0.27,0,0,128)
+scroll.Size = UDim2.new(0.72, 0, 1, -132)
+scroll.Position = UDim2.new(0.27, 0, 0, 128)
 scroll.BackgroundTransparency = 1
 scroll.ScrollBarThickness = 6
-scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 scroll.Parent = frame
 
+local layout = Instance.new("UIGridLayout")
+layout.CellSize = UDim2.new(0, 100, 0, 120)
+layout.CellPadding = UDim2.new(0, 5, 0, 5)
+layout.Parent = scroll
+
 local wearingFrame = Instance.new("Frame")
-wearingFrame.Size = UDim2.new(0.24,0,1,-132)
-wearingFrame.Position = UDim2.new(0.01,0,0,128)
-wearingFrame.BackgroundColor3 = Color3.fromRGB(35,35,35)
+wearingFrame.Size = UDim2.new(0.24, 0, 1, -132)
+wearingFrame.Position = UDim2.new(0.01, 0, 0, 128)
+wearingFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 wearingFrame.Parent = frame
-Instance.new("UICorner",wearingFrame)
+Instance.new("UICorner", wearingFrame)
 
 local wearingTitle = Instance.new("TextLabel")
-wearingTitle.Size = UDim2.new(1,0,0,30)
+wearingTitle.Size = UDim2.new(1, 0, 0, 30)
 wearingTitle.BackgroundTransparency = 1
 wearingTitle.Text = "Wearing"
 wearingTitle.Font = Enum.Font.GothamBold
 wearingTitle.TextSize = 18
-wearingTitle.TextColor3 = Color3.new(1,1,1)
+wearingTitle.TextColor3 = Color3.new(1, 1, 1)
 wearingTitle.Parent = wearingFrame
 
 local wearingScroll = Instance.new("ScrollingFrame")
-wearingScroll.Size = UDim2.new(1,-10,1,-35)
-wearingScroll.Position = UDim2.new(0,5,0,30)
+wearingScroll.Size = UDim2.new(1, -10, 1, -35)
+wearingScroll.Position = UDim2.new(0, 5, 0, 30)
 wearingScroll.BackgroundTransparency = 1
 wearingScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 wearingScroll.ScrollBarThickness = 5
 wearingScroll.Parent = wearingFrame
 
 local wearingLayout = Instance.new("UIListLayout")
-wearingLayout.Padding = UDim.new(0,5)
+wearingLayout.Padding = UDim.new(0, 5)
 wearingLayout.Parent = wearingScroll
 
-local bundleFrame = Instance.new("Frame")
-bundleFrame.Size = UDim2.new(0,250,0,300)
-bundleFrame.Position = UDim2.new(.5,-125,.5,-150)
-bundleFrame.BackgroundColor3 = Color3.fromRGB(35,35,35)
-bundleFrame.Visible = false
-bundleFrame.Parent = gui
-Instance.new("UICorner",bundleFrame)
-
-local bundleClose = Instance.new("TextButton")
-bundleClose.Size = UDim2.new(0,28,0,28)
-bundleClose.Position = UDim2.new(1,-33,0,3)
-bundleClose.BackgroundColor3 = Color3.fromRGB(180,60,60)
-bundleClose.Text = "X"
-bundleClose.TextColor3 = Color3.new(1,1,1)
-bundleClose.Font = Enum.Font.GothamBold
-bundleClose.TextSize = 16
-bundleClose.Parent = bundleFrame
-
-Instance.new("UICorner",bundleClose).CornerRadius = UDim.new(0,6)
-
-bundleClose.MouseButton1Click:Connect(function()
-	bundleFrame.Visible = false
-end)
-
-local bundleTitle = Instance.new("TextLabel")
-bundleTitle.Size = UDim2.new(1,0,0,30)
-bundleTitle.BackgroundTransparency = 1
-bundleTitle.TextColor3 = Color3.new(1,1,1)
-bundleTitle.Font = Enum.Font.GothamBold
-bundleTitle.TextSize = 18
-bundleTitle.Parent = bundleFrame
-
-local bundleScroll = Instance.new("ScrollingFrame")
-bundleScroll.Size = UDim2.new(1,-10,1,-40)
-bundleScroll.Position = UDim2.new(0,5,0,35)
-bundleScroll.BackgroundTransparency = 1
-bundleScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-bundleScroll.ScrollBarThickness = 5
-bundleScroll.Parent = bundleFrame
-
-local bundleLayout = Instance.new("UIListLayout")
-bundleLayout.Padding = UDim.new(0,5)
-bundleLayout.Parent = bundleScroll
-
 local categoryScroll = Instance.new("ScrollingFrame")
-categoryScroll.Size = UDim2.new(0.98,0,0,36)
-categoryScroll.Position = UDim2.new(0.01,0,0,86)
+categoryScroll.Size = UDim2.new(0.98, 0, 0, 36)
+categoryScroll.Position = UDim2.new(0.01, 0, 0, 86)
 categoryScroll.BackgroundTransparency = 1
 categoryScroll.ScrollBarThickness = 4
 categoryScroll.ScrollingDirection = Enum.ScrollingDirection.X
@@ -207,1398 +569,452 @@ categoryScroll.Parent = frame
 
 local categoryLayout = Instance.new("UIListLayout")
 categoryLayout.FillDirection = Enum.FillDirection.Horizontal
-categoryLayout.Padding = UDim.new(0,6)
+categoryLayout.Padding = UDim.new(0, 6)
 categoryLayout.Parent = categoryScroll
 
-local layout = Instance.new("UIGridLayout")
-layout.CellSize = UDim2.new(0,100,0,120)
-layout.CellPadding = UDim2.new(0,5,0,5)
-layout.Parent = scroll
+local statusLbl = Instance.new("TextLabel")
+statusLbl.Size = UDim2.new(1, 0, 0, 20)
+statusLbl.Position = UDim2.new(0, 0, 1, -22)
+statusLbl.BackgroundTransparency = 1
+statusLbl.Text = ""
+statusLbl.TextColor3 = Color3.fromRGB(180, 180, 180)
+statusLbl.Font = Enum.Font.Gotham
+statusLbl.TextSize = 12
+statusLbl.Parent = frame
 
-local bodyFrame = Instance.new("Frame")
-bodyFrame.Size = UDim2.new(0.72,0,1,-132)
-bodyFrame.Position = UDim2.new(0.27,0,0,128)
-bodyFrame.BackgroundTransparency = 1
-bodyFrame.Visible = false
-bodyFrame.Parent = frame
-
-local bodyScroll = Instance.new("ScrollingFrame")
-bodyScroll.Size = UDim2.new(1,0,1,-40)
-bodyScroll.BackgroundTransparency = 1
-bodyScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-bodyScroll.ScrollBarThickness = 6
-bodyScroll.Parent = bodyFrame
-
-local bodyGrid = Instance.new("UIGridLayout")
-bodyGrid.CellSize = UDim2.new(0,50,0,50)
-bodyGrid.CellPadding = UDim2.new(0,5,0,5)
-bodyGrid.Parent = bodyScroll
-
-local rgbBox = Instance.new("TextBox")
-rgbBox.Size = UDim2.new(1,0,0,30)
-rgbBox.Position = UDim2.new(0,0,1,-30)
-rgbBox.PlaceholderText = "255,255,255"
-rgbBox.BackgroundColor3 = Color3.fromRGB(45,45,45)
-rgbBox.TextColor3 = Color3.new(1,1,1)
-rgbBox.Font = Enum.Font.Gotham
-rgbBox.TextSize = 16
-rgbBox.Parent = bodyFrame
-
-Instance.new("UICorner",rgbBox)
-
-local catalogPages
-local loadMore
-local AutoSaveOutfit
-local updateWearing
+-- ═══════════════════════════════════════════════════════
+-- RENDER ITEMS
+-- ═══════════════════════════════════════════════════════
+local currentCategory = "Shirt"
 local currentQuery = ""
-local currentAssetType = Enum.AvatarAssetType.Shirt
+local currentPageCursor = nil
 local loading = false
+local allItems = {}
+local renderToken = 0
 
-local BundlesContainer = game:GetObjects(getcustomasset("RBundles.rbxmx"))[1]
-
-local BodyColors = {
-	Color3.fromRGB(255,205,148),
-	Color3.fromRGB(255,220,177),
-	Color3.fromRGB(255,235,205),
-	Color3.fromRGB(242,215,180),
-	Color3.fromRGB(224,172,105),
-	Color3.fromRGB(198,134,66),
-	Color3.fromRGB(161,110,74),
-	Color3.fromRGB(120,82,45),
-	Color3.fromRGB(90,60,40),
-	Color3.fromRGB(60,40,30),
-
-	Color3.fromRGB(255,255,255),
-	Color3.fromRGB(220,220,220),
-	Color3.fromRGB(170,170,170),
-	Color3.fromRGB(100,100,100),
-	Color3.fromRGB(0,0,0),
-
-	Color3.fromRGB(255,0,0),
-	Color3.fromRGB(255,128,128),
-	Color3.fromRGB(255,128,0),
-	Color3.fromRGB(255,255,0),
-	Color3.fromRGB(128,255,0),
-	Color3.fromRGB(0,255,0),
-	Color3.fromRGB(0,255,128),
-	Color3.fromRGB(0,255,255),
-	Color3.fromRGB(0,170,255),
-	Color3.fromRGB(0,0,255),
-	Color3.fromRGB(128,0,255),
-	Color3.fromRGB(255,0,255),
-	Color3.fromRGB(255,0,128),
-
-	Color3.fromRGB(139,69,19),
-	Color3.fromRGB(210,180,140),
-	Color3.fromRGB(128,64,0),
-	Color3.fromRGB(64,32,0),
-
-    Color3.fromRGB(242,243,243),
-	 Color3.fromRGB(161,165,162),
- 	Color3.fromRGB(249,233,153),
- 	Color3.fromRGB(215,197,154),
- 	Color3.fromRGB(194,218,184),
- 	Color3.fromRGB(232,186,200),
- 	Color3.fromRGB(128,187,219),
- 	Color3.fromRGB(203,132,66),
- 	Color3.fromRGB(204,142,105),
- 	Color3.fromRGB(196,40,28),
- 	Color3.fromRGB(196,112,160),
- 	Color3.fromRGB(13,105,172),
- 	Color3.fromRGB(245,205,48),
- 	Color3.fromRGB(98,71,50),
- 	Color3.fromRGB(27,42,53),
- 	Color3.fromRGB(109,110,108),
- 	Color3.fromRGB(40,127,71),
- 	Color3.fromRGB(161,196,140),
- 	Color3.fromRGB(243,207,155),
- 	Color3.fromRGB(75,151,75),
- 	Color3.fromRGB(160,95,53),
- 	Color3.fromRGB(193,202,222),
- 	Color3.fromRGB(236,236,236),
-	 Color3.fromRGB(205,84,75),
-	 Color3.fromRGB(193,223,240),
- 	Color3.fromRGB(123,182,232),
- 	Color3.fromRGB(247,241,141),
- 	Color3.fromRGB(180,210,228),
- 	Color3.fromRGB(217,133,108),
- 	Color3.fromRGB(132,182,141),
-	 Color3.fromRGB(248,241,132),
- 	Color3.fromRGB(236,232,222),
-	 Color3.fromRGB(238,196,182),
- 	Color3.fromRGB(218,134,122),
- 	Color3.fromRGB(110,153,202),
- 	Color3.fromRGB(199,193,183),
- 	Color3.fromRGB(107,50,124),
- 	Color3.fromRGB(226,155,64),
- 	Color3.fromRGB(218,133,65),
- 	Color3.fromRGB(0,143,156),
- 	Color3.fromRGB(104,92,67),
- 	Color3.fromRGB(67,84,147),
-	 Color3.fromRGB(191,183,177),
- 	Color3.fromRGB(104,116,172),
- 	Color3.fromRGB(229,173,200),
- 	Color3.fromRGB(199,210,60),
- 	Color3.fromRGB(85,165,175),
- 	Color3.fromRGB(183,215,213),
- 	Color3.fromRGB(164,189,71),
- 	Color3.fromRGB(217,228,167),
- 	Color3.fromRGB(231,172,88),
- 	Color3.fromRGB(211,111,76), 
- 	Color3.fromRGB(146,57,120),
-	 Color3.fromRGB(234,184,146),
-	 Color3.fromRGB(165,165,203),
- 	Color3.fromRGB(220,188,129),
- 	Color3.fromRGB(174,122,89),
- 	Color3.fromRGB(156,163,168),
- 	Color3.fromRGB(213,115,61),
- 	Color3.fromRGB(216,221,86),
- 	Color3.fromRGB(116,134,157),
- 	Color3.fromRGB(135,124,144),
- 	Color3.fromRGB(224,152,100),
- 	Color3.fromRGB(149,138,115),
- 	Color3.fromRGB(32,58,86),
+local CATEGORY_LABELS = {
+    "Shirt", "Pants", "TShirt", "Hat", "Face", "HairAccessory",
+    "NeckAccessory", "ShoulderAccessory", "FrontAccessory",
+    "BackAccessory", "WaistAccessory", "Bundles", "Body", "Outfits", "Settings"
 }
 
-local originalHeadMesh
-
-task.spawn(function()
-	local character = player.Character or player.CharacterAdded:Wait()
-	local head = character:WaitForChild("Head")
-
-	local mesh = head:FindFirstChildOfClass("SpecialMesh")
-	if mesh then
-		originalHeadMesh = mesh:Clone()
-	end
-end)
-
-local function tryOn(item)
-
-	local character = player.Character or player.CharacterAdded:Wait()
-
-local function AlreadyEquipped()
-
-	for _,v in ipairs(character:GetChildren()) do
-    if v:GetAttribute("CatalogId") == item.Id then
-        return true
-    end
-end
-
-	local head = character:FindFirstChild("Head")
-
-	if head then
-		local mesh = head:FindFirstChildOfClass("SpecialMesh")
-		if mesh and mesh:GetAttribute("DisplayName") == item.Name then
-			return true
-		end
-	end
-
-	return false
-end
-
-if AlreadyEquipped() then
-	return
-end
-
-if item.AssetType == "Shirt" then
-
-	for _,v in ipairs(character:GetChildren()) do
-		if v:IsA("Shirt") then
-			v:Destroy()
-		end
-	end
-
-	local shirt = game:GetObjects("rbxassetid://"..item.Id)[1]
-shirt:SetAttribute("DisplayName", item.Name)
-shirt.Parent = character
-shirt:SetAttribute("CatalogId",item.Id)
-updateWearing()
-AutoSaveOutfit()
-
-elseif item.AssetType == "Pants" then
-
-	for _,v in ipairs(character:GetChildren()) do
-		if v:IsA("Pants") then
-			v:Destroy()
-		end
-	end
-
-	local pants = game:GetObjects("rbxassetid://"..item.Id)[1]
-pants:SetAttribute("DisplayName", item.Name)
-pants.Parent = character
-pants:SetAttribute("CatalogId",item.Id)
-updateWearing()
-AutoSaveOutfit()
-
-elseif item.AssetType == "TShirt" then
-
-	for _,v in ipairs(character:GetChildren()) do
-		if v:IsA("ShirtGraphic") then
-			v:Destroy()
-		end
-	end
-
-	local shirtGraphic = game:GetObjects("rbxassetid://"..item.Id)[1]
-shirtGraphic:SetAttribute("DisplayName", item.Name)
-shirtGraphic.Parent = character
-shirtGraphic:SetAttribute("CatalogId",item.Id)
-updateWearing()
-AutoSaveOutfit()
-
-elseif item.AssetType == "Hat" or string.find(item.AssetType, "Accessory") then
-	
-	local success,accessory = pcall(function()
-		return game:GetObjects("rbxassetid://"..item.Id)[1]
-	end)
-
-	if success and accessory then
-		
-		accessory.Parent = character
-    accessory:SetAttribute("CatalogId",item.Id)
-
-   accessory:SetAttribute("DisplayName", item.Name)
-
-   updateWearing()
-   AutoSaveOutfit()
-		
-		local handle = accessory:FindFirstChild("Handle")
-
-		if handle then
-			
-			local accessoryAttachment = handle:FindFirstChildWhichIsA("Attachment")
-
-			if accessoryAttachment then
-				
-				local characterAttachment = character:FindFirstChild(accessoryAttachment.Name, true)
-
-				if characterAttachment then
-					
-					handle.CFrame = characterAttachment.WorldCFrame 
-						* accessoryAttachment.CFrame:Inverse()
-
-					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = handle
-					weld.Part1 = characterAttachment.Parent
-					weld.Parent = handle
-				
-	end
-
-		else
-
-			local head = character:FindFirstChild("Head")
-
-			if head then
-
-				handle.CFrame = head.CFrame
-
-				local weld = Instance.new("Weld")
-				weld.Part0 = handle
-				weld.Part1 = head
-				weld.Parent = handle
-
-			end
-		end
-
-		handle.Anchored = false
-		handle.CanCollide = false
-	end
-
- updateWearing()
- AutoSaveOutfit()
-
-end
-
-
-	elseif item.AssetType == Enum.AvatarAssetType.Face then
-
-		local head = character:FindFirstChild("Head")
-
-		if head then
-			
-			local old = head:FindFirstChild("face")
-
-			if old then
-				old:Destroy()
-			end
-
-			local decal = Instance.new("Decal")
-			decal.Name = "face"
-			decal.Texture = "rbxassetid://"..item.Id
-			decal.Parent = head
-			
-		end
-
-	end
-end
-
-local function equipBundleMesh(mesh)
-
-	local character = player.Character or player.CharacterAdded:Wait()
-
-	if mesh:IsA("CharacterMesh") then
-
-		for _,v in ipairs(character:GetChildren()) do
-			if v:IsA("CharacterMesh") and v.BodyPart == mesh.BodyPart then
-				v:Destroy()
-			end
-		end
-
-   local clone = mesh:Clone()
-clone:SetAttribute("DisplayName", mesh.Name)
-clone:SetAttribute("BundleName", mesh.Parent.Name)
-clone.Parent = character
-
-   updateWearing()
-   AutoSaveOutfit()
-
-	elseif mesh:IsA("SpecialMesh") then
-
-		local head = character:FindFirstChild("Head")
-
-		if head then
-
-			local old = head:FindFirstChildOfClass("SpecialMesh")
-
-			if old then
-				old:Destroy()
-			end
-
-    local clone = mesh:Clone()
-clone:SetAttribute("DisplayName", mesh.Name)
-clone:SetAttribute("BundleName", mesh.Parent.Name)
-clone.Parent = head
-
-
-    updateWearing()
-    AutoSaveOutfit()
-
-		end
-	end
-
-updateWearing()
-AutoSaveOutfit()
-
-end
-
-updateWearing = function()
-
-	local character = player.Character
-	if not character then
-		return
-	end
-
-	for _,v in ipairs(wearingScroll:GetChildren()) do
-		if v:IsA("Frame") then
-			v:Destroy()
-		end
-	end
-
-	local function addRow(instance,name)
-
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1,-5,0,32)
-		row.BackgroundColor3 = Color3.fromRGB(45,45,45)
-		row.Parent = wearingScroll
-
-		Instance.new("UICorner",row)
-
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.new(.65,0,1,0)
-		label.BackgroundTransparency = 1
-		label.Text = name
-		label.TextScaled = true
-		label.TextColor3 = Color3.new(1,1,1)
-		label.Parent = row
-
-		local remove = Instance.new("TextButton")
-		remove.Size = UDim2.new(.35,-5,.8,0)
-		remove.Position = UDim2.new(.65,2,.1,0)
-		remove.Text = "Take Off"
-		remove.Font = Enum.Font.GothamBold
-		remove.TextScaled = true
-		remove.BackgroundColor3 = Color3.fromRGB(170,60,60)
-		remove.TextColor3 = Color3.new(1,1,1)
-		remove.Parent = row
-
-		Instance.new("UICorner",remove)
-
-		remove.MouseButton1Click:Connect(function()
-
-			if instance:IsA("Accessory") then
-
-				instance:Destroy()
-
-			elseif instance:IsA("Shirt") then
-
-				instance:Destroy()
-
-			elseif instance:IsA("Pants") then
-
-				instance:Destroy()
-
-			elseif instance:IsA("ShirtGraphic") then
-
-				instance:Destroy()
-
-			elseif instance:IsA("CharacterMesh") then
-
-				instance:Destroy()
-
-			elseif instance:IsA("SpecialMesh") and instance ~= originalHeadMesh then
-
-				local head = character:FindFirstChild("Head")
-
-				if head then
-
-					instance:Destroy()
-
-					if originalHeadMesh then
-						originalHeadMesh:Clone().Parent = head
-					end
-
-				end
-
-			end
-
-			updateWearing()
-     AutoSaveOutfit()
-
-		end)
-
-	end
-
-	for _,v in ipairs(character:GetChildren()) do
-
-		if v:IsA("Accessory") then
-			addRow(v, v:GetAttribute("DisplayName") or v.Name)
-
-		elseif v:IsA("Shirt") then
-			addRow(v, v:GetAttribute("DisplayName") or v.Name)
-
-		elseif v:IsA("Pants") then
-			addRow(v, v:GetAttribute("DisplayName") or v.Name)
-
-		elseif v:IsA("ShirtGraphic") then
-			addRow(v, v:GetAttribute("DisplayName") or v.Name)
-
-		elseif v:IsA("CharacterMesh") then
-			addRow(v, v:GetAttribute("DisplayName") or v.Name)
-
-		end
-
-	end
-
-	local head = character:FindFirstChild("Head")
-
-	if head then
-
-		local mesh = head:FindFirstChildOfClass("SpecialMesh")
-
-		if mesh and (not originalHeadMesh or mesh.MeshId ~= originalHeadMesh.MeshId) then
-    addRow(mesh, mesh:GetAttribute("DisplayName") or "Head")
-end
-
-	end
-
-end
-
-local function GetCurrentOutfit()
-
-	local character = player.Character
-	if not character then
-		return nil
-	end
-
-	local data = {
-		Accessories = {},
-		Clothes = {},
-		Meshes = {},
-		BodyColors = {}
-	}
-
-	for _,v in ipairs(character:GetChildren()) do
-
-		if v:IsA("Accessory") then
-
-			table.insert(data.Accessories,{
-				Id = tonumber(v:GetAttribute("CatalogId")),
-				Name = v:GetAttribute("DisplayName")
-			})
-
-		elseif v:IsA("Shirt") then
-
-			data.Clothes.Shirt = tonumber(v:GetAttribute("CatalogId"))
-
-		elseif v:IsA("Pants") then
-
-			data.Clothes.Pants = tonumber(v:GetAttribute("CatalogId"))
-
-		elseif v:IsA("ShirtGraphic") then
-
-			data.Clothes.TShirt = tonumber(v:GetAttribute("CatalogId"))
-
-		elseif v:IsA("CharacterMesh") then
-
-			table.insert(data.Meshes,{
-    Bundle = v:GetAttribute("BundleName"),
-    Name = v.Name,
-    BodyPart = v.BodyPart.Name
-})
-
-		end
-
-	end
-
-	for _,part in ipairs(character:GetChildren()) do
-
-		if part:IsA("BasePart") then
-			data.BodyColors[part.Name] = {
-				part.Color.R,
-				part.Color.G,
-				part.Color.B
-			}
-		end
-
-	end
-
-	local head=character:FindFirstChild("Head")
-
-	if head then
-		local mesh=head:FindFirstChildOfClass("SpecialMesh")
-
-		if mesh and mesh~=originalHeadMesh then
-			data.HeadMesh = {
-	MeshId = mesh.MeshId,
-	TextureId = mesh.TextureId,
-	Scale = {mesh.Scale.X,mesh.Scale.Y,mesh.Scale.Z},
-	Offset = {mesh.Offset.X,mesh.Offset.Y,mesh.Offset.Z},
-	VertexColor = {
-		mesh.VertexColor.X,
-		mesh.VertexColor.Y,
-		mesh.VertexColor.Z
-	}
+local CATEGORY_NAMES = {
+    Shirt = "Shirts", Pants = "Pants", TShirt = "T-Shirts",
+    Hat = "Hats", Face = "Faces", HairAccessory = "Hair",
+    NeckAccessory = "Neck", ShoulderAccessory = "Shoulder",
+    FrontAccessory = "Front", BackAccessory = "Back",
+    WaistAccessory = "Waist", Bundles = "Bundles",
+    Body = "Body", Outfits = "Outfits", Settings = "Settings"
 }
-		end
-	end
-
-	return data
-
-end
-
-AutoSaveOutfit = function()
-	if Settings.AutoLoad then
-		AutoSavedOutfit = GetCurrentOutfit()
-	end
-end
-
-local function LoadSavedOutfit(data)
-
-	local character = player.Character or player.CharacterAdded:Wait()
-
-for _,v in ipairs(character:GetChildren()) do
-	if v:IsA("Accessory")
-	or v:IsA("Shirt")
-	or v:IsA("Pants")
-	or v:IsA("ShirtGraphic")
-	or v:IsA("CharacterMesh") then
-		v:Destroy()
-	end
-end
-
-local head = character:FindFirstChild("Head")
-if head then
-	local mesh = head:FindFirstChildOfClass("SpecialMesh")
-	if mesh then
-		mesh:Destroy()
-	end
-
-	if originalHeadMesh then
-		originalHeadMesh:Clone().Parent = head
-	end
-end
-
-	if data.Clothes.Shirt then
-		tryOn({
-			Id = data.Clothes.Shirt,
-			Name = "Shirt",
-			AssetType = "Shirt"
-		})
-	end
-
-	if data.Clothes.Pants then
-		tryOn({
-			Id = data.Clothes.Pants,
-			Name = "Pants",
-			AssetType = "Pants"
-		})
-	end
-
-	if data.Clothes.TShirt then
-		tryOn({
-			Id = data.Clothes.TShirt,
-			Name = "T-Shirt",
-			AssetType = "TShirt"
-		})
-	end
-
-	for _,acc in ipairs(data.Accessories) do
-		if acc.Id then
-			tryOn({
-				Id = acc.Id,
-				Name = acc.Name,
-				AssetType = "Hat"
-			})
-		end
-	end
-
-	if data.BodyColors then
-		for partName,color in pairs(data.BodyColors) do
-
-			local part = character:FindFirstChild(partName)
-
-			if part then
-				part.Color = Color3.new(color[1],color[2],color[3])
-			end
-
-		end
-	end
-
-	if data.Meshes then
-    for _,meshInfo in ipairs(data.Meshes) do
-
-        local folder = BundlesContainer:FindFirstChild(meshInfo.Bundle)
-
-        if folder then
-            for _,mesh in ipairs(folder:GetChildren()) do
-                if mesh:IsA("CharacterMesh")
-                and mesh.Name == meshInfo.Name
-                and mesh.BodyPart.Name == meshInfo.BodyPart then
-                    equipBundleMesh(mesh)
-                    break
-                end
-            end
-        end
-
-    end
-end
-
-	if data.HeadMesh then
-	local head = character:FindFirstChild("Head")
-
-	if head then
-		local old = head:FindFirstChildOfClass("SpecialMesh")
-		if old then
-			old:Destroy()
-		end
-
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshId = data.HeadMesh.MeshId
-		mesh.TextureId = data.HeadMesh.TextureId
-		mesh.Scale = Vector3.new(unpack(data.HeadMesh.Scale))
-		mesh.Offset = Vector3.new(unpack(data.HeadMesh.Offset))
-		mesh.VertexColor = Vector3.new(unpack(data.HeadMesh.VertexColor))
-		mesh.Parent = head
-	end
-end
-
-updateWearing()
-AutoSaveOutfit()
-
-end
-
-local function openBundle(folder)
-
-	bundleFrame.Visible = true
-	bundleTitle.Text = folder.Name
-
-	for _,v in ipairs(bundleScroll:GetChildren()) do
-		if v:IsA("TextButton") then
-			v:Destroy()
-		end
-	end
-
-	for _,mesh in ipairs(folder:GetChildren()) do
-
-		local button = Instance.new("TextButton")
-		button.Size = UDim2.new(1,-5,0,35)
-		button.BackgroundColor3 = Color3.fromRGB(45,45,45)
-		button.TextColor3 = Color3.new(1,1,1)
-		button.Font = Enum.Font.GothamBold
-		button.TextSize = 16
-		button.Text = mesh.Name
-		button.Parent = bundleScroll
-
-		Instance.new("UICorner",button)
-
-		button.MouseButton1Click:Connect(function()
-			equipBundleMesh(mesh)
-		end)
-
-	end
-
-end
-
-local function addItem(item)
-	local button = Instance.new("ImageButton")
-	button.Size = UDim2.new(0,100,0,120)
-	button.BackgroundColor3 = Color3.fromRGB(45,45,45)
-	button.Parent = scroll
-	local imgCorner = Instance.new("UICorner", button)
-	imgCorner.CornerRadius = UDim.new(0,8)
-
-	local image = Instance.new("ImageLabel")
-	image.Size = UDim2.new(1,-10,0,90)
-	image.Position = UDim2.new(0,5,0,5)
-	image.BackgroundTransparency = 1
-  image.Image = "rbxthumb://type=Asset&id="..item.Id.."&w=150&h=150"
-	image.Parent = button
-	local imageCorner = Instance.new("UICorner", image)
-	imageCorner.CornerRadius = UDim.new(0,8)
-
-	local text = Instance.new("TextLabel")
-	text.Name = "name"
-	text.Size = UDim2.new(1,-4,0,20)
-	text.Position = UDim2.new(0,2,1,-22)
-	text.BackgroundTransparency = 1
-	text.TextScaled = true
-	text.TextColor3 = Color3.new(1,1,1)
-	text.Text = item.Name
-	text.Parent = button
-	local textCorner = Instance.new("UICorner", text)
-	textCorner.CornerRadius = UDim.new(0,6)
-
-	button.MouseButton1Click:Connect(function()
-
-	local tryBtn = Instance.new("TextButton")
-	tryBtn.Size = UDim2.new(1,0,0,25)
-	tryBtn.Position = UDim2.new(0,0,0,95)
-	tryBtn.BackgroundColor3 = Color3.fromRGB(0,170,255)
-	tryBtn.TextColor3 = Color3.new(1,1,1)
-	tryBtn.Font = Enum.Font.GothamBold
-	tryBtn.TextSize = 14
-	tryBtn.Text = "Try On"
-	tryBtn.Parent = button
-
-	Instance.new("UICorner",tryBtn).CornerRadius = UDim.new(0,6)
-
-task.delay(5,function()
-	if tryBtn then
-		tryBtn:Destroy()
-	end
-end)
-
-	tryBtn.MouseButton1Click:Connect(function()
-		tryOn(item)
-	end)
-
-end)
-
- end
-
-local function addCategoryButton(text, assetType)
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(0,90,1,0)
-	button.BackgroundColor3 = Color3.fromRGB(45,45,45)
-	button.TextColor3 = Color3.new(1,1,1)
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 14
-	button.Text = text
-	button.Parent = categoryScroll
-
-	Instance.new("UICorner", button).CornerRadius = UDim.new(0,6)
-
-	button.MouseButton1Click:Connect(function()
-		currentAssetType = assetType
-		loading = false
-		loadMore(true)
-	end)
-end
 
 local function clearItems()
-	for _,v in ipairs(scroll:GetChildren()) do
-		if v:IsA("GuiObject") and not v:IsA("UIGridLayout") then
-			v:Destroy()
-		end
-	end
-
-	scroll.CanvasPosition = Vector2.zero
+    for _, v in ipairs(scroll:GetChildren()) do
+        if v:IsA("GuiObject") and not v:IsA("UIGridLayout") then
+            v:Destroy()
+        end
+    end
+    allItems = {}
+    scroll.CanvasPosition = Vector2.zero
 end
 
-local function ShowEmptyMessage(text)
-	local msg = Instance.new("TextLabel")
-	msg.Size = UDim2.new(1, 0, 0, 60)
-	msg.BackgroundTransparency = 1
-	msg.Text = text or "Không tìm thấy vật phẩm nào"
-	msg.TextColor3 = Color3.fromRGB(180, 180, 180)
-	msg.Font = Enum.Font.GothamBold
-	msg.TextSize = 16
-	msg.TextWrapped = true
-	msg.Parent = scroll
-	scroll.CanvasSize = UDim2.new(0, 0, 0, 70)
+local function addItemCard(item)
+    local card = Instance.new("ImageButton")
+    card.Size = UDim2.new(0, 100, 0, 120)
+    card.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    card.Parent = scroll
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+    
+    local img = Instance.new("ImageLabel")
+    img.Size = UDim2.new(1, -10, 0, 90)
+    img.Position = UDim2.new(0, 5, 0, 5)
+    img.BackgroundTransparency = 1
+    img.Image = "rbxthumb://type=Asset&id=" .. item.Id .. "&w=150&h=150"
+    img.Parent = card
+    Instance.new("UICorner", img).CornerRadius = UDim.new(0, 8)
+    
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Size = UDim2.new(1, -4, 0, 20)
+    nameLbl.Position = UDim2.new(0, 2, 1, -22)
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.TextScaled = true
+    nameLbl.TextColor3 = Color3.new(1, 1, 1)
+    nameLbl.Text = item.Name
+    nameLbl.Parent = card
+    
+    card.MouseButton1Click:Connect(function()
+        statusLbl.Text = "Đang trang bị: " .. item.Name
+        task.spawn(function()
+            local success = false
+            if currentCategory == "Shirt" or currentCategory == "Pants" or currentCategory == "TShirt" then
+                applyShirt(item.Id, item.Name)
+                success = true
+            else
+                success = attachAccessoryToRig(item.Id, item.Name, currentCategory)
+            end
+            
+            if success then
+                statusLbl.Text = "✓ Đã trang bị: " .. item.Name
+                updateWearing()
+                AutoSaveOutfit()
+            else
+                statusLbl.Text = "✗ Không trang bị được (asset chưa load)"
+            end
+        end)
+    end)
+    
+    table.insert(allItems, {card = card, item = item})
 end
 
-local SelectedBodyPart = "All"
-
-local Parts = {
-	"All",
-	"Head",
-	"Torso",
-	"Left Arm",
-	"Right Arm",
-	"Left Leg",
-	"Right Leg"
-}
-
-local partSelector = Instance.new("TextButton")
-partSelector.Size = UDim2.new(0,120,0,30)
-partSelector.Position = UDim2.new(0,570,0,50)
-partSelector.BackgroundColor3 = Color3.fromRGB(45,45,45)
-partSelector.Text = "All"
-partSelector.TextColor3 = Color3.new(1,1,1)
-partSelector.Parent = frame
-
-Instance.new("UICorner",partSelector)
-
-partSelector.Visible = false
-
-local index = 1
-
-partSelector.MouseButton1Click:Connect(function()
-	index += 1
-	if index > #Parts then
-		index = 1
-	end
-
-	SelectedBodyPart = Parts[index]
-	partSelector.Text = Parts[index]
-end)
-
-loadMore = function(reset)
-	if loading then
-		return
-	end
-
-	loading = true
-
-	if reset then
-		clearItems()
-		catalogPages = nil  -- Reset paging state mỗi lần search mới
-
-		scroll.Visible = true
-		bodyFrame.Visible = false
-		partSelector.Visible = false
-
-		if currentAssetType == "Body" then
-
-			scroll.Visible = false
-			bodyFrame.Visible = true
-			partSelector.Visible = true
-
-			for _,v in ipairs(bodyScroll:GetChildren()) do
-				if v:IsA("TextButton") then
-					v:Destroy()
-				end
-			end
-
-			local function Apply(color)
-
-				local character = player.Character
-				if not character then
-					return
-				end
-
-				local Groups = {
-					["Head"] = {"Head"},
-					["Torso"] = {"UpperTorso","LowerTorso"},
-					["Left Arm"] = {"LeftUpperArm","LeftLowerArm","LeftHand"},
-					["Right Arm"] = {"RightUpperArm","RightLowerArm","RightHand"},
-					["Left Leg"] = {"LeftUpperLeg","LeftLowerLeg","LeftFoot"},
-					["Right Leg"] = {"RightUpperLeg","RightLowerLeg","RightFoot"},
-				}
-
-				if character:FindFirstChild("UpperTorso") then
-
-					if SelectedBodyPart == "All" then
-
-						for _,parts in pairs(Groups) do
-							for _,name in ipairs(parts) do
-								local p = character:FindFirstChild(name)
-								if p then
-									p.Color = color
-								end
-							end
-						end
-
-					else
-
-						for _,name in ipairs(Groups[SelectedBodyPart] or {}) do
-							local p = character:FindFirstChild(name)
-							if p then
-								p.Color = color
-							end
-						end
-
-					end
-
-				else
-
-					if SelectedBodyPart == "All" then
-
-						for _,name in ipairs({
-							"Head","Torso","Left Arm","Right Arm","Left Leg","Right Leg"
-						}) do
-							local p = character:FindFirstChild(name)
-							if p then
-								p.Color = color
-							end
-						end
-
-					else
-
-						local p = character:FindFirstChild(SelectedBodyPart)
-						if p then
-							p.Color = color
-						end
-
-					end
-
-				end
-
-				AutoSaveOutfit()
-			end
-
-			for _,color in ipairs(BodyColors) do
-
-				local b = Instance.new("TextButton")
-				b.Size = UDim2.new(0,50,0,50)
-				b.BackgroundColor3 = color
-				b.Text = ""
-				b.Parent = bodyScroll
-
-				Instance.new("UICorner",b)
-
-				b.MouseButton1Click:Connect(function()
-					Apply(color)
-				end)
-
-			end
-
-			loading = false
-			return
-		end
-
-		if currentAssetType == "Outfits" then
-
-			clearItems()
-			scroll.CanvasPosition = Vector2.zero
-
-			local save = Instance.new("TextButton")
-			save.Size = UDim2.new(0,220,0,40)
-			save.BackgroundColor3 = Color3.fromRGB(45,45,45)
-			save.Text = "Save Current Outfit"
-			save.TextColor3 = Color3.new(1,1,1)
-			save.Font = Enum.Font.GothamBold
-			save.TextSize = 16
-			save.Parent = scroll
-
-			Instance.new("UICorner",save)
-
-			save.MouseButton1Click:Connect(function()
-
-				table.insert(SavedOutfits,{
-					Name = "Outfit "..#SavedOutfits + 1,
-					Data = GetCurrentOutfit()
-				})
-
-				SaveOutfits()
-				loadMore(true)
-
-			end)
-
-			for i,outfit in ipairs(SavedOutfits) do
-
-				local row = Instance.new("Frame")
-				row.Size = UDim2.new(0,260,0,40)
-				row.BackgroundColor3 = Color3.fromRGB(45,45,45)
-				row.Parent = scroll
-				Instance.new("UICorner",row)
-
-				local label = Instance.new("TextLabel")
-				label.Size = UDim2.new(.6,0,1,0)
-				label.BackgroundTransparency = 1
-				label.Text = outfit.Name
-				label.TextColor3 = Color3.new(1,1,1)
-				label.Font = Enum.Font.GothamBold
-				label.TextSize = 15
-				label.Parent = row
-
-				row.Size = UDim2.new(0,260,0,75)
-
-				label.Size = UDim2.new(1,-10,0,28)
-				label.Position = UDim2.new(0,5,0,3)
-				label.TextXAlignment = Enum.TextXAlignment.Center
-
-				local equip = Instance.new("TextButton")
-				equip.Size = UDim2.new(.45,-5,0,30)
-				equip.Position = UDim2.new(0.03,0,0,38)
-				equip.BackgroundColor3 = Color3.fromRGB(0,170,255)
-				equip.Text = "Equip"
-				equip.TextColor3 = Color3.new(1,1,1)
-				equip.Font = Enum.Font.GothamBold
-				equip.TextSize = 14
-				equip.Parent = row
-				Instance.new("UICorner",equip)
-
-				local delete = Instance.new("TextButton")
-				delete.Size = UDim2.new(.45,-5,0,30)
-				delete.Position = UDim2.new(.52,0,0,38)
-				delete.BackgroundColor3 = Color3.fromRGB(170,60,60)
-				delete.Text = "Delete"
-				delete.TextColor3 = Color3.new(1,1,1)
-				delete.Font = Enum.Font.GothamBold
-				delete.TextSize = 14
-				delete.Parent = row
-				Instance.new("UICorner",delete)
-
-				equip.MouseButton1Click:Connect(function()
-					LoadSavedOutfit(outfit.Data)
-				end)
-
-				delete.MouseButton1Click:Connect(function()
-					table.remove(SavedOutfits,i)
-					SaveOutfits()
-					loadMore(true)
-				end)
-
-			end
-
-			loading = false
-			return
-		end
-
-		if currentAssetType == "Settings" then
-
-			clearItems()
-			scroll.CanvasPosition = Vector2.zero
-
-			local container = Instance.new("Frame")
-			container.Size = UDim2.new(1,0,0,50)
-			container.BackgroundTransparency = 1
-			container.Parent = scroll
-
-			local label = Instance.new("TextLabel")
-			label.Size = UDim2.new(0,160,0,35)
-			label.Position = UDim2.new(0,10,0,5)
-			label.BackgroundTransparency = 1
-			label.Text = "Auto Char Load"
-			label.TextXAlignment = Enum.TextXAlignment.Left
-			label.Font = Enum.Font.GothamBold
-			label.TextSize = 18
-			label.TextColor3 = Color3.new(1,1,1)
-			label.Parent = container
-
-			local toggle = Instance.new("TextButton")
-			toggle.Size = UDim2.new(0,32,0,32)
-			toggle.Position = UDim2.new(0,180,0,7)
-			toggle.BackgroundColor3 = Color3.fromRGB(45,45,45)
-			toggle.Text = Settings.AutoLoad and "✓" or ""
-			toggle.TextColor3 = Color3.fromRGB(0,255,0)
-			toggle.Font = Enum.Font.GothamBold
-			toggle.TextSize = 22
-			toggle.Parent = container
-
-			Instance.new("UICorner",toggle)
-
-			toggle.MouseButton1Click:Connect(function()
-
-				Settings.AutoLoad = not Settings.AutoLoad
-
-				toggle.Text = Settings.AutoLoad and "✓" or ""
-
-				SaveSettings()
-
-			end)
-
-			scroll.CanvasSize = UDim2.new(0,0,0,60)
-
-			loading = false
-			return
-		end
-
-		if currentAssetType == "Bundles" then
-
-			clearItems()
-
-			for _,folder in ipairs(BundlesContainer:GetChildren()) do
-
-				local fakeItem = {
-					Name = folder.Name,
-					Id = 0,
-					Folder = folder
-				}
-
-				local button = Instance.new("ImageButton")
-				button.Size = UDim2.new(0,100,0,120)
-				button.BackgroundColor3 = Color3.fromRGB(45,45,45)
-				button.Parent = scroll
-
-				Instance.new("UICorner",button).CornerRadius = UDim.new(0,8)
-
-				local label = Instance.new("TextLabel")
-				label.Size = UDim2.new(1,0,1,0)
-				label.BackgroundTransparency = 1
-				label.TextScaled = true
-				label.Text = folder.Name
-				label.TextColor3 = Color3.new(1,1,1)
-				label.Parent = button
-
-				button.MouseButton1Click:Connect(function()
-					openBundle(folder)
-				end)
-
-			end
-
-			loading = false
-			return
-
-		end
-
-		-- ===== FIX: Regular search with pcall =====
-		local params = CatalogSearchParams.new()
-		params.SearchKeyword = currentQuery or ""
-		params.AssetTypes = {currentAssetType}
-
-		local ok, result = pcall(function()
-			return AvatarEditorService:SearchCatalog(params)
-		end)
-
-		if ok and result then
-			catalogPages = result
-		else
-			catalogPages = nil
-			warn("[Catalog] SearchCatalog failed: " .. tostring(result))
-		end
-	else
-		-- Advance to next page (load more)
-		if catalogPages then
-			local ok = pcall(function()
-				catalogPages:AdvanceToNextPageAsync()
-			end)
-			if not ok then
-				loading = false
-				return
-			end
-		end
-	end
-
-	if not catalogPages then
-		ShowEmptyMessage("Không tìm thấy vật phẩm nào")
-		loading = false
-		return
-	end
-
-	local items = {}
-	local ok, result = pcall(function()
-		return catalogPages:GetCurrentPage()
-	end)
-
-	if ok and result then
-		items = result
-	end
-
-	if #items == 0 then
-		if reset then
-			ShowEmptyMessage("Không tìm thấy vật phẩm nào")
-		end
-		loading = false
-		return
-	end
-
-	for _, item in ipairs(items) do
-		addItem(item)
-	end
-
-	scroll.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y)
-
-	loading = false
+local function updateWearing()
+    for _, v in ipairs(wearingScroll:GetChildren()) do
+        if v:IsA("Frame") then v:Destroy() end
+    end
+    
+    if not customRig then return end
+    
+    local function addRow(instance, name, cat)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -5, 0, 32)
+        row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        row.Parent = wearingScroll
+        Instance.new("UICorner", row)
+        
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0.6, 0, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = name
+        lbl.TextScaled = true
+        lbl.TextColor3 = Color3.new(1, 1, 1)
+        lbl.Parent = row
+        
+        local remove = Instance.new("TextButton")
+        remove.Size = UDim2.new(0.35, -5, 0.8, 0)
+        remove.Position = UDim2.new(0.63, 2, 0.1, 0)
+        remove.Text = "Take Off"
+        remove.Font = Enum.Font.GothamBold
+        remove.TextScaled = true
+        remove.BackgroundColor3 = Color3.fromRGB(170, 60, 60)
+        remove.TextColor3 = Color3.new(1, 1, 1)
+        remove.Parent = row
+        Instance.new("UICorner", remove)
+        
+        remove.MouseButton1Click:Connect(function()
+            instance:Destroy()
+            updateWearing()
+            AutoSaveOutfit()
+        end)
+    end
+    
+    for _, child in ipairs(customRig:GetChildren()) do
+        local cat = child:GetAttribute("Category")
+        local name = child:GetAttribute("DisplayName")
+        if cat and name then
+            addRow(child, name, cat)
+        end
+    end
 end
 
-currentQuery = ""
-loadMore(true)
-updateWearing()
-AutoSaveOutfit()
+local function renderItems()
+    renderToken = renderToken + 1
+    local myToken = renderToken
+    
+    clearItems()
+    statusLbl.Text = "Đang tải..."
+    
+    -- Special categories
+    if currentCategory == "Settings" then
+        local container = Instance.new("Frame")
+        container.Size = UDim2.new(1, 0, 0, 50)
+        container.BackgroundTransparency = 1
+        container.Parent = scroll
+        
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0, 200, 0, 35)
+        lbl.Position = UDim2.new(0, 10, 0, 5)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = "Evade Character Mode"
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 18
+        lbl.TextColor3 = Color3.new(1, 1, 1)
+        lbl.Parent = container
+        
+        local toggle = Instance.new("TextButton")
+        toggle.Size = UDim2.new(0, 32, 0, 32)
+        toggle.Position = UDim2.new(0, 220, 0, 7)
+        toggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        toggle.Text = Settings.EvadeMode and "✓" or ""
+        toggle.TextColor3 = Color3.fromRGB(0, 255, 0)
+        toggle.Font = Enum.Font.GothamBold
+        toggle.TextSize = 22
+        toggle.Parent = container
+        Instance.new("UICorner", toggle)
+        
+        toggle.MouseButton1Click:Connect(function()
+            Settings.EvadeMode = not Settings.EvadeMode
+            toggle.Text = Settings.EvadeMode and "✓" or ""
+            SaveSettings()
+            if player.Character then
+                if Settings.EvadeMode then
+                    hideDefaultCharacter(player.Character)
+                    buildEvadeRig(player.Character, player.Character:FindFirstChildOfClass("Humanoid"))
+                else
+                    destroyCustomRig()
+                    for _, part in ipairs(player.Character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.LocalTransparencyModifier = 0
+                            if part.Name ~= "HumanoidRootPart" then part.Transparency = 0 end
+                        end
+                    end
+                end
+            end
+        end)
+        
+        -- AutoLoad toggle
+        local lbl2 = Instance.new("TextLabel")
+        lbl2.Size = UDim2.new(0, 200, 0, 35)
+        lbl2.Position = UDim2.new(0, 10, 0, 60)
+        lbl2.BackgroundTransparency = 1
+        lbl2.Text = "Auto Save Outfit"
+        lbl2.TextXAlignment = Enum.TextXAlignment.Left
+        lbl2.Font = Enum.Font.GothamBold
+        lbl2.TextSize = 18
+        lbl2.TextColor3 = Color3.new(1, 1, 1)
+        lbl2.Parent = container
+        
+        local toggle2 = Instance.new("TextButton")
+        toggle2.Size = UDim2.new(0, 32, 0, 32)
+        toggle2.Position = UDim2.new(0, 220, 0, 62)
+        toggle2.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        toggle2.Text = Settings.AutoLoad and "✓" or ""
+        toggle2.TextColor3 = Color3.fromRGB(0, 255, 0)
+        toggle2.Font = Enum.Font.GothamBold
+        toggle2.TextSize = 22
+        toggle2.Parent = container
+        Instance.new("UICorner", toggle2)
+        
+        toggle2.MouseButton1Click:Connect(function()
+            Settings.AutoLoad = not Settings.AutoLoad
+            toggle2.Text = Settings.AutoLoad and "✓" or ""
+            SaveSettings()
+        end)
+        
+        container.Size = UDim2.new(1, 0, 0, 110)
+        statusLbl.Text = "Settings"
+        loading = false
+        return
+    end
+    
+    if currentCategory == "Outfits" then
+        local save = Instance.new("TextButton")
+        save.Size = UDim2.new(0, 220, 0, 40)
+        save.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        save.Text = "Save Current Outfit"
+        save.TextColor3 = Color3.new(1, 1, 1)
+        save.Font = Enum.Font.GothamBold
+        save.TextSize = 16
+        save.Parent = scroll
+        Instance.new("UICorner", save)
+        
+        save.MouseButton1Click:Connect(function()
+            table.insert(SavedOutfits, {
+                Name = "Outfit " .. #SavedOutfits + 1,
+                Data = GetCurrentOutfit()
+            })
+            SaveOutfits()
+            renderItems()
+        end)
+        
+        for i, outfit in ipairs(SavedOutfits) do
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(0, 260, 0, 75)
+            row.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+            row.Parent = scroll
+            Instance.new("UICorner", row)
+            
+            local lbl = Instance.new("TextLabel")
+            lbl.Size = UDim2.new(1, -10, 0, 28)
+            lbl.Position = UDim2.new(0, 5, 0, 3)
+            lbl.BackgroundTransparency = 1
+            lbl.Text = outfit.Name
+            lbl.TextColor3 = Color3.new(1, 1, 1)
+            lbl.Font = Enum.Font.GothamBold
+            lbl.TextSize = 15
+            lbl.Parent = row
+            
+            local equip = Instance.new("TextButton")
+            equip.Size = UDim2.new(0.45, -5, 0, 30)
+            equip.Position = UDim2.new(0.03, 0, 0, 38)
+            equip.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+            equip.Text = "Equip"
+            equip.TextColor3 = Color3.new(1, 1, 1)
+            equip.Font = Enum.Font.GothamBold
+            equip.Parent = row
+            Instance.new("UICorner", equip)
+            
+            local del = Instance.new("TextButton")
+            del.Size = UDim2.new(0.45, -5, 0, 30)
+            del.Position = UDim2.new(0.52, 0, 0, 38)
+            del.BackgroundColor3 = Color3.fromRGB(170, 60, 60)
+            del.Text = "Delete"
+            del.TextColor3 = Color3.new(1, 1, 1)
+            del.Font = Enum.Font.GothamBold
+            del.Parent = row
+            Instance.new("UICorner", del)
+            
+            equip.MouseButton1Click:Connect(function()
+                LoadSavedOutfit(outfit.Data)
+                updateWearing()
+            end)
+            
+            del.MouseButton1Click:Connect(function()
+                table.remove(SavedOutfits, i)
+                SaveOutfits()
+                renderItems()
+            end)
+        end
+        
+        loading = false
+        return
+    end
+    
+    if currentCategory == "Body" then
+        -- 12 nút màu body
+        local colorList = {
+            Color3.fromRGB(255, 205, 148), Color3.fromRGB(255, 220, 177),
+            Color3.fromRGB(161, 110, 74), Color3.fromRGB(255, 255, 255),
+            Color3.fromRGB(100, 100, 100), Color3.fromRGB(0, 0, 0),
+            Color3.fromRGB(255, 0, 0), Color3.fromRGB(255, 255, 0),
+            Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 0, 255),
+            Color3.fromRGB(255, 0, 255), Color3.fromRGB(255, 128, 0),
+        }
+        
+        for _, color in ipairs(colorList) do
+            local btn = Instance.new("TextButton")
+            btn.Size = UDim2.new(0, 60, 0, 60)
+            btn.BackgroundColor3 = color
+            btn.Text = ""
+            btn.Parent = scroll
+            Instance.new("UICorner", btn)
+            
+            btn.MouseButton1Click:Connect(function()
+                if not customRig then return end
+                for _, partName in ipairs({"Head", "Torso", "LeftArm", "RightArm"}) do
+                    updateRigColor(partName, color)
+                end
+                AutoSaveOutfit()
+            end)
+        end
+        
+        statusLbl.Text = "Chọn màu body"
+        loading = false
+        return
+    end
+    
+    if currentCategory == "Bundles" then
+        statusLbl.Text = "Bundles chưa hỗ trợ cho rig custom"
+        loading = false
+        return
+    end
+    
+    -- Normal catalog category
+    task.spawn(function()
+        local result = searchCatalog(currentCategory, currentQuery, nil)
+        if myToken ~= renderToken then return end
+        
+        if not result or not result.data or #result.data == 0 then
+            -- Fallback
+            local fb = FALLBACK[currentCategory]
+            if fb then
+                for _, item in ipairs(fb) do
+                    addItemCard(item)
+                end
+                statusLbl.Text = "Offline list (" .. #fb .. " items)"
+            else
+                statusLbl.Text = "Không có item — thử category khác"
+            end
+            loading = false
+            return
+        end
+        
+        currentPageCursor = result.nextPageCursor
+        
+        local count = 0
+        for _, item in ipairs(result.data) do
+            if myToken ~= renderToken then return end
+            addItemCard({Id = item.id, Name = item.name or ("#" .. item.id)})
+            count = count + 1
+        end
+        
+        statusLbl.Text = "Đã tải " .. count .. " items"
+        loading = false
+    end)
+end
 
-addCategoryButton("Shirts",Enum.AvatarAssetType.Shirt)
-addCategoryButton("Pants",Enum.AvatarAssetType.Pants)
-addCategoryButton("T-Shirts",Enum.AvatarAssetType.TShirt)
-addCategoryButton("Hair",Enum.AvatarAssetType.HairAccessory)
-addCategoryButton("Face",Enum.AvatarAssetType.FaceAccessory)
-addCategoryButton("Neck",Enum.AvatarAssetType.NeckAccessory)
-addCategoryButton("Shoulder",Enum.AvatarAssetType.ShoulderAccessory)
-addCategoryButton("Front",Enum.AvatarAssetType.FrontAccessory)
-addCategoryButton("Back",Enum.AvatarAssetType.BackAccessory)
-addCategoryButton("Waist",Enum.AvatarAssetType.WaistAccessory)
-addCategoryButton("Hat",Enum.AvatarAssetType.Hat)
-addCategoryButton("Bundles","Bundles")
-addCategoryButton("Body","Body")
-addCategoryButton("Outfits","Outfits")
-addCategoryButton("Settings","Settings")
+-- Category buttons
+for _, cat in ipairs(CATEGORY_LABELS) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 90, 1, 0)
+    btn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    btn.Text = CATEGORY_NAMES[cat] or cat
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 13
+    btn.Parent = categoryScroll
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    
+    btn.MouseButton1Click:Connect(function()
+        currentCategory = cat
+        currentQuery = ""
+        searchBar.Text = ""
+        renderItems()
+    end)
+end
 
-scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-	if loading then
-		return
-	end
-
-	if scroll.CanvasPosition.Y >= scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y - 150 then
-		loadMore(false)
-	end
+searchBar.FocusLost:Connect(function()
+    currentQuery = searchBar.Text
+    renderItems()
 end)
 
--- ===== FIX: Search debounce chống race condition =====
-local searchThread = 0
-
-searchBar:GetPropertyChangedSignal("Text"):Connect(function()
-
-	searchThread += 1
-	local id = searchThread
-
-	task.wait(0.4)
-
-	if id ~= searchThread then
-		return
-	end
-
-	currentQuery = searchBar.Text
-	loading = false  -- Reset loading phòng khi bị stuck
-	loadMore(true)
-
-end)
-
--- ===== FIX: Nút X clear search force reload =====
 clearSearchBtn.MouseButton1Click:Connect(function()
-	searchThread += 1
-	searchBar.Text = ""
-	currentQuery = ""
-	loading = false
-	catalogPages = nil
-	loadMore(true)
+    searchBar.Text = ""
+    currentQuery = ""
+    renderItems()
 end)
 
-local dragging, dragInput, dragStart, startPos
-local function update(input)
-	local delta = input.Position - dragStart
-	frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-
-frame.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 and frame.Visible then
-		dragging = true
-		dragStart = input.Position
-		startPos = frame.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				dragging = false
-			end
-		end)
-	end
-end)
-
-frame.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInput = input
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-	if input == dragInput and dragging then
-		update(input)
-	end
-end)
-
-local minimizeBtn = Instance.new("TextButton")
-minimizeBtn.Size = UDim2.new(0,50,0,50)
-minimizeBtn.Position = UDim2.new(0,20,1,-70)
-minimizeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-minimizeBtn.Text = "Rob"
-minimizeBtn.TextColor3 = Color3.fromRGB(255,255,255)
-minimizeBtn.Font = Enum.Font.GothamBold
-minimizeBtn.TextSize = 18
-minimizeBtn.Visible = false
-minimizeBtn.Parent = gui
-
-local minimizeCorner = Instance.new("UICorner", minimizeBtn)
-minimizeCorner.CornerRadius = UDim.new(1,0)
-
-minimizeBtn.MouseEnter:Connect(function()
-	minimizeBtn.BackgroundColor3 = Color3.fromRGB(45,45,45)
-end)
-
-minimizeBtn.MouseLeave:Connect(function()
-	minimizeBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
-end)
-
-minimizeBtn.MouseButton1Click:Connect(function()
-	minimized = false
-	frame.Visible = true
-	minimizeBtn.Visible = false
-end)
-
-local minimized = false
 closeBtn.MouseButton1Click:Connect(function()
-	minimized = true
-	frame.Visible = false
-  minimizeBtn.Visible = true
+    frame.Visible = false
 end)
 
-local draggingMin, dragInputMin, dragStartMin, startPosMin
-local function updateMin(input)
-	local delta = input.Position - dragStartMin
-	minimizeBtn.Position = UDim2.new(startPosMin.X.Scale, startPosMin.X.Offset + delta.X, startPosMin.Y.Scale, startPosMin.Y.Offset + delta.Y)
-end
-
-minimizeBtn.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		draggingMin = true
-		dragStartMin = input.Position
-		startPosMin = minimizeBtn.Position
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then
-				draggingMin = false
-			end
-		end)
-	end
-end)
-
-player.CharacterAdded:Connect(function(character)
-
-	character:WaitForChild("Humanoid")
-
-	task.wait(0.2)
-
-	local head = character:FindFirstChild("Head")
-
-	if head then
-		local mesh = head:FindFirstChildOfClass("SpecialMesh")
-originalHeadMesh = mesh and mesh:Clone() or nil
-	end
-
-	updateWearing()
-
-if Settings.AutoLoad and AutoSavedOutfit then
-	task.wait(1)
-	LoadSavedOutfit(AutoSavedOutfit)
-end
-
-end)
-
-minimizeBtn.InputChanged:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseMovement then
-		dragInputMin = input
-	end
+-- Drag
+local dragging, dragStart, startPos
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+    end
 end)
 
 UserInputService.InputChanged:Connect(function(input)
-	if input == dragInputMin and draggingMin then
-		updateMin(input)
-	end
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
 end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════
+-- START
+-- ═══════════════════════════════════════════════════════
+renderItems()
+task.wait(1)
+updateWearing()
+
+print("[RobCatalog] Loaded | HTTP fallback: " .. (httpRequest and "OK" or "MISSING"))
+print("[RobCatalog] Evade mode: " .. tostring(Settings.EvadeMode))
