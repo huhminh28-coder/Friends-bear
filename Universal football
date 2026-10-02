@@ -20,7 +20,6 @@ local EXTRA_TIME = 120
 local NORMAL_WALKSPEED = 16
 local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
-local CROWD_CHEER_SOUND = "rbxassetid://7755719721"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
 local CARD_TEXT_DURATION = 3
 
