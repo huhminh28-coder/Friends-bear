@@ -116,12 +116,21 @@ local function updateCardUI()
     end
 end
 
-local function showCardAnimation(text, color)
-    local lbl = gameState.goalTextLabel
+local function showToast(text, color, dur)
+    local lbl = gameState.bigTextLabel
     if not lbl then return end
-    lbl.Text = text; lbl.TextColor3 = color
-    lbl.Visible = true; lbl.TextTransparency = 0; lbl.TextStrokeTransparency = 0.3
-    task.delay(CARD_TEXT_DURATION, function() if lbl then lbl.Visible = false end end)
+    lbl.Text = text
+    lbl.TextColor3 = color or Color3.fromRGB(255,255,255)
+    lbl.Visible = true
+    lbl.TextTransparency = 0
+    lbl.TextStrokeTransparency = 0.3
+    task.delay(dur or 1.5, function()
+        if lbl then
+            lbl.Visible = false
+            lbl.TextTransparency = 1
+            lbl.TextStrokeTransparency = 1
+        end
+    end)
 end
 
 local function suspendPlayer()
@@ -147,11 +156,11 @@ local function onPlayerViolation()
     if gameState.playerCard == "none" then
         gameState.playerCard = "yellow"
         playWhistle()
-        showCardAnimation("🟨 THẺ VÀNG — CẢNH CÁO!", Color3.fromRGB(255, 220, 0))
+        showToast("THẺ VÀNG — CẢNH CÁO!", Color3.fromRGB(255, 220, 0), 3)
         updateCardUI()
     elseif gameState.playerCard == "yellow" then
         playWhistle()
-        showCardAnimation("🟥 THẺ ĐỎ!", Color3.fromRGB(255, 50, 50))
+        showToast("THẺ ĐỎ!", Color3.fromRGB(255, 50, 50), 3)
         task.wait(0.5)
         suspendPlayer()
     end
@@ -499,17 +508,17 @@ local function applyGroundPass(ball, targetPos, powerBase)
     ball.AssemblyLinearVelocity = horizDir*power + Vector3.new(0,12,0)
 end
 
--- SKILL: lob ball over nearest opponent
+-- SKILL: lob ball JUST over nearest opponent's head (~12 studs high)
 local function useSkill(bot, team)
     local ball = gameState.ball
     if not ball or not bot.PrimaryPart then return false end
     local botPos = bot.PrimaryPart.Position
-    local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
-    local skillDir = Vector3.new(0, 0, (team == "Red") and 1 or -1)
-    local targetPos = botPos + skillDir * 80 + Vector3.new(math.random(-30,30), 0, 0)
-    ball.CFrame = CFrame.new(botPos + skillDir * 3 + Vector3.new(0, 2, 0))
-    applyLobPass(ball, targetPos, 40)
-    ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity + Vector3.new(0, 60, 0)
+    local forward = (team == "Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
+    local flatDir = forward
+    -- Fixed velocity: enough to reach ~12 studs (just over head)
+    local speedXZ = 45
+    ball.AssemblyLinearVelocity = Vector3.new(flatDir.X*speedXZ, 68, flatDir.Z*speedXZ)
+    ball.CFrame = CFrame.new(botPos + flatDir*3 + Vector3.new(0, 2, 0))
     gameState.lastTouchTeam = team
     gameState.aiSkillActive[bot:GetDebugId()] = tick() + 2
     playBallKick(ball.Position, 0.85)
@@ -527,7 +536,6 @@ local function aiDribble(bot)
     local diff = getDiff(team)
     local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
 
-    -- Check if surrounded by opponents → use skill
     local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
     local nearestOppDist = math.huge
     for _, opp in ipairs(oppList) do
@@ -778,7 +786,6 @@ local function updateGoalkeeperAI(gk, dt)
         local shouldParry, shouldCatch = false, false
         if ballIsKnuckle or ballIsHigh then shouldParry = true
         else shouldCatch = true end
-        -- Weak GK parries more often, strong GK catches
         if diff.gkCatchMul < 0.8 and math.random() < 0.5 then shouldCatch = false; shouldParry = true end
         if shouldCatch then
             ball.AssemblyLinearVelocity = Vector3.zero
@@ -905,7 +912,6 @@ local function updateOutfieldAI(bot, allBots, closestBot, dt)
                 local idx = bot:GetAttribute("FormationIndex") or 1
                 local myXOffset = (idx - 2.5) * 25
                 local myZOffset = (idx % 2 == 0) and -10 or 10
-                -- Strong defenders tighten around opponents
                 local tightenMul = (diff.interceptMul > 1.5) and 0.85 or 1.0
                 if dTB < 30 then
                     target = Vector3.new(oppPos.X + myXOffset*tightenMul, MAP_POS.Y+5, oppPos.Z + myZOffset*tightenMul)
@@ -954,7 +960,6 @@ local function updateAILogic(dt)
                 local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value) and not gameState.playerSuspended
                 local isStriker = bot.Role.Value == "Striker"
                 local shouldChase = bot == closestBot and not canTouch and not playerDribbling
-                -- Player skill makes him invincible → AI doesn't chase
                 if gameState.playerSkillActive and bot.Team.Value ~= gameState.playerTeam then shouldChase = false end
                 if isStriker and (bot.PrimaryPart.Position-ball.Position).Magnitude > 60 then shouldChase = false end
                 if gameState.gkHolding then shouldChase = false end
@@ -1001,7 +1006,6 @@ local function checkInterception()
     local ball = gameState.ball
     if not ball or gameState.gkHolding or gameState.shootCharging or gameState.knuckleCharging then return end
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown > 0 then return end
-    -- Player skill invincible
     if gameState.playerSkillActive then return end
     local speed = ball.AssemblyLinearVelocity.Magnitude
     local isDribbled = gameState.playerDribbling
@@ -1077,15 +1081,14 @@ local function doPlayerSkill()
     gameState.playerSkillCooldown = tick()
     gameState.playerSkillActive = true
     gameState.playerDribbling = false
-    -- Lob ball over opponents
+    -- Fixed lob: only ~12 studs high, just over opponent head
     local forward = hrp.CFrame.LookVector
     local flat = Vector3.new(forward.X, 0, forward.Z).Unit
-    local targetPos = hrp.Position + flat * 60
-    applyLobPass(ball, targetPos, 30)
-    ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity + Vector3.new(0, 80, 0)
+    ball.CFrame = CFrame.new(hrp.Position + flat*3 + Vector3.new(0, 2, 0))
+    ball.AssemblyLinearVelocity = Vector3.new(flat.X * 45, 68, flat.Z * 45)
     gameState.lastTouchTeam = gameState.playerTeam
     playBallKick(ball.Position, 0.85)
-    showCardAnimation("⚡ SKILL!", Color3.fromRGB(255, 200, 100))
+    showToast("SKILL!", Color3.fromRGB(255, 200, 100), 1.5)
     task.delay(2.5, function() gameState.playerSkillActive = false end)
 end
 
@@ -1128,6 +1131,8 @@ local function showBigText(text, color)
     gameState.bigTextLabel.Text = text
     gameState.bigTextLabel.TextColor3 = color or Color3.fromRGB(255,255,255)
     gameState.bigTextLabel.Visible = true
+    gameState.bigTextLabel.TextTransparency = 0
+    gameState.bigTextLabel.TextStrokeTransparency = 0.3
 end
 
 local function hideBigText()
@@ -1351,7 +1356,6 @@ local function runPenaltyShootout()
             end
         else task.wait(1.2) end
         hideBigText()
-        -- Score chance: base 0.5, adjusted by shot vs GK difficulty
         local baseChance = 0.4
         local shotBonus = (diff.shotMul - 1) * 0.15
         local gkPenalty = (oppDiff.gkCatchMul - 1) * 0.15
@@ -1380,8 +1384,8 @@ local function runPenaltyShootout()
             end)
         end
         task.wait(1.6)
-        if scored then showBigText("⚽ GOAL!", Color3.fromRGB(100,255,100))
-        else showBigText("🧤 THỦ MÔN CHỤP BÓNG!", Color3.fromRGB(255,100,100)) end
+        if scored then showBigText("GOAL!", Color3.fromRGB(100,255,100))
+        else showBigText("THỦ MÔN CHỤP BÓNG!", Color3.fromRGB(255,100,100)) end
         task.wait(1.5)
         hideBigText()
         if gameState.ball then
@@ -1642,15 +1646,19 @@ local function startTimer()
     end)
 end
 
--- ========== SETTINGS UI (SCROLLABLE) ==========
+-- ========== SETTINGS UI (FIXED) ==========
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui = Instance.new("ScreenGui")
     gui.Name = "SettingsUI"; gui.ResetOnSpawn = false; gui.Parent = player.PlayerGui
     gameState.settingsUI = gui
 
-    local hRed, sRed, vRed = Color3.toHSV(gameState.teamRedColor)
-    local hBlue, sBlue, vBlue = Color3.toHSV(gameState.teamBlueColor)
+    -- Local state for this session
+    local curRedColor = gameState.teamRedColor
+    local curBlueColor = gameState.teamBlueColor
+
+    local hRed, sRed, vRed = Color3.toHSV(curRedColor)
+    local hBlue, sBlue, vBlue = Color3.toHSV(curBlueColor)
 
     local gearBtn = Instance.new("TextButton")
     gearBtn.Size = UDim2.new(0, 44, 0, 44)
@@ -1704,125 +1712,21 @@ local function createSettingsUI()
     scroll.CanvasSize = UDim2.new(0, 0, 0, 700)
     scroll.ScrollBarImageTransparency = 0.3
 
-    local function mkLabel(text, x, y, w)
-        local lbl = Instance.new("TextLabel", scroll)
-        lbl.Size = UDim2.new(0, w or 380, 0, 16)
-        lbl.Position = UDim2.new(0, x, 0, y)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = text
-        lbl.TextColor3 = Color3.fromRGB(200,200,200)
-        lbl.TextScaled = true
-        lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.Font = Enum.Font.FredokaOne
-        return lbl
-    end
-
-    -- ===== TEAM NAMES =====
-    mkLabel("Team Red Name:", 12, 6)
-    local teamNameBox = Instance.new("TextBox", scroll)
-    teamNameBox.Size = UDim2.new(0, 380, 0, 26)
-    teamNameBox.Position = UDim2.new(0, 12, 0, 24)
-    teamNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
-    teamNameBox.Text = gameState.teamRedName
-    teamNameBox.TextColor3 = Color3.new(1,1,1)
-    teamNameBox.TextScaled = true
-    teamNameBox.Font = Enum.Font.FredokaOne
-    Instance.new("UICorner", teamNameBox).CornerRadius = UDim.new(0, 8)
-
-    mkLabel("Team Blue Name:", 12, 56)
-    local oppNameBox = Instance.new("TextBox", scroll)
-    oppNameBox.Size = UDim2.new(0, 380, 0, 26)
-    oppNameBox.Position = UDim2.new(0, 12, 0, 74)
-    oppNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
-    oppNameBox.Text = gameState.teamBlueName
-    oppNameBox.TextColor3 = Color3.new(1,1,1)
-    oppNameBox.TextScaled = true
-    oppNameBox.Font = Enum.Font.FredokaOne
-    Instance.new("UICorner", oppNameBox).CornerRadius = UDim.new(0, 8)
-
-    -- ===== DIFFICULTY RED =====
-    mkLabel("Độ mạnh Team Red:", 12, 108)
-    local redDiffRow = Instance.new("Frame", scroll)
-    redDiffRow.Size = UDim2.new(0, 380, 0, 32)
-    redDiffRow.Position = UDim2.new(0, 12, 0, 126)
-    redDiffRow.BackgroundTransparency = 1
-    local redDiffBtns = {}
-    for i = 1, 3 do
-        local btn = Instance.new("TextButton", redDiffRow)
-        btn.Size = UDim2.new(0, 122, 1, 0)
-        btn.Position = UDim2.new(0, (i-1) * 128, 0, 0)
-        btn.BackgroundColor3 = (gameState.redDifficulty == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-        btn.Text = DIFFICULTY[i].name
-        btn.TextColor3 = Color3.new(1,1,1)
-        btn.TextScaled = true
-        btn.Font = Enum.Font.FredokaOne
-        btn.Parent = redDiffRow
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-        btn.MouseButton1Click:Connect(function()
-            gameState.redDifficulty = i
-            for j, b in ipairs(redDiffBtns) do
-                b.BackgroundColor3 = (j == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-            end
-        end)
-        redDiffBtns[i] = btn
-    end
-
-    -- ===== DIFFICULTY BLUE =====
-    mkLabel("Độ mạnh Team Blue:", 12, 166)
-    local blueDiffRow = Instance.new("Frame", scroll)
-    blueDiffRow.Size = UDim2.new(0, 380, 0, 32)
-    blueDiffRow.Position = UDim2.new(0, 12, 0, 184)
-    blueDiffRow.BackgroundTransparency = 1
-    local blueDiffBtns = {}
-    for i = 1, 3 do
-        local btn = Instance.new("TextButton", blueDiffRow)
-        btn.Size = UDim2.new(0, 122, 1, 0)
-        btn.Position = UDim2.new(0, (i-1) * 128, 0, 0)
-        btn.BackgroundColor3 = (gameState.blueDifficulty == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-        btn.Text = DIFFICULTY[i].name
-        btn.TextColor3 = Color3.new(1,1,1)
-        btn.TextScaled = true
-        btn.Font = Enum.Font.FredokaOne
-        btn.Parent = blueDiffRow
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
-        btn.MouseButton1Click:Connect(function()
-            gameState.blueDifficulty = i
-            for j, b in ipairs(blueDiffBtns) do
-                b.BackgroundColor3 = (j == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-            end
-        end)
-        blueDiffBtns[i] = btn
-    end
-
-    -- ===== RED COLOR =====
-    mkLabel("Team Red Shirt Color:", 12, 226)
     local preview1 = Instance.new("Frame", scroll)
     preview1.Size = UDim2.new(0, 60, 0, 22)
-    preview1.Position = UDim2.new(0, 332, 0, 224)
-    preview1.BackgroundColor3 = gameState.teamRedColor
+    preview1.Position = UDim2.new(0, 340, 0, 224)
+    preview1.BackgroundColor3 = curRedColor
     preview1.Parent = scroll
     Instance.new("UICorner", preview1).CornerRadius = UDim.new(0, 6)
     Instance.new("UIStroke", preview1).Color = Color3.new(1,1,1)
 
-    local presetHues = {0, 0.6, 0.13, 0.35, 0.05, 0.75, 0, 0}
-    local presetSats = {1, 1, 1, 1, 1, 1, 0, 0}
-    local presetVals = {1, 1, 1, 1, 1, 1, 1, 0.08}
-
-    local row1 = Instance.new("Frame", scroll)
-    row1.Size = UDim2.new(0, 380, 0, 22)
-    row1.Position = UDim2.new(0, 12, 0, 250)
-    row1.BackgroundTransparency = 1
-    for i = 1, 8 do
-        local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
-        local btn = Instance.new("TextButton", row1)
-        btn.Size = UDim2.new(0, 38, 0, 22)
-        btn.Position = UDim2.new(0, (i-1)*41, 0, 0)
-        btn.BackgroundColor3 = c
-        btn.Text = ""
-        btn.BorderSizePixel = 0
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-        Instance.new("UIStroke", btn).Color = Color3.fromRGB(80,80,80)
-    end
+    local preview2 = Instance.new("Frame", scroll)
+    preview2.Size = UDim2.new(0, 60, 0, 22)
+    preview2.Position = UDim2.new(0, 340, 0, 354)
+    preview2.BackgroundColor3 = curBlueColor
+    preview2.Parent = scroll
+    Instance.new("UICorner", preview2).CornerRadius = UDim.new(0, 6)
+    Instance.new("UIStroke", preview2).Color = Color3.new(1,1,1)
 
     local function updatePreviews()
         preview1.BackgroundColor3 = Color3.fromHSV(hRed, sRed, vRed)
@@ -1896,20 +1800,161 @@ local function createSettingsUI()
         return setValue
     end
 
-    local setRedSat, setRedVal
+    -- Team names
+    local name1Lbl = Instance.new("TextLabel", scroll)
+    name1Lbl.Size = UDim2.new(0, 380, 0, 16)
+    name1Lbl.Position = UDim2.new(0, 12, 0, 6)
+    name1Lbl.BackgroundTransparency = 1
+    name1Lbl.Text = "Team Red Name:"
+    name1Lbl.TextColor3 = Color3.fromRGB(200,200,200)
+    name1Lbl.TextXAlignment = Enum.TextXAlignment.Left
+    name1Lbl.Font = Enum.Font.FredokaOne
+    name1Lbl.TextScaled = true
 
-    makeSlider(scroll, 280, "Đỏ - Độ bão hoà:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v updatePreviews() end)
-    makeSlider(scroll, 314, "Đỏ - Độ sáng:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v updatePreviews() end)
+    local teamNameBox = Instance.new("TextBox", scroll)
+    teamNameBox.Size = UDim2.new(0, 380, 0, 26)
+    teamNameBox.Position = UDim2.new(0, 12, 0, 24)
+    teamNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
+    teamNameBox.Text = gameState.teamRedName
+    teamNameBox.TextColor3 = Color3.new(1,1,1)
+    teamNameBox.TextScaled = true
+    teamNameBox.Font = Enum.Font.FredokaOne
+    Instance.new("UICorner", teamNameBox).CornerRadius = UDim.new(0, 8)
 
-    -- ===== BLUE COLOR =====
-    mkLabel("Team Blue Shirt Color:", 12, 356)
-    local preview2 = Instance.new("Frame", scroll)
-    preview2.Size = UDim2.new(0, 60, 0, 22)
-    preview2.Position = UDim2.new(0, 332, 0, 354)
-    preview2.BackgroundColor3 = gameState.teamBlueColor
-    preview2.Parent = scroll
-    Instance.new("UICorner", preview2).CornerRadius = UDim.new(0, 6)
-    Instance.new("UIStroke", preview2).Color = Color3.new(1,1,1)
+    local name2Lbl = Instance.new("TextLabel", scroll)
+    name2Lbl.Size = UDim2.new(0, 380, 0, 16)
+    name2Lbl.Position = UDim2.new(0, 12, 0, 56)
+    name2Lbl.BackgroundTransparency = 1
+    name2Lbl.Text = "Team Blue Name:"
+    name2Lbl.TextColor3 = Color3.fromRGB(200,200,200)
+    name2Lbl.TextXAlignment = Enum.TextXAlignment.Left
+    name2Lbl.Font = Enum.Font.FredokaOne
+    name2Lbl.TextScaled = true
+
+    local oppNameBox = Instance.new("TextBox", scroll)
+    oppNameBox.Size = UDim2.new(0, 380, 0, 26)
+    oppNameBox.Position = UDim2.new(0, 12, 0, 74)
+    oppNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
+    oppNameBox.Text = gameState.teamBlueName
+    oppNameBox.TextColor3 = Color3.new(1,1,1)
+    oppNameBox.TextScaled = true
+    oppNameBox.Font = Enum.Font.FredokaOne
+    Instance.new("UICorner", oppNameBox).CornerRadius = UDim.new(0, 8)
+
+    -- Difficulty
+    local diffRLbl = Instance.new("TextLabel", scroll)
+    diffRLbl.Size = UDim2.new(0, 380, 0, 16)
+    diffRLbl.Position = UDim2.new(0, 12, 0, 108)
+    diffRLbl.BackgroundTransparency = 1
+    diffRLbl.Text = "Độ mạnh Team Red:"
+    diffRLbl.TextColor3 = Color3.fromRGB(200,200,200)
+    diffRLbl.TextXAlignment = Enum.TextXAlignment.Left
+    diffRLbl.Font = Enum.Font.FredokaOne
+    diffRLbl.TextScaled = true
+
+    local redDiffRow = Instance.new("Frame", scroll)
+    redDiffRow.Size = UDim2.new(0, 380, 0, 32)
+    redDiffRow.Position = UDim2.new(0, 12, 0, 126)
+    redDiffRow.BackgroundTransparency = 1
+    local redDiffBtns = {}
+    for i = 1, 3 do
+        local btn = Instance.new("TextButton", redDiffRow)
+        btn.Size = UDim2.new(0, 122, 1, 0)
+        btn.Position = UDim2.new(0, (i-1) * 128, 0, 0)
+        btn.BackgroundColor3 = (gameState.redDifficulty == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+        btn.Text = DIFFICULTY[i].name
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.FredokaOne
+        btn.Parent = redDiffRow
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        btn.MouseButton1Click:Connect(function()
+            gameState.redDifficulty = i
+            for j, b in ipairs(redDiffBtns) do
+                b.BackgroundColor3 = (j == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+            end
+        end)
+        redDiffBtns[i] = btn
+    end
+
+    local diffBLbl = Instance.new("TextLabel", scroll)
+    diffBLbl.Size = UDim2.new(0, 380, 0, 16)
+    diffBLbl.Position = UDim2.new(0, 12, 0, 166)
+    diffBLbl.BackgroundTransparency = 1
+    diffBLbl.Text = "Độ mạnh Team Blue:"
+    diffBLbl.TextColor3 = Color3.fromRGB(200,200,200)
+    diffBLbl.TextXAlignment = Enum.TextXAlignment.Left
+    diffBLbl.Font = Enum.Font.FredokaOne
+    diffBLbl.TextScaled = true
+
+    local blueDiffRow = Instance.new("Frame", scroll)
+    blueDiffRow.Size = UDim2.new(0, 380, 0, 32)
+    blueDiffRow.Position = UDim2.new(0, 12, 0, 184)
+    blueDiffRow.BackgroundTransparency = 1
+    local blueDiffBtns = {}
+    for i = 1, 3 do
+        local btn = Instance.new("TextButton", blueDiffRow)
+        btn.Size = UDim2.new(0, 122, 1, 0)
+        btn.Position = UDim2.new(0, (i-1) * 128, 0, 0)
+        btn.BackgroundColor3 = (gameState.blueDifficulty == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+        btn.Text = DIFFICULTY[i].name
+        btn.TextColor3 = Color3.new(1,1,1)
+        btn.TextScaled = true
+        btn.Font = Enum.Font.FredokaOne
+        btn.Parent = blueDiffRow
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        btn.MouseButton1Click:Connect(function()
+            gameState.blueDifficulty = i
+            for j, b in ipairs(blueDiffBtns) do
+                b.BackgroundColor3 = (j == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+            end
+        end)
+        blueDiffBtns[i] = btn
+    end
+
+    -- Colors
+    local redColLbl = Instance.new("TextLabel", scroll)
+    redColLbl.Size = UDim2.new(0, 380, 0, 16)
+    redColLbl.Position = UDim2.new(0, 12, 0, 226)
+    redColLbl.BackgroundTransparency = 1
+    redColLbl.Text = "Team Red Shirt Color:"
+    redColLbl.TextColor3 = Color3.fromRGB(200,200,200)
+    redColLbl.TextXAlignment = Enum.TextXAlignment.Left
+    redColLbl.Font = Enum.Font.FredokaOne
+    redColLbl.TextScaled = true
+
+    local presetHues = {0, 0.6, 0.13, 0.35, 0.05, 0.75, 0, 0}
+    local presetSats = {1, 1, 1, 1, 1, 1, 0, 0}
+    local presetVals = {1, 1, 1, 1, 1, 1, 1, 0.08}
+
+    local row1 = Instance.new("Frame", scroll)
+    row1.Size = UDim2.new(0, 380, 0, 22)
+    row1.Position = UDim2.new(0, 12, 0, 250)
+    row1.BackgroundTransparency = 1
+    for i = 1, 8 do
+        local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
+        local btn = Instance.new("TextButton", row1)
+        btn.Size = UDim2.new(0, 38, 0, 22)
+        btn.Position = UDim2.new(0, (i-1)*41, 0, 0)
+        btn.BackgroundColor3 = c
+        btn.Text = ""
+        btn.BorderSizePixel = 0
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+        Instance.new("UIStroke", btn).Color = Color3.fromRGB(80,80,80)
+    end
+
+    local setRedSat = makeSlider(scroll, 280, "Đỏ - Độ bão hoà:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v updatePreviews() end)
+    local setRedVal = makeSlider(scroll, 314, "Đỏ - Độ sáng:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v updatePreviews() end)
+
+    local blueColLbl = Instance.new("TextLabel", scroll)
+    blueColLbl.Size = UDim2.new(0, 380, 0, 16)
+    blueColLbl.Position = UDim2.new(0, 12, 0, 356)
+    blueColLbl.BackgroundTransparency = 1
+    blueColLbl.Text = "Team Blue Shirt Color:"
+    blueColLbl.TextColor3 = Color3.fromRGB(200,200,200)
+    blueColLbl.TextXAlignment = Enum.TextXAlignment.Left
+    blueColLbl.Font = Enum.Font.FredokaOne
+    blueColLbl.TextScaled = true
 
     local row2 = Instance.new("Frame", scroll)
     row2.Size = UDim2.new(0, 380, 0, 22)
@@ -1927,11 +1972,53 @@ local function createSettingsUI()
         Instance.new("UIStroke", btn).Color = Color3.fromRGB(80,80,80)
     end
 
-    makeSlider(scroll, 410, "Xanh - Độ bão hoà:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v updatePreviews() end)
-    makeSlider(scroll, 444, "Xanh - Độ sáng:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v updatePreviews() end)
+    local setBlueSat = makeSlider(scroll, 410, "Xanh - Độ bão hoà:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v updatePreviews() end)
+    local setBlueVal = makeSlider(scroll, 444, "Xanh - Độ sáng:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v updatePreviews() end)
 
-    -- ===== SCORE =====
-    mkLabel("Score (Red - Blue):", 12, 486)
+    -- Connect preset clicks
+    local idx1 = 1
+    for _, child in ipairs(row1:GetChildren()) do
+        if child:IsA("TextButton") then
+            local presetIdx = idx1
+            child.MouseButton1Click:Connect(function()
+                hRed = presetHues[presetIdx]
+                sRed = presetSats[presetIdx]
+                vRed = presetVals[presetIdx]
+                updatePreviews()
+                setRedSat(sRed)
+                setRedVal(vRed)
+            end)
+            idx1 = idx1 + 1
+        end
+    end
+
+    local idx2 = 1
+    for _, child in ipairs(row2:GetChildren()) do
+        if child:IsA("TextButton") then
+            local presetIdx = idx2
+            child.MouseButton1Click:Connect(function()
+                hBlue = presetHues[presetIdx]
+                sBlue = presetSats[presetIdx]
+                vBlue = presetVals[presetIdx]
+                updatePreviews()
+                setBlueSat(sBlue)
+                setBlueVal(vBlue)
+            end)
+            idx2 = idx2 + 1
+        end
+    end
+
+    -- Score
+    local scoreLbl = Instance.new("TextLabel", scroll)
+    scoreLbl.Size = UDim2.new(0, 380, 0, 16)
+    scoreLbl.Position = UDim2.new(0, 12, 0, 486)
+    scoreLbl.BackgroundTransparency = 1
+    scoreLbl.Text = "Score (Red - Blue):"
+    scoreLbl.TextColor3 = Color3.fromRGB(200,200,200)
+    scoreLbl.TextXAlignment = Enum.TextXAlignment.Left
+    scoreLbl.Font = Enum.Font.FredokaOne
+    scoreLbl.TextScaled = true
+
     local scoreRedBox = Instance.new("TextBox", scroll)
     scoreRedBox.Size = UDim2.new(0, 130, 0, 26)
     scoreRedBox.Position = UDim2.new(0, 12, 0, 506)
@@ -1961,33 +2048,7 @@ local function createSettingsUI()
     scoreBlueBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", scoreBlueBox).CornerRadius = UDim.new(0, 8)
 
-    -- Update preset buttons for red
-    local idx = 1
-    for _, child in ipairs(row1:GetChildren()) do
-        if child:IsA("TextButton") then
-            local presetIdx = idx
-            child.MouseButton1Click:Connect(function()
-                hRed, sRed, vRed = presetHues[presetIdx], presetSats[presetIdx], presetVals[presetIdx]
-                updatePreviews()
-                if setRedSat then setRedSat(sRed) end
-                if setRedVal then setRedVal(vRed) end
-            end)
-            idx = idx + 1
-        end
-    end
-    idx = 1
-    for _, child in ipairs(row2:GetChildren()) do
-        if child:IsA("TextButton") then
-            local presetIdx = idx
-            child.MouseButton1Click:Connect(function()
-                hBlue, sBlue, vBlue = presetHues[presetIdx], presetSats[presetIdx], presetVals[presetIdx]
-                updatePreviews()
-            end)
-            idx = idx + 1
-        end
-    end
-
-    -- ===== APPLY / CLOSE =====
+    -- Apply/Close
     local applyBtn = Instance.new("TextButton", panel)
     applyBtn.Size = UDim2.new(0, 185, 0, 50)
     applyBtn.Position = UDim2.new(0, 8, 1, -60)
@@ -2038,11 +2099,21 @@ local function createSettingsUI()
         if gameState.settingsOpen then
             teamNameBox.Text = gameState.teamRedName
             oppNameBox.Text = gameState.teamBlueName
+            -- Reload colors from gameState
             hRed, sRed, vRed = Color3.toHSV(gameState.teamRedColor)
             hBlue, sBlue, vBlue = Color3.toHSV(gameState.teamBlueColor)
             updatePreviews()
+            setRedSat(sRed); setRedVal(vRed)
+            setBlueSat(sBlue); setBlueVal(vBlue)
             scoreRedBox.Text = tostring(gameState.scoreRed)
             scoreBlueBox.Text = tostring(gameState.scoreBlue)
+            -- Sync difficulty button visuals
+            for j, b in ipairs(redDiffBtns) do
+                b.BackgroundColor3 = (j == gameState.redDifficulty) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+            end
+            for j, b in ipairs(blueDiffBtns) do
+                b.BackgroundColor3 = (j == gameState.blueDifficulty) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+            end
         end
     end)
 
@@ -2134,22 +2205,21 @@ local function createGameUI()
     local lobBtn = makeBtn("LobBtn", "LOB", Color3.fromRGB(255,215,0), UDim2.new(0.8,-50,0.8,-112))
     local knuckleBtn = makeBtn("KnuckleBtn", "KNUCKLE\n(Hold)", Color3.fromRGB(255,100,0), UDim2.new(0.8,-50,0.8,-158))
     local dribbleBtn = makeBtn("DribbleBtn", "DRIBBLE", Color3.fromRGB(0,150,255), UDim2.new(0.8,-50,0.8,-204))
-    local skillBtn = makeBtn("SkillBtn", "⚡ SKILL\n(8s CD)", Color3.fromRGB(180,0,220), UDim2.new(0.8,-50,0.8,-250))
+    local skillBtn = makeBtn("SkillBtn", "SKILL\nREADY", Color3.fromRGB(180,0,220), UDim2.new(0.8,-50,0.8,-250))
     local switchTeamBtn = makeBtn("SwitchTeamBtn", "SWITCH", Color3.fromRGB(200,100,200), UDim2.new(0.2,-50,0.8,-20))
     local sprintBtn = makeBtn("SprintBtn", "SPRINT 40", Color3.fromRGB(60,60,60), UDim2.new(0.2,-50,0.8,-66))
 
     gameState.gameButtons = {shootBtn, passBtn, lobBtn, knuckleBtn, dribbleBtn, skillBtn, switchTeamBtn, sprintBtn}
 
-    -- Update skill button cooldown display
     task.spawn(function()
         while gui.Parent do
             task.wait(0.5)
             local cd = 8 - (tick() - gameState.playerSkillCooldown)
             if cd > 0 then
-                skillBtn.Text = string.format("⚡ SKILL\n(%.1fs)", cd)
+                skillBtn.Text = string.format("SKILL\n%.1fs", cd)
                 skillBtn.BackgroundColor3 = Color3.fromRGB(80, 30, 80)
             else
-                skillBtn.Text = "⚡ SKILL\nREADY"
+                skillBtn.Text = "SKILL\nREADY"
                 skillBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 220)
             end
         end
@@ -2302,7 +2372,7 @@ local function createGameUI()
 
     switchTeamBtn.MouseButton1Click:Connect(function()
         if gameState.playerSuspended or gameState.playerCard == "red" then
-            showCardAnimation("BẠN ĐANG BỊ TREO!", Color3.fromRGB(255,50,50))
+            showToast("BẠN ĐANG BỊ TREO!", Color3.fromRGB(255,50,50), 2)
             return
         end
         if gameState.inPenaltyShootout or gameState.celebrating then return end
@@ -2423,11 +2493,10 @@ local function autoStart()
         end
     end)
 
-    print("=== WORLD CUP 2026 FINAL v8 ===")
-    print("⚙ Settings có: Độ mạnh Red/Blue (Yếu/Vừa/Mạnh) + Màu + Tên")
-    print("⚡ SKILL button: chip bóng qua đầu đối thủ, bất tử 2.5s")
-    print("🎯 AI cũng có skill tùy độ khó")
-    print("📜 Menu Settings có scroll để chỉnh tất cả")
+    print("=== WORLD CUP 2026 FINAL v9 ===")
+    print("⚙ Settings FIXED: chọn màu cho từng đội riêng biệt")
+    print("⚡ SKILL: bóng qua đầu đối thủ, hiện chữ SKILL!")
+    print("🎯 3 mức độ khó cho Red và Blue")
 end
 
 autoStart()
