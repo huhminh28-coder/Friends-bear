@@ -51,15 +51,11 @@ local gameState = {
     playerCard="none", redCardMatchesLeft=0,
     gkHoldingTeam=nil, originalAppearance=nil,
     gameButtons={}, playerSuspended=false, cardUILabel=nil,
-    lastViolationTime=0, playerPushConn=nil, crowdSound=nil,
+    lastViolationTime=0, playerPushConn=nil,
     inPenaltyShootout=false, celebrating=false, celebrationConn=nil
 }
 
 -- ========== SOUND ==========
-local function stopCrowd()
-    if gameState.crowdSound then gameState.crowdSound.Volume = 0 end
-end
-
 local function playSoundOnce(id, volume, duration)
     local s = Instance.new("Sound")
     s.SoundId = id; s.Volume = volume; s.Parent = workspace
@@ -70,36 +66,11 @@ local function playSoundOnce(id, volume, duration)
 end
 
 local function playWhistle()
-    stopCrowd()
     playSoundOnce(WHISTLE_SOUND, 8, 2.5)
 end
 
 local function playFinalWhistle()
-    stopCrowd()
     playSoundOnce(WHISTLE_SOUND, 10, 5)
-end
-
-local function createCrowdSound()
-    if gameState.crowdSound then gameState.crowdSound:Destroy() end
-    local s = Instance.new("Sound")
-    s.SoundId = CROWD_CHEER_SOUND; s.Looped = true; s.Volume = 0; s.Parent = workspace
-    pcall(function() s:Play() end)
-    gameState.crowdSound = s
-end
-
-local function updateCrowdVolume(dt)
-    if not gameState.crowdSound or not gameState.crowdSound.Parent then return end
-    if gameState.celebrating or gameState.inPenaltyShootout then return end
-    local ball = gameState.ball
-    if not ball or not ball.Parent then gameState.crowdSound.Volume = 0 return end
-    local bp = ball.Position
-    local dF = math.abs(bp.Z - (MAP_POS.Z + PITCH_LENGTH/2))
-    local dB = math.abs(bp.Z - (MAP_POS.Z - PITCH_LENGTH/2))
-    local closest = math.min(dF, dB)
-    local target = 0
-    if closest < 180 then target = 0.6 + (1 - closest/180) * 2.4 end
-    local current = gameState.crowdSound.Volume
-    gameState.crowdSound.Volume = current + (target - current) * math.min(dt * 4, 1)
 end
 
 -- ========== CARD SYSTEM ==========
@@ -970,7 +941,6 @@ local function updateAILogic(dt)
         end
     end
     
-    -- SEPARATION: đẩy các cầu thủ cùng đội ra xa nếu quá gần
     for i = 1, #allBots do
         local b1 = allBots[i]
         if b1.PrimaryPart then
@@ -1153,10 +1123,8 @@ end
 -- ========== CELEBRATION ==========
 local function startCelebration(winningTeam)
     gameState.celebrating = true
-    stopCrowd()
     playFinalWhistle()
     task.wait(2.5)
-    if gameState.crowdSound then gameState.crowdSound.Volume = 4 end
     local centerPos = MAP_POS + Vector3.new(0, 5, 0)
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local targetPositions = {}
@@ -1204,14 +1172,12 @@ local function startCelebration(winningTeam)
     task.delay(10, function()
         gameState.celebrating = false
         if gameState.celebrationConn then gameState.celebrationConn:Disconnect() end
-        stopCrowd()
     end)
 end
 
 -- ========== PENALTY SHOOTOUT ==========
 local function runPenaltyShootout()
     gameState.inPenaltyShootout = true
-    stopCrowd()
     hideGoalText()
     gameState.playerDribbling = false
     local redScore, blueScore = 0, 0
@@ -1409,7 +1375,6 @@ local function runPenaltyShootout()
     gameState.paused = false
     resetPositions("Red")
     handleNewMatchStart()
-    stopCrowd()
     task.delay(0.3, function()
         local pc = gameState.playerChar
         if pc then
@@ -1433,7 +1398,6 @@ local function endMatch(winnerText)
     gameState.paused = true
     gameState.gameActive = false
     if gameState.ball then gameState.ball.Anchored = true end
-    stopCrowd()
     playFinalWhistle()
     local winner = nil
     if gameState.scoreRed > gameState.scoreBlue then winner = "Red"
@@ -1466,7 +1430,6 @@ local function endMatch(winnerText)
     if gameState.ball then gameState.ball.Anchored = false end
     resetPositions("Red")
     handleNewMatchStart()
-    stopCrowd()
     task.delay(0.3, function()
         local pc = gameState.playerChar
         if pc then
@@ -2249,7 +2212,6 @@ local function autoStart()
     end)
 
     createStadium()
-    createCrowdSound()
     createBall()
     createAIPlayer("Red", "Goalkeeper", 1)
     for i = 1, 4 do createAIPlayer("Red", "Defender", i) end
@@ -2307,23 +2269,22 @@ local function autoStart()
         updatePlayerDribble(dt)
         updateAILogic(dt)
         checkRules()
-        updateCrowdVolume(dt)
         if tick()-gameState.lastInterceptCheck > 0.1 then
             gameState.lastInterceptCheck = tick()
             checkInterception()
         end
     end)
 
-    print("=== WORLD CUP 2026 FINAL v6 ===")
-    print("🔊 Còi tắt cổ vũ, cổ vũ lại khi thắng")
+    print("=== WORLD CUP 2026 FINAL v7 ===")
+    print("🎺 Còi vàng/đỏ, còi mãn cuộc")
     print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút")
     print("🎯 Hòa sau hiệp phụ → Sút luân lưu 5 lượt")
     print("⚽ Red sút khung +Z, Blue sút khung -Z")
     print("🧤 GK chụp bóng khi sút luân lưu")
     print("🟨 Thẻ vàng → 🟥 Thẻ đỏ → treo 1 trận")
-    print("🎨 Settings có slider độ bão hoà + độ sáng màu áo")
+    print("🎨 Settings có slider HSV + nút X")
     print("👥 AI tách nhau ra khi phòng ngự")
-    print("✕ Nút X để đóng settings nhanh")
+    print("🔇 Đã BỎ âm thanh cổ vũ khán đài")
 end
 
 autoStart()
