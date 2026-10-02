@@ -903,10 +903,22 @@ local function updateOutfieldAI(bot, allBots, closestBot, dt)
             if nearestOpp then
                 local oppPos = nearestOpp.PrimaryPart.Position
                 local midPoint = (oppPos+Vector3.new(MAP_POS.X, MAP_POS.Y, ownGoalZ))/2
-                target = ((oppPos-ball.Position).Magnitude < 30) and Vector3.new(oppPos.X*0.7+midPoint.X*0.3, MAP_POS.Y+5, oppPos.Z*0.7+midPoint.Z*0.3) or Vector3.new(midPoint.X, MAP_POS.Y+5, midPoint.Z)
-            else target = getHomePos(bot, true) end
+                local dTB = (oppPos-ball.Position).Magnitude
+                local idx = bot:GetAttribute("FormationIndex") or 1
+                local myXOffset = (idx - 2.5) * 25
+                local myZOffset = (idx % 2 == 0) and -10 or 10
+                if dTB < 30 then
+                    target = Vector3.new(oppPos.X + myXOffset, MAP_POS.Y+5, oppPos.Z + myZOffset)
+                else
+                    target = Vector3.new(midPoint.X + myXOffset, MAP_POS.Y+5, midPoint.Z + myZOffset)
+                end
+            else
+                target = getHomePos(bot, true)
+            end
         elseif role == "Midfielder" then
-            target = ((botPos-ball.Position).Magnitude < 120) and (ball.Position+ball.AssemblyLinearVelocity*0.2) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5, MAP_POS.Y+5, (ball.Position.Z+ownGoalZ)/2)
+            local idx = bot:GetAttribute("FormationIndex") or 1
+            local myXOffset = (idx - 2.5) * 30
+            target = ((botPos-ball.Position).Magnitude < 120) and (ball.Position+ball.AssemblyLinearVelocity*0.2+Vector3.new(myXOffset, 0, 0)) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5+myXOffset, MAP_POS.Y+5, (ball.Position.Z+ownGoalZ)/2)
         end
     end
     local dir = target - botPos
@@ -954,6 +966,29 @@ local function updateAILogic(dt)
                     end
                 else
                     updateOutfieldAI(bot, allBots, closestBot, dt)
+                end
+            end
+        end
+    end
+    
+    -- SEPARATION: đẩy các cầu thủ cùng đội ra xa nếu quá gần
+    for i = 1, #allBots do
+        local b1 = allBots[i]
+        if b1.PrimaryPart then
+            for j = i+1, #allBots do
+                local b2 = allBots[j]
+                if b2.PrimaryPart and b1.Team.Value == b2.Team.Value then
+                    local p1 = b1.PrimaryPart.Position
+                    local p2 = b2.PrimaryPart.Position
+                    local diff = p1 - p2
+                    local d = diff.Magnitude
+                    if d < 10 and d > 0.1 then
+                        local push = Vector3.new(diff.X, 0, diff.Z).Unit * (10 - d) * 0.4
+                        local newP1 = p1 + push
+                        local newP2 = p2 - push
+                        moveCharacter(b1, Vector3.new(newP1.X, TORSO_Y, newP1.Z), Vector3.new(newP1.X + 1, TORSO_Y, newP1.Z))
+                        moveCharacter(b2, Vector3.new(newP2.X, TORSO_Y, newP2.Z), Vector3.new(newP2.X + 1, TORSO_Y, newP2.Z))
+                    end
                 end
             end
         end
@@ -1574,7 +1609,7 @@ local function startTimer()
     end)
 end
 
--- ========== SETTINGS UI WITH HSV SLIDERS ==========
+-- ========== SETTINGS UI ==========
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui = Instance.new("ScreenGui")
@@ -1597,8 +1632,8 @@ local function createSettingsUI()
     local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2; gs.Parent = gearBtn
 
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 400, 0, 560)
-    panel.Position = UDim2.new(0.5, -200, 0.5, -280)
+    panel.Size = UDim2.new(0, 400, 0, 500)
+    panel.Position = UDim2.new(0.5, -200, 0.5, -250)
     panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     panel.BorderSizePixel = 0
     panel.Visible = false
@@ -1607,17 +1642,28 @@ local function createSettingsUI()
     local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2; ps.Parent = panel
 
     local title = Instance.new("TextLabel", panel)
-    title.Size = UDim2.new(1, 0, 0, 32)
-    title.Position = UDim2.new(0, 0, 0, 8)
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.Position = UDim2.new(0, 0, 0, 6)
     title.BackgroundTransparency = 1
     title.Text = "⚙ MATCH SETTINGS"
     title.TextColor3 = Color3.new(1,1,1)
     title.TextScaled = true
     title.Font = Enum.Font.FredokaOne
 
+    local xCloseBtn = Instance.new("TextButton", panel)
+    xCloseBtn.Size = UDim2.new(0, 40, 0, 40)
+    xCloseBtn.Position = UDim2.new(1, -46, 0, 4)
+    xCloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    xCloseBtn.Text = "✕"
+    xCloseBtn.TextColor3 = Color3.new(1,1,1)
+    xCloseBtn.TextScaled = true
+    xCloseBtn.Font = Enum.Font.GothamBold
+    xCloseBtn.Parent = panel
+    Instance.new("UICorner", xCloseBtn).CornerRadius = UDim.new(0, 8)
+
     local teamNameLabel = Instance.new("TextLabel", panel)
-    teamNameLabel.Size = UDim2.new(0.9, 0, 0, 18)
-    teamNameLabel.Position = UDim2.new(0.05, 0, 0, 48)
+    teamNameLabel.Size = UDim2.new(0.9, 0, 0, 16)
+    teamNameLabel.Position = UDim2.new(0.05, 0, 0, 42)
     teamNameLabel.BackgroundTransparency = 1
     teamNameLabel.Text = "Team Red Name:"
     teamNameLabel.TextColor3 = Color3.fromRGB(200,200,200)
@@ -1626,8 +1672,8 @@ local function createSettingsUI()
     teamNameLabel.Font = Enum.Font.FredokaOne
 
     local teamNameBox = Instance.new("TextBox", panel)
-    teamNameBox.Size = UDim2.new(0.9, 0, 0, 30)
-    teamNameBox.Position = UDim2.new(0.05, 0, 0, 68)
+    teamNameBox.Size = UDim2.new(0.9, 0, 0, 26)
+    teamNameBox.Position = UDim2.new(0.05, 0, 0, 60)
     teamNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
     teamNameBox.Text = gameState.teamRedName
     teamNameBox.TextColor3 = Color3.new(1,1,1)
@@ -1636,8 +1682,8 @@ local function createSettingsUI()
     Instance.new("UICorner", teamNameBox).CornerRadius = UDim.new(0, 8)
 
     local oppNameLabel = Instance.new("TextLabel", panel)
-    oppNameLabel.Size = UDim2.new(0.9, 0, 0, 18)
-    oppNameLabel.Position = UDim2.new(0.05, 0, 0, 104)
+    oppNameLabel.Size = UDim2.new(0.9, 0, 0, 16)
+    oppNameLabel.Position = UDim2.new(0.05, 0, 0, 92)
     oppNameLabel.BackgroundTransparency = 1
     oppNameLabel.Text = "Team Blue Name:"
     oppNameLabel.TextColor3 = Color3.fromRGB(200,200,200)
@@ -1646,8 +1692,8 @@ local function createSettingsUI()
     oppNameLabel.Font = Enum.Font.FredokaOne
 
     local oppNameBox = Instance.new("TextBox", panel)
-    oppNameBox.Size = UDim2.new(0.9, 0, 0, 30)
-    oppNameBox.Position = UDim2.new(0.05, 0, 0, 124)
+    oppNameBox.Size = UDim2.new(0.9, 0, 0, 26)
+    oppNameBox.Position = UDim2.new(0.05, 0, 0, 110)
     oppNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
     oppNameBox.Text = gameState.teamBlueName
     oppNameBox.TextColor3 = Color3.new(1,1,1)
@@ -1656,15 +1702,15 @@ local function createSettingsUI()
     Instance.new("UICorner", oppNameBox).CornerRadius = UDim.new(0, 8)
 
     local preview1 = Instance.new("Frame", panel)
-    preview1.Size = UDim2.new(0, 60, 0, 24)
-    preview1.Position = UDim2.new(0.72, 0, 0, 162)
+    preview1.Size = UDim2.new(0, 60, 0, 22)
+    preview1.Position = UDim2.new(0.72, 0, 0, 148)
     preview1.BackgroundColor3 = gameState.teamRedColor
     Instance.new("UICorner", preview1).CornerRadius = UDim.new(0, 6)
     Instance.new("UIStroke", preview1).Color = Color3.new(1,1,1)
 
     local preview2 = Instance.new("Frame", panel)
-    preview2.Size = UDim2.new(0, 60, 0, 24)
-    preview2.Position = UDim2.new(0.72, 0, 0, 308)
+    preview2.Size = UDim2.new(0, 60, 0, 22)
+    preview2.Position = UDim2.new(0.72, 0, 0, 288)
     preview2.BackgroundColor3 = gameState.teamBlueColor
     Instance.new("UICorner", preview2).CornerRadius = UDim.new(0, 6)
     Instance.new("UIStroke", preview2).Color = Color3.new(1,1,1)
@@ -1676,7 +1722,7 @@ local function createSettingsUI()
 
     local function makeSlider(parent, y, label, sliderColor, initialValue, onChange)
         local lbl = Instance.new("TextLabel", parent)
-        lbl.Size = UDim2.new(0.9, 0, 0, 14)
+        lbl.Size = UDim2.new(0.9, 0, 0, 12)
         lbl.Position = UDim2.new(0.05, 0, 0, y)
         lbl.BackgroundTransparency = 1
         lbl.Text = label
@@ -1685,16 +1731,16 @@ local function createSettingsUI()
         lbl.Font = Enum.Font.FredokaOne
         lbl.TextScaled = true
         local track = Instance.new("Frame", parent)
-        track.Size = UDim2.new(0.9, 0, 0, 16)
-        track.Position = UDim2.new(0.05, 0, 0, y+16)
+        track.Size = UDim2.new(0.9, 0, 0, 14)
+        track.Position = UDim2.new(0.05, 0, 0, y+14)
         track.BackgroundColor3 = Color3.fromRGB(45,45,60)
         track.BorderSizePixel = 0
-        Instance.new("UICorner", track).CornerRadius = UDim.new(0, 8)
+        Instance.new("UICorner", track).CornerRadius = UDim.new(0, 7)
         local fill = Instance.new("Frame", track)
         fill.Size = UDim2.new(initialValue, 0, 1, 0)
         fill.BackgroundColor3 = sliderColor
         fill.BorderSizePixel = 0
-        Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 8)
+        Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 7)
         local knob = Instance.new("TextButton", track)
         knob.Size = UDim2.new(0, 22, 0, 22)
         knob.Position = UDim2.new(initialValue, -11, 0.5, -11)
@@ -1743,12 +1789,12 @@ local function createSettingsUI()
 
     local setRedSat, setRedVal, setBlueSat, setBlueVal
 
-    setRedSat = makeSlider(panel, 218, "Đỏ - Độ bão hoà:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v updatePreviews() end)
-    setRedVal = makeSlider(panel, 258, "Đỏ - Độ sáng:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v updatePreviews() end)
+    setRedSat = makeSlider(panel, 178, "Đỏ - Độ bão hoà:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v updatePreviews() end)
+    setRedVal = makeSlider(panel, 212, "Đỏ - Độ sáng:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v updatePreviews() end)
 
     local redLabel = Instance.new("TextLabel", panel)
-    redLabel.Size = UDim2.new(0.9, 0, 0, 18)
-    redLabel.Position = UDim2.new(0.05, 0, 0, 190)
+    redLabel.Size = UDim2.new(0.9, 0, 0, 16)
+    redLabel.Position = UDim2.new(0.05, 0, 0, 148)
     redLabel.BackgroundTransparency = 1
     redLabel.Text = "Team Red Shirt:"
     redLabel.TextColor3 = Color3.fromRGB(200,200,200)
@@ -1757,7 +1803,7 @@ local function createSettingsUI()
     redLabel.Font = Enum.Font.FredokaOne
 
     local blueLabel = Instance.new("TextLabel", panel)
-    blueLabel.Size = UDim2.new(0.9, 0, 0, 18)
+    blueLabel.Size = UDim2.new(0.9, 0, 0, 16)
     blueLabel.Position = UDim2.new(0.05, 0, 0, 288)
     blueLabel.BackgroundTransparency = 1
     blueLabel.Text = "Team Blue Shirt:"
@@ -1766,21 +1812,21 @@ local function createSettingsUI()
     blueLabel.TextXAlignment = Enum.TextXAlignment.Left
     blueLabel.Font = Enum.Font.FredokaOne
 
-    setBlueSat = makeSlider(panel, 332, "Xanh - Độ bão hoà:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v updatePreviews() end)
-    setBlueVal = makeSlider(panel, 372, "Xanh - Độ sáng:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v updatePreviews() end)
+    setBlueSat = makeSlider(panel, 320, "Xanh - Độ bão hoà:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v updatePreviews() end)
+    setBlueVal = makeSlider(panel, 354, "Xanh - Độ sáng:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v updatePreviews() end)
 
     local presetHues = {0, 0.6, 0.13, 0.35, 0.05, 0.75, 0, 0}
     local presetSats = {1, 1, 1, 1, 1, 1, 0, 0}
     local presetVals = {1, 1, 1, 1, 1, 1, 1, 0.08}
 
     local row1 = Instance.new("Frame", panel)
-    row1.Size = UDim2.new(0.9, 0, 0, 24)
-    row1.Position = UDim2.new(0.05, 0, 0, 424)
+    row1.Size = UDim2.new(0.9, 0, 0, 22)
+    row1.Position = UDim2.new(0.05, 0, 0, 246)
     row1.BackgroundTransparency = 1
     for i = 1, 8 do
         local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
         local btn = Instance.new("TextButton", row1)
-        btn.Size = UDim2.new(0, 38, 0, 24)
+        btn.Size = UDim2.new(0, 38, 0, 22)
         btn.Position = UDim2.new(0, (i-1)*41, 0, 0)
         btn.BackgroundColor3 = c
         btn.Text = ""
@@ -1796,13 +1842,13 @@ local function createSettingsUI()
     end
 
     local row2 = Instance.new("Frame", panel)
-    row2.Size = UDim2.new(0.9, 0, 0, 24)
-    row2.Position = UDim2.new(0.05, 0, 0, 452)
+    row2.Size = UDim2.new(0.9, 0, 0, 22)
+    row2.Position = UDim2.new(0.05, 0, 0, 392)
     row2.BackgroundTransparency = 1
     for i = 1, 8 do
         local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
         local btn = Instance.new("TextButton", row2)
-        btn.Size = UDim2.new(0, 38, 0, 24)
+        btn.Size = UDim2.new(0, 38, 0, 22)
         btn.Position = UDim2.new(0, (i-1)*41, 0, 0)
         btn.BackgroundColor3 = c
         btn.Text = ""
@@ -1818,8 +1864,8 @@ local function createSettingsUI()
     end
 
     local scoreRedBox = Instance.new("TextBox", panel)
-    scoreRedBox.Size = UDim2.new(0.35, 0, 0, 28)
-    scoreRedBox.Position = UDim2.new(0.05, 0, 0, 486)
+    scoreRedBox.Size = UDim2.new(0.35, 0, 0, 26)
+    scoreRedBox.Position = UDim2.new(0.05, 0, 0, 420)
     scoreRedBox.BackgroundColor3 = Color3.fromRGB(60,40,40)
     scoreRedBox.Text = tostring(gameState.scoreRed)
     scoreRedBox.TextColor3 = Color3.new(1,1,1)
@@ -1828,8 +1874,8 @@ local function createSettingsUI()
     Instance.new("UICorner", scoreRedBox).CornerRadius = UDim.new(0, 8)
 
     local scoreDash = Instance.new("TextLabel", panel)
-    scoreDash.Size = UDim2.new(0.1, 0, 0, 28)
-    scoreDash.Position = UDim2.new(0.4, 0, 0, 486)
+    scoreDash.Size = UDim2.new(0.1, 0, 0, 26)
+    scoreDash.Position = UDim2.new(0.4, 0, 0, 420)
     scoreDash.BackgroundTransparency = 1
     scoreDash.Text = "-"
     scoreDash.TextColor3 = Color3.fromRGB(200,200,200)
@@ -1837,8 +1883,8 @@ local function createSettingsUI()
     scoreDash.Font = Enum.Font.FredokaOne
 
     local scoreBlueBox = Instance.new("TextBox", panel)
-    scoreBlueBox.Size = UDim2.new(0.35, 0, 0, 28)
-    scoreBlueBox.Position = UDim2.new(0.5, 0, 0, 486)
+    scoreBlueBox.Size = UDim2.new(0.35, 0, 0, 26)
+    scoreBlueBox.Position = UDim2.new(0.5, 0, 0, 420)
     scoreBlueBox.BackgroundColor3 = Color3.fromRGB(40,40,60)
     scoreBlueBox.Text = tostring(gameState.scoreBlue)
     scoreBlueBox.TextColor3 = Color3.new(1,1,1)
@@ -1847,8 +1893,8 @@ local function createSettingsUI()
     Instance.new("UICorner", scoreBlueBox).CornerRadius = UDim.new(0, 8)
 
     local applyBtn = Instance.new("TextButton", panel)
-    applyBtn.Size = UDim2.new(0, 160, 0, 34)
-    applyBtn.Position = UDim2.new(0.05, 0, 0, 522)
+    applyBtn.Size = UDim2.new(0, 175, 0, 50)
+    applyBtn.Position = UDim2.new(0.03, 0, 1, -58)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50,200,100)
     applyBtn.Text = "✓ APPLY"
     applyBtn.TextColor3 = Color3.new(1,1,1)
@@ -1871,8 +1917,8 @@ local function createSettingsUI()
     end)
 
     local closeBtn = Instance.new("TextButton", panel)
-    closeBtn.Size = UDim2.new(0, 160, 0, 34)
-    closeBtn.Position = UDim2.new(0.55, 0, 0, 522)
+    closeBtn.Size = UDim2.new(0, 175, 0, 50)
+    closeBtn.Position = UDim2.new(0.53, 0, 1, -58)
     closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
     closeBtn.Text = "✕ CLOSE"
     closeBtn.TextColor3 = Color3.new(1,1,1)
@@ -1881,6 +1927,11 @@ local function createSettingsUI()
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 
     closeBtn.MouseButton1Click:Connect(function()
+        panel.Visible = false
+        gameState.settingsOpen = false
+    end)
+
+    xCloseBtn.MouseButton1Click:Connect(function()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
@@ -2264,7 +2315,7 @@ local function autoStart()
         end
     end)
 
-    print("=== WORLD CUP 2026 FINAL v5 ===")
+    print("=== WORLD CUP 2026 FINAL v6 ===")
     print("🔊 Còi tắt cổ vũ, cổ vũ lại khi thắng")
     print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút")
     print("🎯 Hòa sau hiệp phụ → Sút luân lưu 5 lượt")
@@ -2272,6 +2323,8 @@ local function autoStart()
     print("🧤 GK chụp bóng khi sút luân lưu")
     print("🟨 Thẻ vàng → 🟥 Thẻ đỏ → treo 1 trận")
     print("🎨 Settings có slider độ bão hoà + độ sáng màu áo")
+    print("👥 AI tách nhau ra khi phòng ngự")
+    print("✕ Nút X để đóng settings nhanh")
 end
 
 autoStart()
