@@ -250,6 +250,15 @@ local function canPlayerTouchBall()
 end
 
 local function handleNewMatchStart()
+    gameState.paused = false
+    gameState.restartCountdown = 0
+    gameState.goalScored = false
+    gameState.inPenaltyShootout = false
+    gameState.celebrating = false
+    gameState.restartCooldown = false
+    gameState.gkHolding = false
+    gameState.gkHoldingTeam = nil
+    
     if gameState.redCardMatchesLeft > 0 then
         gameState.redCardMatchesLeft = gameState.redCardMatchesLeft - 1
         if gameState.redCardMatchesLeft <= 0 then
@@ -1064,7 +1073,8 @@ end
 
 local function updateAILogic(dt)
     local ball=gameState.ball
-    if not ball or not ball.Parent or gameState.restartCooldown or not gameState.gameActive or gameState.goalScored then return end
+    if not ball or not ball.Parent then return end
+    if gameState.restartCooldown or gameState.goalScored then return end
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     if gameState.paused or gameState.restartCountdown > 0 then return end
     local allBots={}
@@ -2505,6 +2515,20 @@ local function autoStart()
             end
         end
         
+        if not gameState.paused 
+           and gameState.restartCountdown <= 0 
+           and not gameState.celebrating 
+           and not gameState.inPenaltyShootout
+           and not gameState.goalScored
+           and not gameState.restartCooldown then
+            if not gameState.gameActive then
+                gameState.gameActive = true
+            end
+            if gameState.ball and gameState.ball.Anchored then
+                gameState.ball.Anchored = false
+            end
+        end
+        
         updatePlayerDribble(dt)
         updateAILogic(dt)
         checkRules()
@@ -2515,14 +2539,14 @@ local function autoStart()
         end
     end)
     
-    print("=== WORLD CUP 2026 FINAL v3 ===")
-    print("🔊 Còi vàng/đỏ hoặc mãn cuộc → cổ vũ tắt")
+    print("=== WORLD CUP 2026 FINAL v4 ===")
+    print("🔊 Còi tắt cổ vũ, cổ vũ lại khi thắng")
     print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút")
     print("🎯 Hòa sau hiệp phụ → Sút luân lưu 5 lượt")
-    print("⚽ Sút luân lưu: Red khung +Z, Blue khung -Z")
-    print("🧤 GK chụp bóng")
-    print("🎉 Đội thắng ôm nhau nhảy ăn mừng")
-    print("🔄 Sau thẻ đỏ + hết trận → auto về sân, camera reset")
+    print("⚽ Red sút khung +Z, Blue sút khung -Z")
+    print("🧤 GK chụp bóng khi sút luân lưu")
+    print("🟨 Thẻ vàng → 🟥 Thẻ đỏ → treo 1 trận")
+    print("🔄 Watchdog chống stuck sau thẻ đỏ")
 end
 
 autoStart()
