@@ -265,7 +265,20 @@ local function handleNewMatchStart()
             local char = gameState.playerChar
             if char and char:FindFirstChild("HumanoidRootPart") then
                 local zOffset = (gameState.playerTeam == "Red") and -150 or 150
-                char:PivotTo(CFrame.new(MAP_POS + Vector3.new(0, 10, zOffset)))
+                local targetCF = CFrame.new(MAP_POS + Vector3.new(0, 15, zOffset))
+                char:PivotTo(targetCF)
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp.CFrame = targetCF
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end
+                local cam = workspace.CurrentCamera
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if cam and hum then
+                    cam.CameraType = Enum.CameraType.Custom
+                    cam.CameraSubject = hum
+                end
             end
             updatePlayerAppearance()
             updateCardUI()
@@ -1352,7 +1365,6 @@ local function runPenaltyShootout()
     local redScore, blueScore = 0, 0
     local maxRounds = 5
     
-    -- Red sút ở khung +Z, Blue sút ở khung -Z
     local goalZRed = MAP_POS.Z + PITCH_LENGTH/2
     local goalZBlue = MAP_POS.Z - PITCH_LENGTH/2
     local spotZRed = goalZRed - 40
@@ -1488,7 +1500,6 @@ local function runPenaltyShootout()
         
         hideBigText()
         
-        -- Xác suất: player 45% vào, AI 35% vào
         local scored = math.random() < (shooter.isPlayer and 0.45 or 0.35)
         
         local targetX = MAP_POS.X + (math.random() * 2 - 1) * (GOAL_WIDTH/2 - 8)
@@ -1501,7 +1512,6 @@ local function runPenaltyShootout()
             applyKnuckleball(gameState.ball, dir, math.random(350, 450))
         end
         
-        -- GK lao theo bóng
         if gk and gk.PrimaryPart then
             task.spawn(function()
                 local startT = tick()
@@ -1610,6 +1620,22 @@ local function runPenaltyShootout()
     resetPositions("Red")
     handleNewMatchStart()
     stopCrowd()
+    task.delay(0.3, function()
+        local pc = gameState.playerChar
+        if pc then
+            local hrp = pc:FindFirstChild("HumanoidRootPart")
+            local hum = pc:FindFirstChildOfClass("Humanoid")
+            if hrp then
+                local zOffset = (gameState.playerTeam == "Red") and -150 or 150
+                hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 15, zOffset))
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            end
+            if workspace.CurrentCamera and hum then
+                workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                workspace.CurrentCamera.CameraSubject = hum
+            end
+        end
+    end)
     gameState.gameActive = true
 end
 -- ========== END PENALTY SHOOTOUT ==========
@@ -1656,6 +1682,22 @@ local function endMatch(winnerText)
     resetPositions("Red")
     handleNewMatchStart()
     stopCrowd()
+    task.delay(0.3, function()
+        local pc = gameState.playerChar
+        if pc then
+            local hrp = pc:FindFirstChild("HumanoidRootPart")
+            local hum = pc:FindFirstChildOfClass("Humanoid")
+            if hrp then
+                local zOffset = (gameState.playerTeam == "Red") and -150 or 150
+                hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 15, zOffset))
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            end
+            if workspace.CurrentCamera and hum then
+                workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                workspace.CurrentCamera.CameraSubject = hum
+            end
+        end
+    end)
     gameState.gameActive=true
 end
 
@@ -2439,7 +2481,8 @@ local function autoStart()
         local distX = math.abs(hrp.Position.X - MAP_POS.X)
         local distZ = math.abs(hrp.Position.Z - MAP_POS.Z)
         local inField = distX < PITCH_WIDTH/2 + 40 and distZ < PITCH_LENGTH/2 + 25
-        if inField then
+        local tooLow = hrp.Position.Y < MAP_POS.Y - 50
+        if inField or tooLow then
             hrp.CFrame = CFrame.new(STAND_POS)
             hrp.AssemblyLinearVelocity = Vector3.zero
         end
@@ -2454,7 +2497,6 @@ local function autoStart()
     end)
     
     RunService.Heartbeat:Connect(function(dt)
-        -- Đóng băng bóng khi nghỉ
         if (gameState.paused or gameState.restartCountdown > 0) and not gameState.inPenaltyShootout then
             if gameState.ball and not gameState.ball.Anchored then
                 gameState.ball.Anchored = true
@@ -2473,13 +2515,14 @@ local function autoStart()
         end
     end)
     
-    print("=== WORLD CUP 2026 FINAL v2 ===")
+    print("=== WORLD CUP 2026 FINAL v3 ===")
     print("🔊 Còi vàng/đỏ hoặc mãn cuộc → cổ vũ tắt")
-    print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút, nghỉ bóng đứng yên")
+    print("⏱️ Hiệp chính 3 phút, hiệp phụ 2 phút")
     print("🎯 Hòa sau hiệp phụ → Sút luân lưu 5 lượt")
-    print("⚽ Red sút khung +Z, Blue sút khung -Z")
-    print("🧤 GK chụp bóng (không phải chỉ đẩy)")
-    print("🎉 Đội thắng ôm nhau nhảy ăn mừng ở giữa sân")
+    print("⚽ Sút luân lưu: Red khung +Z, Blue khung -Z")
+    print("🧤 GK chụp bóng")
+    print("🎉 Đội thắng ôm nhau nhảy ăn mừng")
+    print("🔄 Sau thẻ đỏ + hết trận → auto về sân, camera reset")
 end
 
 autoStart()
