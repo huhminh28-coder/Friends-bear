@@ -2223,4 +2223,211 @@ local function createGameUI()
 
     knuckleBtn.MouseButton1Down:Connect(function()
         if gameState.inPenaltyShootout then gameState.knuckleCharging = true return end
-        if not canPlayerTouchBall() or
+        if not canPlayerTouchBall() or gameState.celebrating then return end
+        local near = getNearBall()
+        if not near then return end
+        stopDribble()
+        gameState.knuckleCharging = true; gameState.knuckleChargePower = 0
+        gameState.chargingBall = gameState.ball
+        gameState.chargingOriginalPos = gameState.ball.Position
+        local conn
+        conn = RunService.Heartbeat:Connect(function(dt)
+            if not gameState.knuckleCharging then if conn then conn:Disconnect() end return end
+            gameState.knuckleChargePower = math.min(gameState.knuckleChargePower + dt*150, 450)
+            local intensity = math.floor(gameState.knuckleChargePower/5)
+            knuckleBtn.BackgroundColor3 = Color3.fromRGB(255, 100+intensity, 0)
+        end)
+    end)
+    knuckleBtn.MouseButton1Up:Connect(function()
+        if not gameState.knuckleCharging then return end
+        if gameState.inPenaltyShootout then gameState.knuckleCharging = false return end
+        gameState.knuckleCharging = false
+        knuckleBtn.BackgroundColor3 = Color3.fromRGB(255,100,0)
+        local ball = gameState.chargingBall
+        local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
+        local canShoot = false
+        if ball and ball.Parent and hrp then
+            if (hrp.Position-ball.Position).Magnitude < 30 then canShoot = true
+            elseif (ball.Position-gameState.chargingOriginalPos).Magnitude < 50 then canShoot = true end
+        end
+        if canShoot then
+            gameState.lastTouchTeam = gameState.playerTeam
+            playBallTouchSound()
+            local gz = (gameState.playerTeam == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
+            local gp = Vector3.new(MAP_POS.X+math.random(-20,20), MAP_POS.Y+math.random(10,20), gz)
+            applyKnuckleball(ball, (gp-ball.Position).Unit, 400+gameState.knuckleChargePower)
+        end
+        gameState.knuckleChargePower = 0
+        gameState.chargingBall = nil
+    end)
+
+    dribbleBtn.MouseButton1Click:Connect(function()
+        if not canPlayerTouchBall() then return end
+        if tick()-(gameState.lastDribbleTime or 0) < 0.3 then return end
+        gameState.lastDribbleTime = tick()
+        doDribble()
+    end)
+
+    skillBtn.MouseButton1Click:Connect(doPlayerSkill)
+
+    lobBtn.MouseButton1Click:Connect(function()
+        if not canPlayerTouchBall() or gameState.inPenaltyShootout or gameState.celebrating then return end
+        local near, hrp = getNearBall()
+        if near then
+            stopDribble()
+            gameState.lastTouchTeam = gameState.playerTeam
+            playBallTouchSound()
+            local closest = findNearestTeammate()
+            if closest and closest.PrimaryPart then applyLobPass(gameState.ball, closest.PrimaryPart.Position, 20)
+            else
+                local gz = (gameState.playerTeam == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
+                applyLobPass(gameState.ball, Vector3.new(MAP_POS.X+math.random(-20,20), MAP_POS.Y+10, gz), 0)
+            end
+        end
+    end)
+
+    passBtn.MouseButton1Click:Connect(function()
+        if not canPlayerTouchBall() or gameState.inPenaltyShootout or gameState.celebrating then return end
+        local near, hrp = getNearBall()
+        if near then
+            stopDribble()
+            gameState.lastTouchTeam = gameState.playerTeam
+            playBallTouchSound()
+            local closest = findNearestTeammate()
+            if closest and closest.PrimaryPart then
+                applyGroundPass(gameState.ball, closest.PrimaryPart.Position, 20)
+            end
+        end
+    end)
+
+    switchTeamBtn.MouseButton1Click:Connect(function()
+        if gameState.playerSuspended or gameState.playerCard == "red" then
+            showCardAnimation("BẠN ĐANG BỊ TREO!", Color3.fromRGB(255,50,50))
+            return
+        end
+        if gameState.inPenaltyShootout or gameState.celebrating then return end
+        gameState.playerTeam = (gameState.playerTeam == "Red") and "Blue" or "Red"
+        gameState.playerDribbling = false
+        updatePlayerAppearance()
+        local pc = gameState.playerChar
+        if pc and pc:FindFirstChild("HumanoidRootPart") then
+            local zOffset = (gameState.playerTeam == "Red") and -150 or 150
+            pc:PivotTo(CFrame.new(MAP_POS+Vector3.new(0,10,zOffset)))
+        end
+    end)
+
+    sprintBtn.MouseButton1Click:Connect(function()
+        gameState.sprinting = not gameState.sprinting
+        local char = gameState.playerChar
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                if gameState.sprinting then
+                    hum.WalkSpeed = SPRINT_WALKSPEED
+                    sprintBtn.BackgroundColor3 = Color3.fromRGB(0,200,100)
+                    sprintBtn.Text = "RUNNING"
+                else
+                    hum.WalkSpeed = NORMAL_WALKSPEED
+                    sprintBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+                    sprintBtn.Text = "SPRINT 40"
+                end
+            end
+        end
+    end)
+end
+
+-- ========== AUTO START ==========
+local function autoStart()
+    local char = player.Character or player.CharacterAdded:Wait()
+    gameState.playerChar = char
+    task.wait(1)
+    savePlayerAppearance()
+
+    player.CharacterAdded:Connect(function(nc)
+        gameState.playerChar = nc
+        gameState.sprinting = false
+        gameState.playerDribbling = false
+        task.wait(1)
+        savePlayerAppearance()
+        if gameState.playerSuspended then
+            restorePlayerAppearance()
+            task.wait(0.3)
+            local hrp = nc:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = CFrame.new(STAND_POS) end
+        else
+            updatePlayerAppearance()
+        end
+    end)
+
+    createStadium()
+    createBall()
+    createAIPlayer("Red", "Goalkeeper", 1)
+    for i = 1, 4 do createAIPlayer("Red", "Defender", i) end
+    for i = 1, 4 do createAIPlayer("Red", "Midfielder", i) end
+    for i = 1, 2 do createAIPlayer("Red", "Striker", i) end
+    createAIPlayer("Blue", "Goalkeeper", 1)
+    for i = 1, 4 do createAIPlayer("Blue", "Defender", i) end
+    for i = 1, 4 do createAIPlayer("Blue", "Midfielder", i) end
+    for i = 1, 2 do createAIPlayer("Blue", "Striker", i) end
+
+    resetPositions("Red")
+    gameState.gameActive = true
+    createGameUI()
+    createSettingsUI()
+    startTimer()
+
+    gameState.playerPushConn = RunService.Heartbeat:Connect(function()
+        if gameState.playerCard ~= "red" and not gameState.playerSuspended then return end
+        local char = gameState.playerChar
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local distX = math.abs(hrp.Position.X - MAP_POS.X)
+        local distZ = math.abs(hrp.Position.Z - MAP_POS.Z)
+        local inField = distX < PITCH_WIDTH/2+40 and distZ < PITCH_LENGTH/2+25
+        local tooLow = hrp.Position.Y < MAP_POS.Y-50
+        if inField or tooLow then
+            hrp.CFrame = CFrame.new(STAND_POS)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+        if gameState.ball and gameState.ball.Parent then
+            local dTB = (hrp.Position-gameState.ball.Position).Magnitude
+            if dTB < 15 then
+                local pushDir = hrp.Position - gameState.ball.Position
+                if pushDir.Magnitude < 0.1 then pushDir = Vector3.new(1,0,0) end
+                hrp.AssemblyLinearVelocity = pushDir.Unit*100 + Vector3.new(0,20,0)
+            end
+        end
+    end)
+
+    RunService.Heartbeat:Connect(function(dt)
+        if (gameState.paused or gameState.restartCountdown > 0) and not gameState.inPenaltyShootout then
+            if gameState.ball and not gameState.ball.Anchored then
+                gameState.ball.Anchored = true
+                gameState.ball.AssemblyLinearVelocity = Vector3.zero
+                gameState.ball.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
+        if not gameState.paused and gameState.restartCountdown <= 0 
+           and not gameState.celebrating and not gameState.inPenaltyShootout
+           and not gameState.goalScored and not gameState.restartCooldown then
+            if not gameState.gameActive then gameState.gameActive = true end
+            if gameState.ball and gameState.ball.Anchored then gameState.ball.Anchored = false end
+        end
+        updatePlayerDribble(dt)
+        updateAILogic(dt)
+        checkRules()
+        if tick()-gameState.lastInterceptCheck > 0.1 then
+            gameState.lastInterceptCheck = tick()
+            checkInterception()
+        end
+    end)
+
+    print("=== WORLD CUP 2026 FINAL v8 ===")
+    print("⚙ Settings có: Độ mạnh Red/Blue (Yếu/Vừa/Mạnh) + Màu + Tên")
+    print("⚡ SKILL button: chip bóng qua đầu đối thủ, bất tử 2.5s")
+    print("🎯 AI cũng có skill tùy độ khó")
+    print("📜 Menu Settings có scroll để chỉnh tất cả")
+end
+
+autoStart()
