@@ -515,7 +515,6 @@ local function useSkill(bot, team)
     local botPos = bot.PrimaryPart.Position
     local forward = (team == "Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
     local flatDir = forward
-    -- Fixed velocity: enough to reach ~12 studs (just over head)
     local speedXZ = 45
     ball.AssemblyLinearVelocity = Vector3.new(flatDir.X*speedXZ, 68, flatDir.Z*speedXZ)
     ball.CFrame = CFrame.new(botPos + flatDir*3 + Vector3.new(0, 2, 0))
@@ -635,6 +634,8 @@ end
 
 local function handleBallTouch(bot)
     if gameState.gkHolding then return end
+    -- Block all outfielders during player skill (only GK can touch)
+    if gameState.playerSkillActive and bot.Role.Value ~= "Goalkeeper" then return end
     local ball = gameState.ball
     local team = bot.Team.Value
     local diff = getDiff(team)
@@ -830,6 +831,17 @@ local function updateOutfieldAI(bot, allBots, closestBot, dt)
     local teamHasBall = gameState.lastTouchTeam == team
     local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
 
+    -- During player skill: all outfielders return to home position
+    if gameState.playerSkillActive then
+        local target = getHomePos(bot, false)
+        local dir = target - botPos
+        if dir.Magnitude > 3 then
+            local newPos = botPos + dir.Unit*aiSpd*dt
+            moveCharacter(bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), Vector3.new(newPos.X, newPos.Y, newPos.Z+dir.Unit.Z))
+        end
+        return
+    end
+
     if gameState.gkHolding then
         local target = getHomePos(bot, false)
         local dir = target - botPos
@@ -960,7 +972,8 @@ local function updateAILogic(dt)
                 local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value) and not gameState.playerSuspended
                 local isStriker = bot.Role.Value == "Striker"
                 local shouldChase = bot == closestBot and not canTouch and not playerDribbling
-                if gameState.playerSkillActive and bot.Team.Value ~= gameState.playerTeam then shouldChase = false end
+                -- Block ALL outfielders during player skill
+                if gameState.playerSkillActive then shouldChase = false end
                 if isStriker and (bot.PrimaryPart.Position-ball.Position).Magnitude > 60 then shouldChase = false end
                 if gameState.gkHolding then shouldChase = false end
                 if shouldChase then
@@ -1063,6 +1076,10 @@ local function doDribble()
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
     if not hrp or not ball or (hrp.Position-ball.Position).Magnitude > 20 then return end
+    -- Cancel skill when player grabs ball
+    if gameState.playerSkillActive then
+        gameState.playerSkillActive = false
+    end
     gameState.playerDribbling = true
     gameState.lastTouchTeam = gameState.playerTeam
     playBallTouchSound()
@@ -1088,7 +1105,7 @@ local function doPlayerSkill()
     ball.AssemblyLinearVelocity = Vector3.new(flat.X * 45, 68, flat.Z * 45)
     gameState.lastTouchTeam = gameState.playerTeam
     playBallKick(ball.Position, 0.85)
-    showToast("SKILL!", Color3.fromRGB(255, 200, 100), 1.5)
+    -- NO SKILL TEXT (removed per request)
     task.delay(2.5, function() gameState.playerSkillActive = false end)
 end
 
@@ -1646,14 +1663,13 @@ local function startTimer()
     end)
 end
 
--- ========== SETTINGS UI (FIXED) ==========
+-- ========== SETTINGS UI ==========
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui = Instance.new("ScreenGui")
     gui.Name = "SettingsUI"; gui.ResetOnSpawn = false; gui.Parent = player.PlayerGui
     gameState.settingsUI = gui
 
-    -- Local state for this session
     local curRedColor = gameState.teamRedColor
     local curBlueColor = gameState.teamBlueColor
 
@@ -1800,7 +1816,6 @@ local function createSettingsUI()
         return setValue
     end
 
-    -- Team names
     local name1Lbl = Instance.new("TextLabel", scroll)
     name1Lbl.Size = UDim2.new(0, 380, 0, 16)
     name1Lbl.Position = UDim2.new(0, 12, 0, 6)
@@ -1841,7 +1856,6 @@ local function createSettingsUI()
     oppNameBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", oppNameBox).CornerRadius = UDim.new(0, 8)
 
-    -- Difficulty
     local diffRLbl = Instance.new("TextLabel", scroll)
     diffRLbl.Size = UDim2.new(0, 380, 0, 16)
     diffRLbl.Position = UDim2.new(0, 12, 0, 108)
@@ -1912,7 +1926,6 @@ local function createSettingsUI()
         blueDiffBtns[i] = btn
     end
 
-    -- Colors
     local redColLbl = Instance.new("TextLabel", scroll)
     redColLbl.Size = UDim2.new(0, 380, 0, 16)
     redColLbl.Position = UDim2.new(0, 12, 0, 226)
@@ -1975,7 +1988,6 @@ local function createSettingsUI()
     local setBlueSat = makeSlider(scroll, 410, "Xanh - Độ bão hoà:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v updatePreviews() end)
     local setBlueVal = makeSlider(scroll, 444, "Xanh - Độ sáng:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v updatePreviews() end)
 
-    -- Connect preset clicks
     local idx1 = 1
     for _, child in ipairs(row1:GetChildren()) do
         if child:IsA("TextButton") then
@@ -2008,7 +2020,6 @@ local function createSettingsUI()
         end
     end
 
-    -- Score
     local scoreLbl = Instance.new("TextLabel", scroll)
     scoreLbl.Size = UDim2.new(0, 380, 0, 16)
     scoreLbl.Position = UDim2.new(0, 12, 0, 486)
@@ -2048,7 +2059,6 @@ local function createSettingsUI()
     scoreBlueBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", scoreBlueBox).CornerRadius = UDim.new(0, 8)
 
-    -- Apply/Close
     local applyBtn = Instance.new("TextButton", panel)
     applyBtn.Size = UDim2.new(0, 185, 0, 50)
     applyBtn.Position = UDim2.new(0, 8, 1, -60)
@@ -2099,7 +2109,6 @@ local function createSettingsUI()
         if gameState.settingsOpen then
             teamNameBox.Text = gameState.teamRedName
             oppNameBox.Text = gameState.teamBlueName
-            -- Reload colors from gameState
             hRed, sRed, vRed = Color3.toHSV(gameState.teamRedColor)
             hBlue, sBlue, vBlue = Color3.toHSV(gameState.teamBlueColor)
             updatePreviews()
@@ -2107,7 +2116,6 @@ local function createSettingsUI()
             setBlueSat(sBlue); setBlueVal(vBlue)
             scoreRedBox.Text = tostring(gameState.scoreRed)
             scoreBlueBox.Text = tostring(gameState.scoreBlue)
-            -- Sync difficulty button visuals
             for j, b in ipairs(redDiffBtns) do
                 b.BackgroundColor3 = (j == gameState.redDifficulty) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
             end
@@ -2493,10 +2501,10 @@ local function autoStart()
         end
     end)
 
-    print("=== WORLD CUP 2026 FINAL v9 ===")
-    print("⚙ Settings FIXED: chọn màu cho từng đội riêng biệt")
-    print("⚡ SKILL: bóng qua đầu đối thủ, hiện chữ SKILL!")
-    print("🎯 3 mức độ khó cho Red và Blue")
+    print("=== WORLD CUP 2026 FINAL v10 ===")
+    print("✅ Bỏ chữ SKILL giữa màn hình")
+    print("✅ Khi skill: đối thủ + đồng đội KHÔNG thể chạm bóng (chỉ GK)")
+    print("✅ Người chơi có thể bấm DRIBBLE giữa lúc skill → hủy skill và dắt bóng")
 end
 
-autoStart() đây là script bóng đá của bạn đã thêm tính năng. Hãy bỏ chữ skill hiện giữa màn hình khi làm skill đi, khi hất bóng qua đầu đối phương skill thì đối phương sẽ ko thể chạm bóng và đồng đoipj ko thể chạm bóng, thủ môn vẫn đối thủ vẫn sẽ dịch chuyển chụp bóng, khi hất bóng người chơi có thể bấm dắt bóng và các cầu thủ sẽ di chuyển trở lại.
+autoStart()
