@@ -56,7 +56,7 @@ local gameState = {
     lastViolationTime=0, playerPushConn=nil,
     inPenaltyShootout=false, celebrating=false, celebrationConn=nil,
     redDifficulty=2, blueDifficulty=2,
-    playerSkillCooldown=0, playerSkillActive=false,
+    playerSkillActive=false,
     aiSkillActive={},
     shotDirection=nil, gkDirection=nil,
     directionUI=nil,
@@ -80,7 +80,7 @@ local function playWhistle() playSoundOnce(WHISTLE_SOUND, 8, 2.5) end
 local function playFinalWhistle() playSoundOnce(WHISTLE_SOUND, 10, 5) end
 
 -- ═══════════════════════════════════════════════════════════════
--- PLAYER APPEARANCE (always wear team shirt)
+-- PLAYER APPEARANCE
 -- ═══════════════════════════════════════════════════════════════
 local function updatePlayerAppearance()
     local char = gameState.playerChar
@@ -194,7 +194,6 @@ local function createStadium()
     cc.Shape = Enum.PartType.Cylinder
     cc.CFrame = CFrame.new(MAP_POS+Vector3.new(0,2.6,0)) * CFrame.Angles(0,0,math.rad(90))
 
-    -- Penalty boxes (both sides)
     local function drawBox(goalZ, dir)
         local boxDepth = PENALTY_BOX_DEPTH
         cp("Box"..goalZ.."_line", Vector3.new(160, 5.1, 4),
@@ -933,13 +932,11 @@ end
 
 local function doPlayerSkill()
     if gameState.inPenaltyShootout or gameState.celebrating then return end
-    if tick() - gameState.playerSkillCooldown < 8 then return end
     local char = gameState.playerChar
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
     if not hrp or not ball or (hrp.Position-ball.Position).Magnitude > 20 then return end
-    gameState.playerSkillCooldown = tick()
     gameState.playerSkillActive = true
     gameState.playerDribbling = false
     local forward = hrp.CFrame.LookVector
@@ -1132,7 +1129,7 @@ local function makeDirectionUI()
     makeDirBtn("LEFT", Color3.fromRGB(200, 60, 60), UDim2.new(0.5, -230, 0.5, -110), "Left")
     makeDirBtn("CENTER", Color3.fromRGB(60, 140, 200), UDim2.new(0.5, -70, 0.5, -110), "Center")
     makeDirBtn("RIGHT", Color3.fromRGB(60, 180, 80), UDim2.new(0.5, 90, 0.5, -110), "Right")
-    makeDirBtn("OVER\n(bắn chim)", Color3.fromRGB(180, 100, 40), UDim2.new(0.5, -70, 0.5, 5), "Over")
+    makeDirBtn("OVER\n(chip)", Color3.fromRGB(180, 100, 40), UDim2.new(0.5, -70, 0.5, 5), "Over")
 
     return result
 end
@@ -1144,22 +1141,15 @@ local function runPenaltyShootout()
 
     local redScore, blueScore = 0, 0
     local maxRounds = 5
-
-    -- Goal direction: Red attacks +Z goal (Blue's goal), Blue attacks -Z goal (Red's goal)
     local goalZFor = {Red = MAP_POS.Z + PITCH_LENGTH/2, Blue = MAP_POS.Z - PITCH_LENGTH/2}
 
-    -- All non-shooter players stand in the center circle watching
     local function gatherInCircle()
         local positions = {}
         for _, bot in ipairs(gameState.redTeam) do
-            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then
-                table.insert(positions, bot)
-            end
+            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then table.insert(positions, bot) end
         end
         for _, bot in ipairs(gameState.blueTeam) do
-            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then
-                table.insert(positions, bot)
-            end
+            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then table.insert(positions, bot) end
         end
         for i, bot in ipairs(positions) do
             local angle = (i / #positions) * math.pi * 2
@@ -1217,13 +1207,11 @@ local function runPenaltyShootout()
         local spotZ = goalZ - sign * PENALTY_DIST
         local opponentTeam = (team == "Red") and "Blue" or "Red"
 
-        -- Move GK to goal
         local gk = findGK(opponentTeam)
         if gk and gk.PrimaryPart then
             moveCharacter(gk, Vector3.new(MAP_POS.X, TORSO_Y, goalZ - sign*6), Vector3.new(MAP_POS.X, TORSO_Y, MAP_POS.Z))
         end
 
-        -- Ball at penalty spot
         local ballPos = Vector3.new(MAP_POS.X, MAP_POS.Y+3, spotZ)
         if gameState.ball then
             gameState.ball.Anchored = true
@@ -1232,7 +1220,6 @@ local function runPenaltyShootout()
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
         end
 
-        -- Shooter stands behind ball
         local approachZ = spotZ - sign * 8
         local approachPos = Vector3.new(MAP_POS.X, TORSO_Y, approachZ)
         if shooter.isPlayer then
@@ -1249,7 +1236,6 @@ local function runPenaltyShootout()
 
         local teamName = (team == "Red") and gameState.teamRedName or gameState.teamBlueName
 
-        -- Determine shot direction
         local shotDir
         if shooter.isPlayer then
             showBigText("YOUR TURN!\nCHOOSE A DIRECTION", Color3.fromRGB(255,255,100))
@@ -1272,14 +1258,12 @@ local function runPenaltyShootout()
 
         hideBigText()
 
-        -- GK picks direction (also random)
         local gkDirRoll = math.random(1, 100)
         local gkDir
         if gkDirRoll <= 40 then gkDir = "Left"
         elseif gkDirRoll <= 80 then gkDir = "Right"
         else gkDir = "Center" end
 
-        -- Move GK animation
         if gk and gk.PrimaryPart then
             local gkStart = gk.PrimaryPart.Position
             local targetX = MAP_POS.X
@@ -1300,7 +1284,6 @@ local function runPenaltyShootout()
 
         task.wait(0.3)
 
-        -- Kick ball toward picked direction
         if gameState.ball then
             gameState.ball.Anchored = false
             local dirX = 0
@@ -1314,7 +1297,6 @@ local function runPenaltyShootout()
 
         task.wait(1.4)
 
-        -- Determine result
         local resultText, resultColor
         local scored = false
         if shotDir == "Over" then
@@ -1333,7 +1315,6 @@ local function runPenaltyShootout()
         task.wait(1.5)
         hideBigText()
 
-        -- Reset ball and shooter
         if gameState.ball then
             gameState.ball.Anchored = true
             gameState.ball.CFrame = CFrame.new(ballPos)
@@ -1341,7 +1322,6 @@ local function runPenaltyShootout()
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
         end
 
-        -- Return shooter to circle
         if shooter.isPlayer then
             local hrp = shooter.char:FindFirstChild("HumanoidRootPart")
             if hrp then hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 5, 0)) end
@@ -1390,7 +1370,6 @@ local function runPenaltyShootout()
     startCelebration(winner)
     task.wait(12)
 
-    -- Reset for next match
     gameState.paused = true
     gameState.gameActive = false
     gameState.currentHalf = 1
@@ -2126,25 +2105,11 @@ local function createGameUI()
     local lobBtn = makeBtn("LobBtn", "LOB", Color3.fromRGB(255,215,0), UDim2.new(0.8,-50,0.8,-112))
     local knuckleBtn = makeBtn("KnuckleBtn", "KNUCKLE\n(Hold)", Color3.fromRGB(255,100,0), UDim2.new(0.8,-50,0.8,-158))
     local dribbleBtn = makeBtn("DribbleBtn", "DRIBBLE", Color3.fromRGB(0,150,255), UDim2.new(0.8,-50,0.8,-204))
-    local skillBtn = makeBtn("SkillBtn", "SKILL\nREADY", Color3.fromRGB(180,0,220), UDim2.new(0.8,-50,0.8,-250))
+    local skillBtn = makeBtn("SkillBtn", "SKILL", Color3.fromRGB(180,0,220), UDim2.new(0.8,-50,0.8,-250))
     local switchTeamBtn = makeBtn("SwitchTeamBtn", "SWITCH", Color3.fromRGB(200,100,200), UDim2.new(0.2,-50,0.8,-20))
     local sprintBtn = makeBtn("SprintBtn", "SPRINT 40", Color3.fromRGB(60,60,60), UDim2.new(0.2,-50,0.8,-66))
 
     gameState.gameButtons = {shootBtn, passBtn, lobBtn, knuckleBtn, dribbleBtn, skillBtn, switchTeamBtn, sprintBtn}
-
-    task.spawn(function()
-        while gui.Parent do
-            task.wait(0.5)
-            local cd = 8 - (tick() - gameState.playerSkillCooldown)
-            if cd > 0 then
-                skillBtn.Text = string.format("SKILL\n%.1fs", cd)
-                skillBtn.BackgroundColor3 = Color3.fromRGB(80, 30, 80)
-            else
-                skillBtn.Text = "SKILL\nREADY"
-                skillBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 220)
-            end
-        end
-    end)
 
     local function getNearBall()
         local char = gameState.playerChar
@@ -2319,11 +2284,10 @@ local function createGameUI()
 end
 
 -- ═══════════════════════════════════════════════════════════════
--- PLAYER TOUCH CHECK (no card system anymore)
+-- PLAYER TOUCH CHECK
 -- ═══════════════════════════════════════════════════════════════
 function canPlayerTouchBall()
     if gameState.gkHolding and gameState.gkHoldingTeam and gameState.gkHoldingTeam ~= gameState.playerTeam then
-        -- If GK holds ball from opponent team, player cannot take it
         return false
     end
     return true
@@ -2387,13 +2351,12 @@ local function autoStart()
     end)
 
     print("=== World Cup 2026 - Penalty Shootout Edition ===")
-    print("- Yellow/Red card system: REMOVED")
-    print("- Penalty spot: INSIDE the box (28 studs from goal)")
-    print("- Shooter picks direction: LEFT / CENTER / RIGHT / OVER")
-    print("- Goalkeeper dives: LEFT / RIGHT / CENTER (random)")
-    print("- If shot direction = GK direction -> SAVED")
-    print("- If shot = OVER -> MISSED")
-    print("- All other players stand inside the field watching")
+    print("- Skill cooldown: REMOVED (spam anytime)")
+    print("- Yellow/Red cards: REMOVED")
+    print("- Penalty spot: 28 studs from goal")
+    print("- Shooter picks: LEFT / CENTER / RIGHT / OVER")
+    print("- GK dives randomly")
+    print("- Same direction = SAVED | OVER = MISSED | else = GOAL")
 end
 
 autoStart()
