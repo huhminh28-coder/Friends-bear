@@ -19,12 +19,10 @@ local NORMAL_WALKSPEED = 16
 local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
-local CARD_TEXT_DURATION = 3
 
 local FEET_Y = MAP_POS.Y + 2.5
 local TORSO_Y = FEET_Y + 3
 local PENALTY_BOX_DEPTH = 60
-local STAND_POS = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 90, 63, 0)
 
 local DIFFICULTY = {
     [1] = {name="YẾU", speedMul=0.7, gkSpeedMul=0.6, shotMul=0.7, passMul=0.6, interceptMul=0.35, skillChance=0.03, gkCatchMul=0.6},
@@ -52,10 +50,8 @@ local gameState = {
     teamRedColor=Color3.fromRGB(255,50,50),
     teamBlueColor=Color3.fromRGB(50,50,255),
     settingsUI=nil, settingsOpen=false,
-    playerCard="none", redCardMatchesLeft=0,
-    gkHoldingTeam=nil, originalAppearance=nil,
-    gameButtons={}, playerSuspended=false, cardUILabel=nil,
-    lastViolationTime=0, playerPushConn=nil,
+    gkHoldingTeam=nil,
+    gameButtons={}, 
     inPenaltyShootout=false, celebrating=false, celebrationConn=nil,
     redDifficulty=2, blueDifficulty=2,
     playerSkillCooldown=0, playerSkillActive=false,
@@ -79,43 +75,6 @@ end
 local function playWhistle() playSoundOnce(WHISTLE_SOUND, 8, 2.5) end
 local function playFinalWhistle() playSoundOnce(WHISTLE_SOUND, 10, 5) end
 
--- ========== CARD SYSTEM ==========
-local function savePlayerAppearance()
-    local char = gameState.playerChar
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        local ok, desc = pcall(function() return hum:GetAppliedDescription() end)
-        if ok and desc then gameState.originalAppearance = desc end
-    end
-end
-
-local function restorePlayerAppearance()
-    local char = gameState.playerChar
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum and gameState.originalAppearance then
-        pcall(function() hum:ApplyDescription(gameState.originalAppearance) end)
-    end
-end
-
-local function updateCardUI()
-    if not gameState.cardUILabel then return end
-    if gameState.playerCard == "yellow" then
-        gameState.cardUILabel.Text = "🟨 YELLOW CARD"
-        gameState.cardUILabel.TextColor3 = Color3.fromRGB(255, 220, 0)
-        gameState.cardUILabel.Visible = true
-        task.delay(CARD_TEXT_DURATION, function() if gameState.cardUILabel then gameState.cardUILabel.Visible = false end end)
-    elseif gameState.playerCard == "red" then
-        gameState.cardUILabel.Text = "🟥 RED CARD — SUSPENDED"
-        gameState.cardUILabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-        gameState.cardUILabel.Visible = true
-        task.delay(CARD_TEXT_DURATION, function() if gameState.cardUILabel then gameState.cardUILabel.Visible = false end end)
-    else
-        gameState.cardUILabel.Visible = false
-    end
-end
-
 local function showToast(text, color, dur)
     local lbl = gameState.bigTextLabel
     if not lbl then return end
@@ -133,51 +92,6 @@ local function showToast(text, color, dur)
     end)
 end
 
-local function suspendPlayer()
-    gameState.playerCard = "red"
-    gameState.redCardMatchesLeft = 1
-    gameState.playerSuspended = true
-    gameState.playerDribbling = false
-    restorePlayerAppearance()
-    local char = gameState.playerChar
-    if char and char:FindFirstChild("HumanoidRootPart") then char:PivotTo(CFrame.new(STAND_POS)) end
-    for _, btn in pairs(gameState.gameButtons) do
-        if btn and btn.Parent then
-            btn.Active = false
-            btn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-            btn.TextColor3 = Color3.fromRGB(100, 100, 100)
-        end
-    end
-    updateCardUI()
-end
-
-local function onPlayerViolation()
-    if gameState.playerSuspended or gameState.playerCard == "red" then return end
-    if gameState.playerCard == "none" then
-        gameState.playerCard = "yellow"
-        playWhistle()
-        showToast("THẺ VÀNG — CẢNH CÁO!", Color3.fromRGB(255, 220, 0), 3)
-        updateCardUI()
-    elseif gameState.playerCard == "yellow" then
-        playWhistle()
-        showToast("THẺ ĐỎ!", Color3.fromRGB(255, 50, 50), 3)
-        task.wait(0.5)
-        suspendPlayer()
-    end
-end
-
-local function canPlayerTouchBall()
-    if gameState.playerSuspended or gameState.playerCard == "red" then return false end
-    if gameState.gkHolding and gameState.gkHoldingTeam and gameState.gkHoldingTeam ~= gameState.playerTeam then
-        if tick() - (gameState.lastViolationTime or 0) > 1.5 then
-            gameState.lastViolationTime = tick()
-            onPlayerViolation()
-        end
-        return false
-    end
-    return true
-end
-
 local function handleNewMatchStart()
     gameState.paused = false; gameState.restartCountdown = 0
     gameState.goalScored = false; gameState.inPenaltyShootout = false
@@ -185,40 +99,12 @@ local function handleNewMatchStart()
     gameState.gkHolding = false; gameState.gkHoldingTeam = nil
     gameState.playerSkillActive = false; gameState.playerSkillCooldown = 0
     gameState.aiSkillActive = {}
-
-    if gameState.redCardMatchesLeft > 0 then
-        gameState.redCardMatchesLeft = gameState.redCardMatchesLeft - 1
-        if gameState.redCardMatchesLeft <= 0 then
-            gameState.playerCard = "none"
-            gameState.playerSuspended = false
-            gameState.lastViolationTime = 0
-            for _, btn in pairs(gameState.gameButtons) do
-                if btn and btn.Parent then
-                    btn.Active = true
-                    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-                end
-            end
-            local char = gameState.playerChar
-            if char and char:FindFirstChild("HumanoidRootPart") then
-                local zOffset = (gameState.playerTeam == "Red") and -150 or 150
-                local targetCF = CFrame.new(MAP_POS + Vector3.new(0, 15, zOffset))
-                char:PivotTo(targetCF)
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.CFrame = targetCF; hrp.AssemblyLinearVelocity = Vector3.zero end
-                local cam = workspace.CurrentCamera
-                local hum = char:FindFirstChildOfClass("Humanoid")
-                if cam and hum then cam.CameraType = Enum.CameraType.Custom; cam.CameraSubject = hum end
-            end
-            updatePlayerAppearance()
-            updateCardUI()
-        end
-    end
 end
 
 -- ========== APPEARANCE ==========
 local function updatePlayerAppearance()
     local char = gameState.playerChar
-    if not char or gameState.playerSuspended then return end
+    if not char then return end
     local newColor = (gameState.playerTeam == "Red") and gameState.teamRedColor or gameState.teamBlueColor
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and (part.Name == "Torso" or part.Name:find("Arm")) then
@@ -331,7 +217,6 @@ local function createStadium()
         cp("ST", Vector3.new(PITCH_WIDTH+100,h,40), MAP_POS+Vector3.new(0, h/2, -PITCH_LENGTH/2-30-i*20), c, Enum.Material.Concrete)
         cp("SB", Vector3.new(PITCH_WIDTH+100,h,40), MAP_POS+Vector3.new(0, h/2, PITCH_LENGTH/2+30+i*20), c, Enum.Material.Concrete)
     end
-    cp("StandBase", Vector3.new(80,60,60), MAP_POS+Vector3.new(PITCH_WIDTH/2+90, 30, 0), Color3.fromRGB(80,80,90), Enum.Material.Concrete)
     for _, pos in ipairs({
         MAP_POS+Vector3.new(-220,140,-220), MAP_POS+Vector3.new(220,140,-220),
         MAP_POS+Vector3.new(-220,140,220), MAP_POS+Vector3.new(220,140,220)
@@ -353,19 +238,8 @@ local function createBall()
     gameState.ball = ball
     ball.Touched:Connect(function(hit)
         if not gameState.ball or not gameState.ball.Parent then return end
-        if gameState.playerSkillActive then return end
         local char = gameState.playerChar
         if not char or hit.Parent ~= char then return end
-        if not canPlayerTouchBall() then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local pushDir = hrp.Position - ball.Position
-                if pushDir.Magnitude < 0.1 then pushDir = Vector3.new(0,1,0) end
-                pushDir = Vector3.new(pushDir.X, 0.5, pushDir.Z).Unit
-                hrp.AssemblyLinearVelocity = pushDir * 80 + Vector3.new(0,30,0)
-            end
-            return
-        end
         if not gameState.playerDribbling then gameState.lastTouchTeam = gameState.playerTeam end
     end)
 end
@@ -509,7 +383,7 @@ local function applyGroundPass(ball, targetPos, powerBase)
     ball.AssemblyLinearVelocity = horizDir*power + Vector3.new(0,12,0)
 end
 
--- SKILL cho AI (giữ nguyên, không có showToast)
+-- SKILL: lob ball JUST over nearest opponent's head
 local function useSkill(bot, team)
     local ball = gameState.ball
     if not ball or not bot.PrimaryPart then return false end
@@ -634,8 +508,7 @@ local function findBestPassTarget(bot)
 end
 
 local function handleBallTouch(bot)
-    if gameState.gkHolding then return end
-    if gameState.playerSkillActive then return end  -- Chặn khi player đang skill
+    if gameState.gkHolding or gameState.playerSkillActive then return end
     local ball = gameState.ball
     local team = bot.Team.Value
     local diff = getDiff(team)
@@ -678,7 +551,7 @@ local function goalkeeperPassBall(gk, ball, team)
         if tm ~= gk and tm.PrimaryPart then table.insert(candidates, {part = tm.PrimaryPart, isPlayer = false}) end
     end
     local pc = gameState.playerChar
-    if pc and gameState.playerTeam == team and not gameState.playerSuspended then
+    if pc and gameState.playerTeam == team then
         local hrp = pc:FindFirstChild("HumanoidRootPart")
         if hrp then table.insert(candidates, {part = hrp, isPlayer = true}) end
     end
@@ -719,8 +592,6 @@ end
 local function updateGoalkeeperAI(gk, dt)
     local ball = gameState.ball
     if not ball or not gk.PrimaryPart then return end
-    -- Khi player đang skill → thủ môn đứng yên, KHÔNG bắt bóng
-    if gameState.playerSkillActive then return end
     local gkId = gk:GetDebugId()
     local team = gk.Team.Value
     local diff = getDiff(team)
@@ -798,6 +669,7 @@ local function updateGoalkeeperAI(gk, dt)
             playBallTouchSound()
             gameState.gkHolding = true
             gameState.gkHoldingTeam = team
+            gameState.playerSkillActive = false  -- GK catch clears skill
             gameState.gkHoldCooldowns[gkId] = tick()+3.0
             task.spawn(function()
                 task.wait(2.0)
@@ -833,13 +705,13 @@ local function updateOutfieldAI(bot, allBots, closestBot, dt)
     local teamHasBall = gameState.lastTouchTeam == team
     local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
 
-    -- Khi player đang skill: về vị trí home, KHÔNG đuổi bóng
+    -- SKILL ACTIVE: All outfield AI return to home positions
     if gameState.playerSkillActive then
         local target = getHomePos(bot, false)
         local dir = target - botPos
         if dir.Magnitude > 3 then
             local newPos = botPos + dir.Unit*aiSpd*dt
-            moveCharacter(bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), newPos + dir.Unit)
+            moveCharacter(bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), Vector3.new(newPos.X, newPos.Y, newPos.Z+dir.Unit.Z))
         end
         return
     end
@@ -854,7 +726,7 @@ local function updateOutfieldAI(bot, allBots, closestBot, dt)
         return
     end
 
-    local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == team) and not gameState.playerSuspended
+    local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == team)
 
     if playerDribbling then
         local pc = gameState.playerChar
@@ -957,24 +829,6 @@ local function updateAILogic(dt)
     local allBots = {}
     for _, b in ipairs(gameState.redTeam) do table.insert(allBots, b) end
     for _, b in ipairs(gameState.blueTeam) do table.insert(allBots, b) end
-
-    -- ========== KHI PLAYER ĐANG SKILL: TẤT CẢ AI VỀ HOME POS ==========
-    if gameState.playerSkillActive then
-        for _, bot in ipairs(allBots) do
-            if bot.PrimaryPart then
-                local target = getHomePos(bot, false)
-                local dir = target - bot.PrimaryPart.Position
-                if dir.Magnitude > 3 then
-                    local diff = getDiff(bot.Team.Value)
-                    local newPos = bot.PrimaryPart.Position + dir.Unit * AI_SPEED * diff.speedMul * dt
-                    moveCharacter(bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), newPos + dir.Unit)
-                end
-            end
-        end
-        return
-    end
-    -- ================================================================
-
     local closestBot, minDist = nil, math.huge
     for _, bot in ipairs(allBots) do
         if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then
@@ -982,16 +836,18 @@ local function updateAILogic(dt)
             if d < minDist then minDist = d; closestBot = bot end
         end
     end
+    local skillActive = gameState.playerSkillActive
     local canTouch = tick()-gameState.lastActionTime > 0.6 and not gameState.shootCharging and not gameState.knuckleCharging
-    if gameState.gkHolding or gameState.playerDribbling then canTouch = false end
+    if gameState.gkHolding or gameState.playerDribbling or skillActive then canTouch = false end
     for _, bot in ipairs(allBots) do
         if bot.PrimaryPart then
             if bot.Role.Value == "Goalkeeper" then
                 updateGoalkeeperAI(bot, dt)
             else
-                local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value) and not gameState.playerSuspended
+                local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value)
                 local isStriker = bot.Role.Value == "Striker"
                 local shouldChase = bot == closestBot and not canTouch and not playerDribbling
+                if skillActive then shouldChase = false end
                 if isStriker and (bot.PrimaryPart.Position-ball.Position).Magnitude > 60 then shouldChase = false end
                 if gameState.gkHolding then shouldChase = false end
                 if shouldChase then
@@ -1009,7 +865,8 @@ local function updateAILogic(dt)
             end
         end
     end
-    
+
+    -- Anti-collision between same team
     for i = 1, #allBots do
         local b1 = allBots[i]
         if b1.PrimaryPart then
@@ -1037,7 +894,7 @@ local function checkInterception()
     local ball = gameState.ball
     if not ball or gameState.gkHolding or gameState.shootCharging or gameState.knuckleCharging then return end
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown > 0 then return end
-    if gameState.playerSkillActive then return end  -- Chặn khi player đang skill
+    if gameState.playerSkillActive then return end
     local speed = ball.AssemblyLinearVelocity.Magnitude
     local isDribbled = gameState.playerDribbling
     if speed < 20 and not isDribbled then return end
@@ -1069,11 +926,7 @@ local function checkInterception()
 end
 
 local function updatePlayerDribble(dt)
-    if gameState.playerSuspended or gameState.playerCard == "red" or gameState.inPenaltyShootout or gameState.celebrating then
-        gameState.playerDribbling = false
-        return
-    end
-    if gameState.playerSkillActive then
+    if gameState.inPenaltyShootout or gameState.celebrating then
         gameState.playerDribbling = false
         return
     end
@@ -1092,20 +945,22 @@ local function updatePlayerDribble(dt)
 end
 
 local function doDribble()
-    if not canPlayerTouchBall() or gameState.inPenaltyShootout or gameState.celebrating then return end
-    if gameState.playerSkillActive then return end
+    if gameState.inPenaltyShootout or gameState.celebrating then return end
     local char = gameState.playerChar
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
     if not hrp or not ball or (hrp.Position-ball.Position).Magnitude > 20 then return end
+    -- If skill was active, cancel skill and start dribbling
+    if gameState.playerSkillActive then
+        gameState.playerSkillActive = false
+    end
     gameState.playerDribbling = true
     gameState.lastTouchTeam = gameState.playerTeam
     playBallTouchSound()
 end
 
 local function doPlayerSkill()
-    if gameState.playerSuspended or gameState.playerCard == "red" then return end
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     if tick() - gameState.playerSkillCooldown < 8 then return end
     local char = gameState.playerChar
@@ -1117,15 +972,14 @@ local function doPlayerSkill()
     gameState.playerSkillCooldown = tick()
     gameState.playerSkillActive = true
     gameState.playerDribbling = false
-    -- Fixed lob: only ~12 studs high, just over opponent head
+    -- Lob ball just over opponent's head (~12 studs high)
     local forward = hrp.CFrame.LookVector
     local flat = Vector3.new(forward.X, 0, forward.Z).Unit
     ball.CFrame = CFrame.new(hrp.Position + flat*3 + Vector3.new(0, 2, 0))
     ball.AssemblyLinearVelocity = Vector3.new(flat.X * 45, 68, flat.Z * 45)
     gameState.lastTouchTeam = gameState.playerTeam
     playBallKick(ball.Position, 0.85)
-    -- ĐÃ XÓA showToast("SKILL!", ...)
-    task.delay(2.5, function() gameState.playerSkillActive = false end)
+    -- Skill lasts until GK catches, ball goes out, or player presses DRIBBLE
 end
 
 local function createFireworks(position)
@@ -1204,13 +1058,9 @@ local function resetPositions(concedingTeam)
     gameState.aiDribbleState = {}
     local pc = gameState.playerChar
     if pc and pc:FindFirstChild("HumanoidRootPart") then
-        if not gameState.playerSuspended then
-            local zOffset = (gameState.playerTeam == "Red") and -150 or 150
-            pc:PivotTo(CFrame.new(MAP_POS+Vector3.new(0,10,zOffset)))
-            updatePlayerAppearance()
-        else
-            pc:PivotTo(CFrame.new(STAND_POS))
-        end
+        local zOffset = (gameState.playerTeam == "Red") and -150 or 150
+        pc:PivotTo(CFrame.new(MAP_POS+Vector3.new(0,10,zOffset)))
+        updatePlayerAppearance()
     end
     if concedingTeam then
         local kickoffTeam = (concedingTeam == "Red") and gameState.redTeam or gameState.blueTeam
@@ -1238,7 +1088,7 @@ local function startCelebration(winningTeam)
         targetPositions[bot] = Vector3.new(centerPos.X+math.cos(angle)*6, TORSO_Y, centerPos.Z+math.sin(angle)*6)
     end
     local pc = gameState.playerChar
-    local pcIsWinner = (gameState.playerTeam == winningTeam) and not gameState.playerSuspended
+    local pcIsWinner = (gameState.playerTeam == winningTeam)
     local celebrateStart = tick()
     if gameState.celebrationConn then gameState.celebrationConn:Disconnect() end
     gameState.celebrationConn = RunService.Heartbeat:Connect(function()
@@ -1285,6 +1135,7 @@ local function runPenaltyShootout()
     gameState.inPenaltyShootout = true
     hideGoalText()
     gameState.playerDribbling = false
+    gameState.playerSkillActive = false
     local redScore, blueScore = 0, 0
     local maxRounds = 5
     local goalZRed = MAP_POS.Z + PITCH_LENGTH/2
@@ -1322,7 +1173,7 @@ local function runPenaltyShootout()
     local redUsed, blueUsed = {}, {}
     local function getShooter(team)
         local usedList = (team == "Red") and redUsed or blueUsed
-        if team == gameState.playerTeam and not gameState.playerSuspended and not usedList["player"] then
+        if team == gameState.playerTeam and not usedList["player"] then
             local pc = gameState.playerChar
             if pc and pc:FindFirstChild("HumanoidRootPart") then return {isPlayer = true, char = pc, key = "player"} end
         end
@@ -1563,6 +1414,7 @@ end
 local function onGoalScored(scoringTeam)
     if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating then return end
     gameState.goalScored = true
+    gameState.playerSkillActive = false
     if scoringTeam == "Red" then gameState.scoreRed = gameState.scoreRed + 1
     else gameState.scoreBlue = gameState.scoreBlue + 1 end
     showGoalText()
@@ -1600,11 +1452,14 @@ local function checkRules()
     if not ball or not ball.Parent or gameState.restartCooldown or not gameState.gameActive or gameState.goalScored then return end
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown > 0 then return end
     local bp = ball.Position
+    -- If ball goes out, clear skill
     if math.abs(bp.X-MAP_POS.X) > PITCH_WIDTH/2+5 then
+        gameState.playerSkillActive = false
         restart("ThrowIn", bp.X > MAP_POS.X and (PITCH_WIDTH/2-3) or (-PITCH_WIDTH/2+3))
         return
     end
     if math.abs(bp.Z-MAP_POS.Z) > PITCH_LENGTH/2+5 then
+        gameState.playerSkillActive = false
         local withinW = math.abs(bp.X-MAP_POS.X) < GOAL_WIDTH/2
         local underBar = (bp.Y-MAP_POS.Y) < (GOAL_HEIGHT+2) and (bp.Y-MAP_POS.Y) > -5
         local isFront = bp.Z < MAP_POS.Z-PITCH_LENGTH/2
@@ -1691,7 +1546,6 @@ local function createSettingsUI()
 
     local curRedColor = gameState.teamRedColor
     local curBlueColor = gameState.teamBlueColor
-
     local hRed, sRed, vRed = Color3.toHSV(curRedColor)
     local hBlue, sBlue, vBlue = Color3.toHSV(curBlueColor)
 
@@ -1705,7 +1559,7 @@ local function createSettingsUI()
     gearBtn.Font = Enum.Font.FredokaOne
     gearBtn.Parent = gui
     Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 10)
-    local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2; gs.Parent = gearBtn
+    local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2
 
     local panel = Instance.new("Frame")
     panel.Size = UDim2.new(0, 420, 0, 500)
@@ -1715,7 +1569,7 @@ local function createSettingsUI()
     panel.Visible = false
     panel.Parent = gui
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
-    local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2; ps.Parent = panel
+    local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2
 
     local title = Instance.new("TextLabel", panel)
     title.Size = UDim2.new(1, -50, 0, 30)
@@ -1734,7 +1588,6 @@ local function createSettingsUI()
     xCloseBtn.TextColor3 = Color3.new(1,1,1)
     xCloseBtn.TextScaled = true
     xCloseBtn.Font = Enum.Font.GothamBold
-    xCloseBtn.Parent = panel
     Instance.new("UICorner", xCloseBtn).CornerRadius = UDim.new(0, 8)
 
     local scroll = Instance.new("ScrollingFrame", panel)
@@ -1745,13 +1598,11 @@ local function createSettingsUI()
     scroll.ScrollBarThickness = 6
     scroll.ScrollBarImageColor3 = Color3.fromRGB(100,150,255)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 700)
-    scroll.ScrollBarImageTransparency = 0.3
 
     local preview1 = Instance.new("Frame", scroll)
     preview1.Size = UDim2.new(0, 60, 0, 22)
     preview1.Position = UDim2.new(0, 340, 0, 224)
     preview1.BackgroundColor3 = curRedColor
-    preview1.Parent = scroll
     Instance.new("UICorner", preview1).CornerRadius = UDim.new(0, 6)
     Instance.new("UIStroke", preview1).Color = Color3.new(1,1,1)
 
@@ -1759,7 +1610,6 @@ local function createSettingsUI()
     preview2.Size = UDim2.new(0, 60, 0, 22)
     preview2.Position = UDim2.new(0, 340, 0, 354)
     preview2.BackgroundColor3 = curBlueColor
-    preview2.Parent = scroll
     Instance.new("UICorner", preview2).CornerRadius = UDim.new(0, 6)
     Instance.new("UIStroke", preview2).Color = Color3.new(1,1,1)
 
@@ -1812,14 +1662,12 @@ local function createSettingsUI()
         end
         knob.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                updateFromX(input.Position.X)
+                dragging = true; updateFromX(input.Position.X)
             end
         end)
         track.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                updateFromX(input.Position.X)
+                dragging = true; updateFromX(input.Position.X)
             end
         end)
         UIS.InputChanged:Connect(function(input)
@@ -1899,7 +1747,6 @@ local function createSettingsUI()
         btn.TextColor3 = Color3.new(1,1,1)
         btn.TextScaled = true
         btn.Font = Enum.Font.FredokaOne
-        btn.Parent = redDiffRow
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
         btn.MouseButton1Click:Connect(function()
             gameState.redDifficulty = i
@@ -1934,7 +1781,6 @@ local function createSettingsUI()
         btn.TextColor3 = Color3.new(1,1,1)
         btn.TextScaled = true
         btn.Font = Enum.Font.FredokaOne
-        btn.Parent = blueDiffRow
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
         btn.MouseButton1Click:Connect(function()
             gameState.blueDifficulty = i
@@ -2012,28 +1858,19 @@ local function createSettingsUI()
         if child:IsA("TextButton") then
             local presetIdx = idx1
             child.MouseButton1Click:Connect(function()
-                hRed = presetHues[presetIdx]
-                sRed = presetSats[presetIdx]
-                vRed = presetVals[presetIdx]
-                updatePreviews()
-                setRedSat(sRed)
-                setRedVal(vRed)
+                hRed = presetHues[presetIdx]; sRed = presetSats[presetIdx]; vRed = presetVals[presetIdx]
+                updatePreviews(); setRedSat(sRed); setRedVal(vRed)
             end)
             idx1 = idx1 + 1
         end
     end
-
     local idx2 = 1
     for _, child in ipairs(row2:GetChildren()) do
         if child:IsA("TextButton") then
             local presetIdx = idx2
             child.MouseButton1Click:Connect(function()
-                hBlue = presetHues[presetIdx]
-                sBlue = presetSats[presetIdx]
-                vBlue = presetVals[presetIdx]
-                updatePreviews()
-                setBlueSat(sBlue)
-                setBlueVal(vBlue)
+                hBlue = presetHues[presetIdx]; sBlue = presetSats[presetIdx]; vBlue = presetVals[presetIdx]
+                updatePreviews(); setBlueSat(sBlue); setBlueVal(vBlue)
             end)
             idx2 = idx2 + 1
         end
@@ -2116,7 +1953,6 @@ local function createSettingsUI()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
-
     xCloseBtn.MouseButton1Click:Connect(function()
         panel.Visible = false
         gameState.settingsOpen = false
@@ -2187,19 +2023,6 @@ local function createGameUI()
     bigLabel.TextStrokeColor3 = Color3.new(0,0,0)
     bigLabel.Visible = false
     gameState.bigTextLabel = bigLabel
-
-    local cardLbl = Instance.new("TextLabel", gui)
-    cardLbl.Size = UDim2.new(0, 400, 0, 40)
-    cardLbl.Position = UDim2.new(0.5, -200, 0, 80)
-    cardLbl.BackgroundTransparency = 1
-    cardLbl.Text = ""
-    cardLbl.TextColor3 = Color3.fromRGB(255,220,0)
-    cardLbl.TextScaled = true
-    cardLbl.Font = Enum.Font.FredokaOne
-    cardLbl.TextStrokeTransparency = 0.4
-    cardLbl.TextStrokeColor3 = Color3.new(0,0,0)
-    cardLbl.Visible = false
-    gameState.cardUILabel = cardLbl
 
     task.spawn(function()
         while gui.Parent do
@@ -2278,10 +2101,11 @@ local function createGameUI()
 
     shootBtn.MouseButton1Down:Connect(function()
         if gameState.inPenaltyShootout then gameState.shootCharging = true return end
-        if not canPlayerTouchBall() or gameState.celebrating then return end
+        if gameState.celebrating then return end
         local near = getNearBall()
         if not near then return end
         stopDribble()
+        gameState.playerSkillActive = false
         gameState.shootCharging = true; gameState.shootChargePower = 0
         gameState.chargingBall = gameState.ball
         gameState.chargingOriginalPos = gameState.ball.Position
@@ -2320,10 +2144,11 @@ local function createGameUI()
 
     knuckleBtn.MouseButton1Down:Connect(function()
         if gameState.inPenaltyShootout then gameState.knuckleCharging = true return end
-        if not canPlayerTouchBall() or gameState.celebrating then return end
+        if gameState.celebrating then return end
         local near = getNearBall()
         if not near then return end
         stopDribble()
+        gameState.playerSkillActive = false
         gameState.knuckleCharging = true; gameState.knuckleChargePower = 0
         gameState.chargingBall = gameState.ball
         gameState.chargingOriginalPos = gameState.ball.Position
@@ -2359,7 +2184,6 @@ local function createGameUI()
     end)
 
     dribbleBtn.MouseButton1Click:Connect(function()
-        if not canPlayerTouchBall() then return end
         if tick()-(gameState.lastDribbleTime or 0) < 0.3 then return end
         gameState.lastDribbleTime = tick()
         doDribble()
@@ -2368,10 +2192,11 @@ local function createGameUI()
     skillBtn.MouseButton1Click:Connect(doPlayerSkill)
 
     lobBtn.MouseButton1Click:Connect(function()
-        if not canPlayerTouchBall() or gameState.inPenaltyShootout or gameState.celebrating then return end
+        if gameState.inPenaltyShootout or gameState.celebrating then return end
         local near, hrp = getNearBall()
         if near then
             stopDribble()
+            gameState.playerSkillActive = false
             gameState.lastTouchTeam = gameState.playerTeam
             playBallTouchSound()
             local closest = findNearestTeammate()
@@ -2384,10 +2209,11 @@ local function createGameUI()
     end)
 
     passBtn.MouseButton1Click:Connect(function()
-        if not canPlayerTouchBall() or gameState.inPenaltyShootout or gameState.celebrating then return end
+        if gameState.inPenaltyShootout or gameState.celebrating then return end
         local near, hrp = getNearBall()
         if near then
             stopDribble()
+            gameState.playerSkillActive = false
             gameState.lastTouchTeam = gameState.playerTeam
             playBallTouchSound()
             local closest = findNearestTeammate()
@@ -2398,13 +2224,10 @@ local function createGameUI()
     end)
 
     switchTeamBtn.MouseButton1Click:Connect(function()
-        if gameState.playerSuspended or gameState.playerCard == "red" then
-            showToast("BẠN ĐANG BỊ TREO!", Color3.fromRGB(255,50,50), 2)
-            return
-        end
         if gameState.inPenaltyShootout or gameState.celebrating then return end
         gameState.playerTeam = (gameState.playerTeam == "Red") and "Blue" or "Red"
         gameState.playerDribbling = false
+        gameState.playerSkillActive = false
         updatePlayerAppearance()
         local pc = gameState.playerChar
         if pc and pc:FindFirstChild("HumanoidRootPart") then
@@ -2438,22 +2261,13 @@ local function autoStart()
     local char = player.Character or player.CharacterAdded:Wait()
     gameState.playerChar = char
     task.wait(1)
-    savePlayerAppearance()
 
     player.CharacterAdded:Connect(function(nc)
         gameState.playerChar = nc
         gameState.sprinting = false
         gameState.playerDribbling = false
         task.wait(1)
-        savePlayerAppearance()
-        if gameState.playerSuspended then
-            restorePlayerAppearance()
-            task.wait(0.3)
-            local hrp = nc:FindFirstChild("HumanoidRootPart")
-            if hrp then hrp.CFrame = CFrame.new(STAND_POS) end
-        else
-            updatePlayerAppearance()
-        end
+        updatePlayerAppearance()
     end)
 
     createStadium()
@@ -2472,30 +2286,6 @@ local function autoStart()
     createGameUI()
     createSettingsUI()
     startTimer()
-
-    gameState.playerPushConn = RunService.Heartbeat:Connect(function()
-        if gameState.playerCard ~= "red" and not gameState.playerSuspended then return end
-        local char = gameState.playerChar
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local distX = math.abs(hrp.Position.X - MAP_POS.X)
-        local distZ = math.abs(hrp.Position.Z - MAP_POS.Z)
-        local inField = distX < PITCH_WIDTH/2+40 and distZ < PITCH_LENGTH/2+25
-        local tooLow = hrp.Position.Y < MAP_POS.Y-50
-        if inField or tooLow then
-            hrp.CFrame = CFrame.new(STAND_POS)
-            hrp.AssemblyLinearVelocity = Vector3.zero
-        end
-        if gameState.ball and gameState.ball.Parent then
-            local dTB = (hrp.Position-gameState.ball.Position).Magnitude
-            if dTB < 15 then
-                local pushDir = hrp.Position - gameState.ball.Position
-                if pushDir.Magnitude < 0.1 then pushDir = Vector3.new(1,0,0) end
-                hrp.AssemblyLinearVelocity = pushDir.Unit*100 + Vector3.new(0,20,0)
-            end
-        end
-    end)
 
     RunService.Heartbeat:Connect(function(dt)
         if (gameState.paused or gameState.restartCountdown > 0) and not gameState.inPenaltyShootout then
@@ -2520,9 +2310,11 @@ local function autoStart()
         end
     end)
 
-    print("=== WORLD CUP 2026 FINAL v10 ===")
-    print("✅ Bỏ chữ SKILL hiện giữa màn hình")
-    print("🚫 Khi player làm skill, CẢ 2 ĐỘI không thể chạm bóng")
+    print("=== WORLD CUP 2026 v10 ===")
+    print("✅ Bỏ hệ thống thẻ đỏ/vàng")
+    print("✅ SKILL không hiện chữ giữa màn hình")
+    print("✅ SKILL: đối phương + đồng đội không chạm được bóng, thủ môn vẫn chụp")
+    print("✅ Bấm DRIBBLE để kết thúc skill và cầu thủ về vị trí")
 end
 
 autoStart()
