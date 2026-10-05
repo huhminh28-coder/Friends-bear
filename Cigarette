@@ -1,0 +1,783 @@
+local player = game.Players.LocalPlayer
+local backpack = player:WaitForChild("Backpack")
+local playerGui = player:WaitForChild("PlayerGui")
+local userInput = game:GetService("UserInputService")
+local debris = game:GetService("Debris")
+local lighting = game:GetService("Lighting")
+local runService = game:GetService("RunService")
+local tweenService = game:GetService("TweenService")
+
+-- ===== STATE =====
+if not _G.CigState then
+    _G.CigState = { puffsLeft = 10, maxPuffs = 10, isLit = false, isBurnedOut = false }
+end
+local state = _G.CigState
+
+if not _G.PackState then
+    _G.PackState = { cigarettesLeft = 20, maxCigarettes = 20 }
+end
+local packState = _G.PackState
+
+local cigTool = nil
+local cigHandle = nil
+local cigEmber = nil
+local cigSmoke = nil
+local cigLight = nil
+local isHolding = false
+local lastBreathe = 0
+local PUFF_DELAY = 2
+local PUFF_COST = 1
+local touchStart = nil
+local touchStartTime = 0
+local originalSizeY = 0.7
+local smokingGui = nil
+local lightButtonGui = nil
+local addButtonGui = nil
+local packLabelGui = nil
+local lastPuffTime = tick()
+local AUTO_BURN_INTERVAL = 18
+local lastAutoBurn = tick()
+local isAnimating = false
+local isGuardRunning = false
+
+local mouthBaseC0 = CFrame.new(0, -0.35, -0.6) * CFrame.Angles(math.rad(-90), 0, 0)
+
+-- ===== FORWARD DECLARATIONS =====
+local showLightButton, hideLightButton
+local showSmokingText, hideSmokingText
+local lightCigarette, breatheSmoke
+local createCigaretteTool, updateCigaretteSize
+local applyStateToTool, burnOut, animateToMouth
+local findGripWeld, removeCigarette
+local createCigarettePack, hasCigarettePack, ensureCigarettePack
+local updatePackLabel, showPackLabel, hidePackLabel
+local showAddButton, hideAddButton
+local fadeOutSmoke
+local syncStateToTool
+
+findGripWeld = function()
+    local char = player.Character
+    if not char then return nil end
+    for _, v in pairs(char:GetDescendants()) do
+        if v:IsA("Weld") and v.Part1 == cigHandle then
+            return v
+        end
+    end
+    return nil
+end
+
+syncStateToTool = function()
+    if not cigTool or not cigTool.Parent then return end
+    cigTool:SetAttribute("PuffsLeft", state.puffsLeft)
+    cigTool:SetAttribute("IsLit", state.isLit)
+    cigTool:SetAttribute("IsBurnedOut", state.isBurnedOut)
+end
+
+-- ===== PACK LABEL =====
+showPackLabel = function()
+    if packLabelGui then packLabelGui:Destroy() end
+    packLabelGui = Instance.new("ScreenGui")
+    packLabelGui.Name = "PackLabelGui"
+    packLabelGui.ResetOnSpawn = false
+    packLabelGui.IgnoreGuiInset = true
+    packLabelGui.DisplayOrder = 45
+    packLabelGui.Parent = playerGui
+
+    local lbl = Instance.new("TextLabel", packLabelGui)
+    lbl.Name = "CountLbl"
+    lbl.Size = UDim2.new(0, 320, 0, 70)
+    lbl.Position = UDim2.new(0.5, -160, 0.05, 0)
+    lbl.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    lbl.BackgroundTransparency = 0.1
+    lbl.TextColor3 = Color3.fromRGB(100, 255, 100)
+    lbl.Font = Enum.Font.GothamBlack
+    lbl.TextSize = 36
+    lbl.Text = packState.cigarettesLeft .. " / " .. packState.maxCigarettes
+    lbl.BorderSizePixel = 0
+    Instance.new("UICorner", lbl).CornerRadius = UDim.new(0, 14)
+    local stroke = Instance.new("UIStroke", lbl)
+    stroke.Color = Color3.fromRGB(100, 255, 100)
+    stroke.Thickness = 4
+end
+
+updatePackLabel = function()
+    if not packLabelGui then return end
+    local lbl = packLabelGui:FindFirstChild("CountLbl")
+    if lbl then
+        lbl.Text = packState.cigarettesLeft .. " / " .. packState.maxCigarettes
+    end
+end
+
+hidePackLabel = function()
+    if packLabelGui then packLabelGui:Destroy() packLabelGui = nil end
+end
+
+-- ===== ADD BUTTON =====
+showAddButton = function()
+    if addButtonGui then addButtonGui:Destroy() end
+
+    addButtonGui = Instance.new("ScreenGui")
+    addButtonGui.Name = "AddButtonGui"
+    addButtonGui.ResetOnSpawn = false
+    addButtonGui.IgnoreGuiInset = true
+    addButtonGui.DisplayOrder = 55
+    addButtonGui.Parent = playerGui
+
+    local btn = Instance.new("TextButton", addButtonGui)
+    btn.Name = "AddBtn"
+    btn.Size = UDim2.new(0, 140, 0, 140)
+    btn.Position = UDim2.new(1, -160, 0.5, -70)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 130, 60)
+    btn.Text = "ADD"
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.GothamBlack
+    btn.TextSize = 28
+    btn.BorderSizePixel = 0
+    btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+
+    local stroke = Instance.new("UIStroke", btn)
+    stroke.Color = Color3.fromRGB(100, 255, 100)
+    stroke.Thickness = 4
+
+    btn.MouseButton1Click:Connect(function()
+        createCigaretteTool()
+
+        local flash = tweenService:Create(btn, TweenInfo.new(0.1), {
+            BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+        })
+        flash:Play()
+        task.delay(0.1, function()
+            if btn and btn.Parent then
+                tweenService:Create(btn, TweenInfo.new(0.3), {
+                    BackgroundColor3 = Color3.fromRGB(40, 130, 60)
+                }):Play()
+            end
+        end)
+
+        local toast = Instance.new("TextLabel", addButtonGui)
+        toast.Size = UDim2.new(0, 260, 0, 45)
+        toast.Position = UDim2.new(0.5, -130, 0.4, 0)
+        toast.BackgroundColor3 = Color3.fromRGB(30, 150, 60)
+        toast.BackgroundTransparency = 0.15
+        toast.Text = "Cigarette added!"
+        toast.TextColor3 = Color3.new(1, 1, 1)
+        toast.Font = Enum.Font.GothamBold
+        toast.TextSize = 18
+        Instance.new("UICorner", toast).CornerRadius = UDim.new(0, 10)
+        task.delay(1.5, function()
+            if toast then toast:Destroy() end
+        end)
+    end)
+end
+
+hideAddButton = function()
+    if addButtonGui then
+        addButtonGui:Destroy()
+        addButtonGui = nil
+    end
+end
+
+-- ===== CHECK IF PACK EXISTS =====
+hasCigarettePack = function()
+    for _, obj in ipairs(backpack:GetChildren()) do
+        if obj:IsA("Tool") and obj.Name == "CigarettePack" then return true end
+    end
+    local char = player.Character
+    if char then
+        for _, obj in ipairs(char:GetChildren()) do
+            if obj:IsA("Tool") and obj.Name == "CigarettePack" then return true end
+        end
+    end
+    return false
+end
+
+-- ===== REMOVE CIGARETTE =====
+removeCigarette = function()
+    for _, obj in ipairs(backpack:GetChildren()) do
+        if obj:IsA("Tool") and obj.Name == "Cigarette" then obj:Destroy() end
+    end
+    local char = player.Character
+    if char then
+        for _, obj in ipairs(char:GetChildren()) do
+            if obj:IsA("Tool") and obj.Name == "Cigarette" then obj:Destroy() end
+        end
+    end
+
+    cigTool = nil
+    cigHandle = nil
+    cigEmber = nil
+    cigSmoke = nil
+    cigLight = nil
+    isHolding = false
+    isAnimating = false
+
+    state.puffsLeft = state.maxPuffs
+    state.isLit = false
+    state.isBurnedOut = false
+
+    hideSmokingText()
+    hideLightButton()
+end
+
+-- ===== FADE OUT SMOKE (legacy for the built-in Smoke object) =====
+fadeOutSmoke = function(smokeInstance, duration)
+    if not smokeInstance or not smokeInstance.Parent then return end
+    duration = duration or 3
+
+    local startOpacity = smokeInstance.Opacity
+    local startSize = smokeInstance.Size
+
+    local t0 = tick()
+    task.spawn(function()
+        while tick() - t0 < duration do
+            if not smokeInstance or not smokeInstance.Parent then return end
+            local alpha = (tick() - t0) / duration
+            smokeInstance.Opacity = startOpacity * (1 - alpha)
+            smokeInstance.Size = startSize * (1 + alpha * 1.5)
+            smokeInstance.RiseVelocity = 2 * (1 - alpha) + 0.5
+            task.wait(0.05)
+        end
+        if smokeInstance and smokeInstance.Parent then
+            smokeInstance.Enabled = false
+            task.wait(0.5)
+            if smokeInstance and smokeInstance.Parent then
+                smokeInstance:Destroy()
+            end
+        end
+    end)
+end
+
+-- ===== CREATE CIGARETTE TOOL =====
+createCigaretteTool = function()
+    local newCig = Instance.new("Tool")
+    newCig.Name = "Cigarette"
+    newCig.RequiresHandle = true
+    newCig.CanBeDropped = false
+    newCig.ToolTip = "Equip to hold"
+
+    newCig:SetAttribute("PuffsLeft", state.maxPuffs)
+    newCig:SetAttribute("IsLit", false)
+    newCig:SetAttribute("IsBurnedOut", false)
+
+    local newHandle = Instance.new("Part")
+    newHandle.Name = "Handle"
+    newHandle.Size = Vector3.new(0.15, originalSizeY, 0.15)
+    newHandle.Color = Color3.fromRGB(240, 240, 240)
+    newHandle.Material = Enum.Material.SmoothPlastic
+    newHandle.CanCollide = false
+    newHandle.Parent = newCig
+
+    local newFilter = Instance.new("Part")
+    newFilter.Name = "Filter"
+    newFilter.Size = Vector3.new(0.16, 0.2, 0.16)
+    newFilter.Color = Color3.fromRGB(220, 180, 90)
+    newFilter.Material = Enum.Material.SmoothPlastic
+    newFilter.CanCollide = false
+    newFilter.Parent = newCig
+
+    local filterWeld = Instance.new("Weld")
+    filterWeld.Part0 = newHandle
+    filterWeld.Part1 = newFilter
+    filterWeld.C0 = CFrame.new(0, -originalSizeY / 2 - newFilter.Size.Y / 2, 0)
+    filterWeld.Parent = newFilter
+
+    local newEmber = Instance.new("Part")
+    newEmber.Name = "Ember"
+    newEmber.Size = Vector3.new(0.13, 0.08, 0.13)
+    newEmber.Color = Color3.fromRGB(255, 100, 0)
+    newEmber.Material = Enum.Material.Neon
+    newEmber.CanCollide = false
+    newEmber.Transparency = 1
+    newEmber.Parent = newCig
+
+    local emberWeld = Instance.new("Weld")
+    emberWeld.Part0 = newHandle
+    emberWeld.Part1 = newEmber
+    emberWeld.C0 = CFrame.new(0, originalSizeY / 2, 0)
+    emberWeld.Parent = newEmber
+
+    local newSmoke = Instance.new("Smoke")
+    newSmoke.Size = 1
+    newSmoke.RiseVelocity = 2
+    newSmoke.Opacity = 0.5
+    newSmoke.Color = Color3.fromRGB(200, 200, 200)
+    newSmoke.Enabled = false
+    newSmoke.Parent = newHandle
+
+    local newLight = Instance.new("PointLight")
+    newLight.Color = Color3.fromRGB(255, 100, 0)
+    newLight.Range = 1.5
+    newLight.Brightness = 0.5
+    newLight.Enabled = false
+    newLight.Parent = newEmber
+
+    newCig.Parent = backpack
+
+    newCig.Equipped:Connect(function()
+        cigTool = newCig
+        cigHandle = newHandle
+        cigEmber = newEmber
+        cigSmoke = newSmoke
+        cigLight = newLight
+
+        state.puffsLeft = newCig:GetAttribute("PuffsLeft") or state.maxPuffs
+        state.isLit = newCig:GetAttribute("IsLit") or false
+        state.isBurnedOut = newCig:GetAttribute("IsBurnedOut") or false
+
+        isHolding = true
+        applyStateToTool()
+    end)
+
+    newCig.Unequipped:Connect(function()
+        if newCig and newCig.Parent then
+            newCig:SetAttribute("PuffsLeft", state.puffsLeft)
+            newCig:SetAttribute("IsLit", state.isLit)
+            newCig:SetAttribute("IsBurnedOut", state.isBurnedOut)
+        end
+
+        isHolding = false
+        hideSmokingText()
+        hideLightButton()
+    end)
+
+    return newCig
+end
+
+-- ===== CREATE CIGARETTE PACK =====
+createCigarettePack = function()
+    local packTool = Instance.new("Tool")
+    packTool.Name = "CigarettePack"
+    packTool.RequiresHandle = true
+    packTool.CanBeDropped = false
+    packTool.ToolTip = "Equip and click to take a cigarette"
+
+    local packHandle = Instance.new("Part")
+    packHandle.Name = "Handle"
+    packHandle.Size = Vector3.new(0.7, 1.1, 0.25)
+    packHandle.Color = Color3.fromRGB(245, 245, 245)
+    packHandle.Material = Enum.Material.SmoothPlastic
+    packHandle.CanCollide = false
+    packHandle.Parent = packTool
+
+    local stripe = Instance.new("Part")
+    stripe.Name = "Stripe"
+    stripe.Size = Vector3.new(0.72, 0.25, 0.27)
+    stripe.Color = Color3.fromRGB(200, 30, 30)
+    stripe.Material = Enum.Material.SmoothPlastic
+    stripe.CanCollide = false
+    stripe.Parent = packTool
+
+    local lid = Instance.new("Part")
+    lid.Name = "Lid"
+    lid.Size = Vector3.new(0.7, 0.2, 0.25)
+    lid.Color = Color3.fromRGB(220, 220, 220)
+    lid.Material = Enum.Material.SmoothPlastic
+    lid.CanCollide = false
+    lid.Parent = packTool
+
+    local stripeWeld = Instance.new("Weld")
+    stripeWeld.Part0 = packHandle
+    stripeWeld.Part1 = stripe
+    stripeWeld.C0 = CFrame.new(0, -0.15, 0)
+    stripeWeld.Parent = stripe
+
+    local lidWeld = Instance.new("Weld")
+    lidWeld.Part0 = packHandle
+    lidWeld.Part1 = lid
+    lidWeld.C0 = CFrame.new(0, 0.65, 0)
+    lidWeld.Parent = lid
+
+    packTool.Parent = backpack
+
+    packTool.Equipped:Connect(function()
+        showPackLabel()
+        updatePackLabel()
+        showAddButton()
+    end)
+
+    packTool.Unequipped:Connect(function()
+        hidePackLabel()
+        hideAddButton()
+    end)
+
+    packTool.Activated:Connect(function()
+        if packState.cigarettesLeft <= 0 then return end
+
+        packState.cigarettesLeft = packState.cigarettesLeft - 1
+        updatePackLabel()
+
+        createCigaretteTool()
+        task.wait(0.1)
+        local newCig = backpack:FindFirstChild("Cigarette")
+        if newCig and player.Character then
+            player.Character.Humanoid:EquipTool(newCig)
+        end
+    end)
+
+    return packTool
+end
+
+ensureCigarettePack = function()
+    if not hasCigarettePack() then createCigarettePack() end
+end
+
+-- ===== CIGARETTE LOGIC =====
+applyStateToTool = function()
+    if not cigTool then return end
+    if state.isBurnedOut then
+        hideLightButton()
+        updateCigaretteSize()
+        if cigEmber then cigEmber.Transparency = 1 end
+        if cigSmoke then fadeOutSmoke(cigSmoke, 3) end
+        if cigLight then cigLight.Enabled = false end
+    elseif state.isLit then
+        hideLightButton()
+        updateCigaretteSize()
+        if cigEmber then cigEmber.Transparency = 0 end
+        if cigSmoke then
+            cigSmoke.Enabled = true
+            cigSmoke.Opacity = 0.5
+            cigSmoke.Size = 1
+        end
+        if cigLight then cigLight.Enabled = true end
+    else
+        if isHolding then showLightButton() end
+        updateCigaretteSize()
+        if cigEmber then cigEmber.Transparency = 1 end
+        if cigSmoke then fadeOutSmoke(cigSmoke, 3) end
+        if cigLight then cigLight.Enabled = false end
+    end
+end
+
+updateCigaretteSize = function()
+    if not cigHandle or not cigEmber or not cigTool then return end
+    local ratio = math.clamp(state.puffsLeft / state.maxPuffs, 0, 1)
+    local newSizeY = math.max(0.05, originalSizeY * ratio)
+    cigHandle.Size = Vector3.new(cigHandle.Size.X, newSizeY, cigHandle.Size.Z)
+    local filter = cigTool:FindFirstChild("Filter")
+    if filter then
+        local fw = filter:FindFirstChildOfClass("Weld")
+        if fw then fw.C0 = CFrame.new(0, -newSizeY / 2 - filter.Size.Y / 2, 0) end
+    end
+    local ew = cigEmber:FindFirstChildOfClass("Weld")
+    if ew then ew.C0 = CFrame.new(0, newSizeY / 2, 0) end
+end
+
+burnOut = function()
+    state.isLit = false
+    state.isBurnedOut = true
+    state.puffsLeft = 0
+    if cigLight then cigLight.Enabled = false end
+    if cigEmber then cigEmber.Transparency = 1 end
+    if cigSmoke then fadeOutSmoke(cigSmoke, 3) end
+    hideSmokingText()
+    hideLightButton()
+
+    local dyingTool = cigTool
+    if dyingTool then
+        dyingTool:SetAttribute("PuffsLeft", 0)
+        dyingTool:SetAttribute("IsLit", false)
+        dyingTool:SetAttribute("IsBurnedOut", true)
+    end
+
+    task.delay(3.5, function()
+        if dyingTool then
+            pcall(function() dyingTool:Destroy() end)
+        end
+        if cigTool == dyingTool then
+            cigTool = nil
+            cigHandle = nil
+            cigEmber = nil
+            cigSmoke = nil
+            cigLight = nil
+            isHolding = false
+        end
+    end)
+end
+
+showLightButton = function()
+    if lightButtonGui then lightButtonGui:Destroy() end
+    lightButtonGui = Instance.new("ScreenGui")
+    lightButtonGui.Name = "LightButtonGui"
+    lightButtonGui.ResetOnSpawn = false
+    lightButtonGui.DisplayOrder = 50
+    lightButtonGui.Parent = playerGui
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 90, 0, 90)
+    btn.Position = UDim2.new(0.8, -45, 0.25, 0)
+    btn.Text = "Lighter"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 16
+    btn.Font = Enum.Font.SourceSansBold
+    btn.BackgroundColor3 = Color3.fromRGB(200, 80, 40)
+    btn.BorderSizePixel = 0
+    btn.Parent = lightButtonGui
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+
+    btn.MouseButton1Click:Connect(function()
+        if isHolding and not state.isLit and not state.isBurnedOut then
+            lightCigarette()
+            hideLightButton()
+        end
+    end)
+    btn.TouchBegan:Connect(function()
+        if isHolding and not state.isLit and not state.isBurnedOut then
+            lightCigarette()
+            hideLightButton()
+        end
+    end)
+end
+
+hideLightButton = function()
+    if lightButtonGui then lightButtonGui:Destroy() lightButtonGui = nil end
+end
+
+lightCigarette = function()
+    if not cigTool or cigTool.Parent ~= player.Character then return end
+    if state.isLit or state.isBurnedOut then return end
+    state.isLit = true
+    lastPuffTime = tick()
+    lastAutoBurn = tick()
+    if cigEmber then cigEmber.Transparency = 0 end
+    if cigSmoke then
+        cigSmoke.Enabled = true
+        cigSmoke.Opacity = 0.5
+        cigSmoke.Size = 1
+    end
+    if cigLight then cigLight.Enabled = true end
+    syncStateToTool()
+end
+
+showSmokingText = function()
+    if smokingGui then smokingGui:Destroy() end
+    smokingGui = Instance.new("ScreenGui")
+    smokingGui.Name = "SmokingText"
+    smokingGui.ResetOnSpawn = false
+    smokingGui.IgnoreGuiInset = true
+    smokingGui.DisplayOrder = 100
+    smokingGui.Parent = playerGui
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0, 200, 0, 40)
+    label.Position = UDim2.new(0.5, -100, 0.05, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "Smoking"
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextSize = 28
+    label.Font = Enum.Font.SourceSansBold
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.TextStrokeTransparency = 0.3
+    label.Parent = smokingGui
+
+    task.delay(2, function() hideSmokingText() end)
+end
+
+hideSmokingText = function()
+    if smokingGui then smokingGui:Destroy() smokingGui = nil end
+end
+
+-- ===== BREATHE SMOKE - NATIVE TEXTURE, GRADUAL FADE =====
+breatheSmoke = function()
+    if not state.isLit then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+
+    -- Attachment at mouth
+    local att = Instance.new("Attachment", head)
+    att.Name = "ExhaleAttachment"
+    att.Position = Vector3.new(0, -0.45, -0.6)
+
+    -- ParticleEmitter with native texture
+    local particle = Instance.new("ParticleEmitter", att)
+    particle.Texture = "rbxasset://textures/particles/smoke_main.dds"
+    particle.Color = ColorSequence.new(Color3.new(1, 1, 1))
+
+    -- GRADUAL FADE: transparency starts low (visible) and ends high (invisible) over particle lifetime
+    particle.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.15),   -- fresh: mostly visible
+        NumberSequenceKeypoint.new(0.4, 0.5),  -- mid: half faded
+        NumberSequenceKeypoint.new(0.8, 0.85), -- old: mostly faded
+        NumberSequenceKeypoint.new(1, 1)       -- end: fully invisible
+    })
+
+    -- Size grows as it ages (puff expands)
+    particle.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.5),
+        NumberSequenceKeypoint.new(1, 3)
+    })
+
+    particle.LightInfluence = 0
+    particle.Rate = 100
+    particle.Lifetime = NumberRange.new(2, 3) -- longer life = more fade time
+    particle.Speed = NumberRange.new(3, 5)
+    particle.EmissionDirection = Enum.NormalId.Front
+    particle.SpreadAngle = Vector2.new(20, 20)
+
+    -- Emission burst then stop, particles fade on their own
+    task.spawn(function()
+        task.wait(0.8)           -- emit for 0.8s
+        particle.Rate = 0        -- stop emitting new particles
+        particle.Enabled = false -- also disable to be safe
+
+        -- Wait for the last particles to fully fade (lifetime is up to 3s)
+        task.wait(3.5)
+
+        if particle and particle.Parent then particle:Destroy() end
+        if att and att.Parent then att:Destroy() end
+    end)
+end
+
+-- ===== ANIMATION =====
+animateToMouth = function()
+    if isAnimating then return end
+    local char = player.Character
+    if not char then return end
+    local head = char:FindFirstChild("Head")
+    if not head then return end
+    if not cigHandle or not cigHandle.Parent then return end
+
+    local gw = findGripWeld()
+    if not gw then return end
+
+    isAnimating = true
+    local originalPart0, originalC0, originalC1 = gw.Part0, gw.C0, gw.C1
+    local newSizeY = cigHandle.Size.Y
+
+    gw.Part0 = head
+    gw.C1 = CFrame.new(0, -newSizeY / 2, 0)
+    local startC0 = mouthBaseC0 * CFrame.new(0, -0.6, -0.8) * CFrame.Angles(math.rad(20), 0, 0)
+    local endC0 = mouthBaseC0
+    gw.C0 = startC0
+
+    local tween = tweenService:Create(gw, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {C0 = endC0})
+    tween:Play()
+    tween.Completed:Wait()
+
+    task.wait(1.2)
+
+    local backTween = tweenService:Create(gw, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {C0 = startC0})
+    backTween:Play()
+    backTween.Completed:Wait()
+
+    if gw and gw.Parent then
+        gw.Part0 = originalPart0
+        gw.C0 = originalC0
+        gw.C1 = originalC1
+    end
+    isAnimating = false
+end
+
+local function takePuff()
+    if not state.isLit then return end
+    state.puffsLeft = state.puffsLeft - PUFF_COST
+    lastPuffTime = tick()
+    lastAutoBurn = tick()
+    if state.puffsLeft < 0 then state.puffsLeft = 0 end
+    updateCigaretteSize()
+    syncStateToTool()
+    if state.puffsLeft <= 0 then burnOut() end
+end
+
+local function updateAutoBurn()
+    if not state.isLit then lastAutoBurn = tick() return end
+    if tick() - lastAutoBurn >= AUTO_BURN_INTERVAL then
+        lastAutoBurn = tick()
+        state.puffsLeft = state.puffsLeft - 1
+        if state.puffsLeft < 0 then state.puffsLeft = 0 end
+        updateCigaretteSize()
+        syncStateToTool()
+        if state.puffsLeft <= 0 then burnOut() end
+    end
+end
+
+userInput.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+        touchStart = input.Position
+        touchStartTime = tick()
+    end
+end)
+
+userInput.InputEnded:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType ~= Enum.UserInputType.Touch and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    if not touchStart then return end
+
+    local endPos = input.Position
+    local duration = tick() - touchStartTime
+    local distance = (endPos - touchStart).Magnitude
+    touchStart = nil
+
+    if not cigTool or cigTool.Parent ~= player.Character then return end
+    if not state.isLit or isAnimating then return end
+
+    if duration < 0.25 and distance < 20 then
+        local now = tick()
+        if now - lastBreathe < PUFF_DELAY then return end
+        lastBreathe = now
+        breatheSmoke()
+        showSmokingText()
+        task.spawn(animateToMouth)
+        takePuff()
+    end
+end)
+
+userInput.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.F then
+        if cigTool and cigTool.Parent == player.Character and state.isLit and not isAnimating then
+            local now = tick()
+            if now - lastBreathe < PUFF_DELAY then return end
+            lastBreathe = now
+            breatheSmoke()
+            showSmokingText()
+            task.spawn(animateToMouth)
+            takePuff()
+        end
+    end
+end)
+
+runService.Heartbeat:Connect(function()
+    updateAutoBurn()
+end)
+
+-- ===== GUARD LOOP =====
+local function startPackGuard(duration)
+    if isGuardRunning then return end
+    isGuardRunning = true
+    task.spawn(function()
+        local endTime = tick() + duration
+        while tick() < endTime do
+            ensureCigarettePack()
+            task.wait(0.25)
+        end
+        isGuardRunning = false
+    end)
+end
+
+-- ===== INITIAL SETUP =====
+if player.Character then
+    task.wait(1)
+    ensureCigarettePack()
+end
+
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    ensureCigarettePack()
+    startPackGuard(3)
+    hidePackLabel()
+    hideAddButton()
+end)
+
+backpack.ChildRemoved:Connect(function(child)
+    if child:IsA("Tool") and child.Name == "CigarettePack" then
+        task.wait(0.1)
+        if not hasCigarettePack() then ensureCigarettePack() end
+    end
+end)
+
+print("[Axiom] Loaded. Smoke fades gradually via transparency NumberSequence.")
