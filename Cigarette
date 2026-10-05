@@ -220,7 +220,7 @@ removeCigarette = function()
     hideLightButton()
 end
 
--- ===== FADE OUT SMOKE (legacy for the built-in Smoke object) =====
+-- ===== FADE OUT SMOKE =====
 fadeOutSmoke = function(smokeInstance, duration)
     if not smokeInstance or not smokeInstance.Parent then return end
     duration = duration or 3
@@ -578,7 +578,7 @@ hideSmokingText = function()
     if smokingGui then smokingGui:Destroy() smokingGui = nil end
 end
 
--- ===== BREATHE SMOKE - NATIVE TEXTURE, GRADUAL FADE =====
+-- ===== BREATHE SMOKE =====
 breatheSmoke = function()
     if not state.isLit then return end
     local char = player.Character
@@ -596,15 +596,15 @@ breatheSmoke = function()
     particle.Texture = "rbxasset://textures/particles/smoke_main.dds"
     particle.Color = ColorSequence.new(Color3.new(1, 1, 1))
 
-    -- GRADUAL FADE: transparency starts low (visible) and ends high (invisible) over particle lifetime
+    -- GRADUAL FADE
     particle.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.15),   -- fresh: mostly visible
-        NumberSequenceKeypoint.new(0.4, 0.5),  -- mid: half faded
-        NumberSequenceKeypoint.new(0.8, 0.85), -- old: mostly faded
-        NumberSequenceKeypoint.new(1, 1)       -- end: fully invisible
+        NumberSequenceKeypoint.new(0, 0.15),
+        NumberSequenceKeypoint.new(0.4, 0.5),
+        NumberSequenceKeypoint.new(0.8, 0.85),
+        NumberSequenceKeypoint.new(1, 1)
     })
 
-    -- Size grows as it ages (puff expands)
+    -- Size grows as it ages
     particle.Size = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 0.5),
         NumberSequenceKeypoint.new(1, 3)
@@ -612,18 +612,17 @@ breatheSmoke = function()
 
     particle.LightInfluence = 0
     particle.Rate = 100
-    particle.Lifetime = NumberRange.new(2, 3) -- longer life = more fade time
+    particle.Lifetime = NumberRange.new(2, 3)
     particle.Speed = NumberRange.new(3, 5)
     particle.EmissionDirection = Enum.NormalId.Front
     particle.SpreadAngle = Vector2.new(20, 20)
 
-    -- Emission burst then stop, particles fade on their own
+    -- Emission burst then stop
     task.spawn(function()
-        task.wait(0.8)           -- emit for 0.8s
-        particle.Rate = 0        -- stop emitting new particles
-        particle.Enabled = false -- also disable to be safe
+        task.wait(0.8)
+        particle.Rate = 0
+        particle.Enabled = false
 
-        -- Wait for the last particles to fully fade (lifetime is up to 3s)
         task.wait(3.5)
 
         if particle and particle.Parent then particle:Destroy() end
@@ -661,7 +660,7 @@ animateToMouth = function()
 
     local backTween = tweenService:Create(gw, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {C0 = startC0})
     backTween:Play()
-    backTween.Completed:Wait()
+    backTween:Completed:Wait()
 
     if gw and gw.Parent then
         gw.Part0 = originalPart0
@@ -719,10 +718,16 @@ userInput.InputEnded:Connect(function(input, gameProcessed)
         local now = tick()
         if now - lastBreathe < PUFF_DELAY then return end
         lastBreathe = now
-        breatheSmoke()
-        showSmokingText()
+        
+        -- Thực hiện hành động đưa thuốc lên miệng và trừ puff ngay lập tức
         task.spawn(animateToMouth)
         takePuff()
+        
+        -- Đợi 2 giây rồi mới nhả khói
+        task.delay(2, function()
+            breatheSmoke()
+            showSmokingText()
+        end)
     end
 end)
 
@@ -733,10 +738,16 @@ userInput.InputBegan:Connect(function(input, gameProcessed)
             local now = tick()
             if now - lastBreathe < PUFF_DELAY then return end
             lastBreathe = now
-            breatheSmoke()
-            showSmokingText()
+            
+            -- Thực hiện hành động đưa thuốc lên miệng và trừ puff ngay lập tức
             task.spawn(animateToMouth)
             takePuff()
+            
+            -- Đợi 2 giây rồi mới nhả khói
+            task.delay(2, function()
+                breatheSmoke()
+                showSmokingText()
+            end)
         end
     end
 end)
@@ -780,4 +791,4 @@ backpack.ChildRemoved:Connect(function(child)
     end
 end)
 
-print("[Axiom] Loaded. Smoke fades gradually via transparency NumberSequence.")
+print("[Axiom] Loaded. Smoke is now delayed by 2 seconds after taking a puff.")
