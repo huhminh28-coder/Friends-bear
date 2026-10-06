@@ -193,7 +193,7 @@ hasCigarettePack = function()
     return false
 end
 
--- ===== REMOVE CIGARETTE =====
+-- ===== REMOVE CIGARETTE ONLY (KEEP PACK) =====
 removeCigarette = function()
     for _, obj in ipairs(backpack:GetChildren()) do
         if obj:IsA("Tool") and obj.Name == "Cigarette" then obj:Destroy() end
@@ -221,7 +221,7 @@ removeCigarette = function()
     hideLightButton()
 end
 
--- ===== FADE OUT SMOKE (legacy) =====
+-- ===== FADE OUT SMOKE =====
 fadeOutSmoke = function(smokeInstance, duration)
     if not smokeInstance or not smokeInstance.Parent then return end
     duration = duration or 3
@@ -249,7 +249,7 @@ fadeOutSmoke = function(smokeInstance, duration)
     end)
 end
 
--- ===== CREATE CIGARETTE TOOL =====
+-- ===== CREATE CIGARETTE TOOL (WITH ENHANCED LIGHT) =====
 createCigaretteTool = function()
     local newCig = Instance.new("Tool")
     newCig.Name = "Cigarette"
@@ -298,6 +298,36 @@ createCigaretteTool = function()
     emberWeld.C0 = CFrame.new(0, originalSizeY / 2, 0)
     emberWeld.Parent = newEmber
 
+    -- ENHANCED LIGHT (brighter, larger range, warm color)
+    local newLight = Instance.new("PointLight")
+    newLight.Color = Color3.fromRGB(255, 120, 40)
+    newLight.Range = 12
+    newLight.Brightness = 3
+    newLight.Enabled = false
+    newLight.Shadows = true
+    newLight.Parent = newEmber
+
+    -- Glow mesh on ember (visual halo)
+    local glowMesh = Instance.new("SpecialMesh")
+    glowMesh.MeshType = Enum.MeshType.Sphere
+    glowMesh.Scale = Vector3.new(1.6, 1.6, 1.6)
+    glowMesh.Parent = newEmber
+
+    -- Fire effect on ember
+    local fire = Instance.new("Fire")
+    fire.Color = Color3.fromRGB(255, 140, 0)
+    fire.SecondaryColor = Color3.fromRGB(255, 60, 0)
+    fire.Size = 0.8
+    fire.Heat = 0
+    fire.Enabled = false
+    fire.Parent = newEmber
+
+    -- Small sparkles
+    local sparkles = Instance.new("Sparkles")
+    sparkles.SparkleColor = Color3.fromRGB(255, 150, 50)
+    sparkles.Enabled = false
+    sparkles.Parent = newEmber
+
     local newSmoke = Instance.new("Smoke")
     newSmoke.Size = 1
     newSmoke.RiseVelocity = 2
@@ -305,13 +335,6 @@ createCigaretteTool = function()
     newSmoke.Color = Color3.fromRGB(200, 200, 200)
     newSmoke.Enabled = false
     newSmoke.Parent = newHandle
-
-    local newLight = Instance.new("PointLight")
-    newLight.Color = Color3.fromRGB(255, 100, 0)
-    newLight.Range = 1.5
-    newLight.Brightness = 0.5
-    newLight.Enabled = false
-    newLight.Parent = newEmber
 
     newCig.Parent = backpack
 
@@ -426,12 +449,17 @@ end
 -- ===== CIGARETTE LOGIC =====
 applyStateToTool = function()
     if not cigTool then return end
+    local emberFire = cigEmber and cigEmber:FindFirstChildOfClass("Fire")
+    local emberSparkles = cigEmber and cigEmber:FindFirstChildOfClass("Sparkles")
+
     if state.isBurnedOut then
         hideLightButton()
         updateCigaretteSize()
         if cigEmber then cigEmber.Transparency = 1 end
         if cigSmoke then fadeOutSmoke(cigSmoke, 3) end
         if cigLight then cigLight.Enabled = false end
+        if emberFire then emberFire.Enabled = false end
+        if emberSparkles then emberSparkles.Enabled = false end
     elseif state.isLit then
         hideLightButton()
         updateCigaretteSize()
@@ -442,12 +470,16 @@ applyStateToTool = function()
             cigSmoke.Size = 1
         end
         if cigLight then cigLight.Enabled = true end
+        if emberFire then emberFire.Enabled = true end
+        if emberSparkles then emberSparkles.Enabled = true end
     else
         if isHolding then showLightButton() end
         updateCigaretteSize()
         if cigEmber then cigEmber.Transparency = 1 end
         if cigSmoke then fadeOutSmoke(cigSmoke, 3) end
         if cigLight then cigLight.Enabled = false end
+        if emberFire then emberFire.Enabled = false end
+        if emberSparkles then emberSparkles.Enabled = false end
     end
 end
 
@@ -470,7 +502,13 @@ burnOut = function()
     state.isBurnedOut = true
     state.puffsLeft = 0
     if cigLight then cigLight.Enabled = false end
-    if cigEmber then cigEmber.Transparency = 1 end
+    if cigEmber then
+        cigEmber.Transparency = 1
+        local emberFire = cigEmber:FindFirstChildOfClass("Fire")
+        local emberSparkles = cigEmber:FindFirstChildOfClass("Sparkles")
+        if emberFire then emberFire.Enabled = false end
+        if emberSparkles then emberSparkles.Enabled = false end
+    end
     if cigSmoke then fadeOutSmoke(cigSmoke, 3) end
     hideSmokingText()
     hideLightButton()
@@ -541,7 +579,13 @@ lightCigarette = function()
     state.isLit = true
     lastPuffTime = tick()
     lastAutoBurn = tick()
-    if cigEmber then cigEmber.Transparency = 0 end
+    if cigEmber then
+        cigEmber.Transparency = 0
+        local emberFire = cigEmber:FindFirstChildOfClass("Fire")
+        local emberSparkles = cigEmber:FindFirstChildOfClass("Sparkles")
+        if emberFire then emberFire.Enabled = true end
+        if emberSparkles then emberSparkles.Enabled = true end
+    end
     if cigSmoke then
         cigSmoke.Enabled = true
         cigSmoke.Opacity = 0.5
@@ -579,7 +623,7 @@ hideSmokingText = function()
     if smokingGui then smokingGui:Destroy() smokingGui = nil end
 end
 
--- ===== BREATHE SMOKE - NATIVE TEXTURE, GRADUAL FADE =====
+-- ===== BREATHE SMOKE =====
 breatheSmoke = function()
     if not state.isLit then return end
     local char = player.Character
@@ -664,7 +708,7 @@ animateToMouth = function()
     isAnimating = false
 end
 
--- ===== PUFF LOGIC (INHALE -> SMOKE OUT) =====
+-- ===== PUFF LOGIC =====
 performPuff = function()
     if not state.isLit then return end
     if isAnimating then return end
@@ -672,15 +716,12 @@ performPuff = function()
     if now - lastBreathe < PUFF_DELAY then return end
     lastBreathe = now
 
-    -- Show "Smoking" text at the start
     showSmokingText()
 
-    -- Run animation FIRST (raise arm to mouth, inhale)
     task.spawn(function()
         animateToMouth()
     end)
 
-    -- Take the puff (reduce count) at the start
     if state.puffsLeft > 0 then
         state.puffsLeft = state.puffsLeft - PUFF_COST
         if state.puffsLeft < 0 then state.puffsLeft = 0 end
@@ -688,11 +729,9 @@ performPuff = function()
         syncStateToTool()
     end
 
-    -- AFTER animation completes (~2s), release the smoke
     task.delay(2.1, function()
         if not state.isLit then return end
         breatheSmoke()
-        -- Burn out check after this puff
         if state.puffsLeft <= 0 then
             burnOut()
         end
@@ -764,25 +803,71 @@ local function startPackGuard(duration)
     end)
 end
 
--- ===== INITIAL SETUP =====
-if player.Character then
-    task.wait(1)
-    ensureCigarettePack()
-end
+-- ===== KEEP PACK THROUGH RESPAWN =====
+local function setupForCharacter(character)
+    character:WaitForChild("Humanoid", 10)
+    character:WaitForChild("HumanoidRootPart", 10)
+    task.wait(1.5)
 
-player.CharacterAdded:Connect(function()
-    task.wait(0.5)
+    -- Remove leftover cigarettes from previous life
+    for _, obj in ipairs(backpack:GetChildren()) do
+        if obj:IsA("Tool") and obj.Name == "Cigarette" then obj:Destroy() end
+    end
+
+    -- Ensure pack exists (recreate only if missing)
     ensureCigarettePack()
-    startPackGuard(3)
+
+    -- Guard pack through 5 seconds to survive Roblox backpack reload
+    local endT = tick() + 5
+    while tick() < endT do
+        task.wait(0.25)
+        ensureCigarettePack()
+    end
+
+    state.puffsLeft = state.maxPuffs
+    state.isLit = false
+    state.isBurnedOut = false
+    isHolding = false
+    isAnimating = false
+    hideSmokingText()
+    hideLightButton()
     hidePackLabel()
     hideAddButton()
+end
+
+-- ===== INITIAL SPAWN =====
+if player.Character then
+    task.spawn(function()
+        setupForCharacter(player.Character)
+    end)
+end
+
+-- ===== ON RESPAWN =====
+player.CharacterAdded:Connect(function(character)
+    task.wait(0.3)
+    setupForCharacter(character)
 end)
 
-backpack.ChildRemoved:Connect(function(child)
-    if child:IsA("Tool") and child.Name == "CigarettePack" then
-        task.wait(0.1)
-        if not hasCigarettePack() then ensureCigarettePack() end
+-- ===== PERSISTENT WATCHDOG =====
+task.spawn(function()
+    while true do
+        task.wait(3)
+        -- Remove any cigarette that survived death
+        local char = player.Character
+        if char then
+            for _, obj in ipairs(char:GetChildren()) do
+                if obj:IsA("Tool") and obj.Name == "Cigarette" then
+                    obj:Destroy()
+                end
+            end
+        end
+        -- Ensure pack always exists
+        if not hasCigarettePack() then
+            if char and char:FindFirstChildOfClass("Humanoid") and char.Humanoid.Health > 0 then
+                ensureCigarettePack()
+            end
+        end
     end
 end)
 
-print("[Axiom] Loaded. Smoke released AFTER animation completes.")
+print("[Axiom] Loaded. Pack persists through death. Enhanced cigarette light.")
