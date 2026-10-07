@@ -1664,7 +1664,7 @@ local function startTimer()
 end
 
 -- ============================================================
--- SETTINGS UI (FIXED: Taller panel, bigger Apply/Close buttons)
+-- SETTINGS UI - RESPONSIVE (fits any screen)
 -- ============================================================
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
@@ -1690,10 +1690,11 @@ local function createSettingsUI()
     Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 10)
     local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2; gs.Parent = gearBtn
 
-    -- Panel taller: 720 (was 620)
+    -- Panel uses 95% of screen, anchored center
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 500, 0, 720)
-    panel.Position = UDim2.new(0.5, -250, 0.5, -360)
+    panel.AnchorPoint = Vector2.new(0.5, 0.5)
+    panel.Size = UDim2.new(0.95, 0, 0.95, 0)
+    panel.Position = UDim2.new(0.5, 0, 0.5, 0)
     panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     panel.BorderSizePixel = 0
     panel.Visible = false
@@ -1702,7 +1703,7 @@ local function createSettingsUI()
     local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2; ps.Parent = panel
 
     local title = Instance.new("TextLabel", panel)
-    title.Size = UDim2.new(1, -50, 0, 30)
+    title.Size = UDim2.new(1, -60, 0, 30)
     title.Position = UDim2.new(0, 0, 0, 6)
     title.BackgroundTransparency = 1
     title.Text = "MATCH SETTINGS"
@@ -1721,9 +1722,17 @@ local function createSettingsUI()
     xCloseBtn.Parent = panel
     Instance.new("UICorner", xCloseBtn).CornerRadius = UDim.new(0, 8)
 
-    -- Scroll ends 165px before bottom (was 110) to leave room for big buttons
+    -- Buttons layer at the BOTTOM of panel (fixed size)
+    local buttonBar = Instance.new("Frame", panel)
+    buttonBar.AnchorPoint = Vector2.new(0, 1)
+    buttonBar.Size = UDim2.new(1, -16, 0, 70)
+    buttonBar.Position = UDim2.new(0, 8, 1, -8)
+    buttonBar.BackgroundTransparency = 1
+    buttonBar.Parent = panel
+
+    -- Scroll fills area between title and button bar
     local scroll = Instance.new("ScrollingFrame", panel)
-    scroll.Size = UDim2.new(1, -10, 1, -165)
+    scroll.Size = UDim2.new(1, -10, 1, -130)
     scroll.Position = UDim2.new(0, 5, 0, 42)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
@@ -1731,9 +1740,13 @@ local function createSettingsUI()
     scroll.ScrollBarImageColor3 = Color3.fromRGB(100,150,255)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 1100)
 
+    -- Responsive width for inner content (uses scale not fixed px)
+    local CONTENT_W = UDim.new(1, -24)
+    local SLIDER_W = UDim.new(1, -24)
+
     local function makeSlider(parent, y, label, sliderColor, initialValue, onChange)
         local lbl = Instance.new("TextLabel", parent)
-        lbl.Size = UDim2.new(0, 460, 0, 12)
+        lbl.Size = UDim2.new(1, -24, 0, 14)
         lbl.Position = UDim2.new(0, 12, 0, y)
         lbl.BackgroundTransparency = 1
         lbl.Text = label
@@ -1742,8 +1755,8 @@ local function createSettingsUI()
         lbl.Font = Enum.Font.FredokaOne
         lbl.TextScaled = true
         local track = Instance.new("Frame", parent)
-        track.Size = UDim2.new(0, 460, 0, 14)
-        track.Position = UDim2.new(0, 12, 0, y+14)
+        track.Size = UDim2.new(1, -24, 0, 14)
+        track.Position = UDim2.new(0, 12, 0, y+16)
         track.BackgroundColor3 = Color3.fromRGB(45,45,60)
         track.BorderSizePixel = 0
         Instance.new("UICorner", track).CornerRadius = UDim.new(0, 7)
@@ -1796,7 +1809,7 @@ local function createSettingsUI()
 
     local function makeSectionHeader(parent, y, text, color)
         local h = Instance.new("TextLabel", parent)
-        h.Size = UDim2.new(0, 460, 0, 20)
+        h.Size = UDim2.new(1, -24, 0, 20)
         h.Position = UDim2.new(0, 12, 0, y)
         h.BackgroundColor3 = Color3.fromRGB(35,35,50)
         h.Text = text
@@ -1812,7 +1825,7 @@ local function createSettingsUI()
 
     local function makeDifficultyRow(parent, y, label, currentDiff, onSet)
         local lbl = Instance.new("TextLabel", parent)
-        lbl.Size = UDim2.new(0, 460, 0, 14)
+        lbl.Size = UDim2.new(1, -24, 0, 14)
         lbl.Position = UDim2.new(0, 12, 0, y)
         lbl.BackgroundTransparency = 1
         lbl.Text = label
@@ -1822,14 +1835,14 @@ local function createSettingsUI()
         lbl.TextScaled = true
 
         local row = Instance.new("Frame", parent)
-        row.Size = UDim2.new(0, 460, 0, 28)
+        row.Size = UDim2.new(1, -24, 0, 28)
         row.Position = UDim2.new(0, 12, 0, y+16)
         row.BackgroundTransparency = 1
         local btns = {}
         for i = 1, 3 do
             local btn = Instance.new("TextButton", row)
-            btn.Size = UDim2.new(0, 148, 1, 0)
-            btn.Position = UDim2.new(0, (i-1) * 154, 0, 0)
+            btn.Size = UDim2.new(0.32, -4, 1, 0)
+            btn.Position = UDim2.new((i-1) * 0.34, 0, 0, 0)
             btn.BackgroundColor3 = (currentDiff == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
             btn.Text = DIFFICULTY_LEVELS[i].name
             btn.TextColor3 = Color3.new(1,1,1)
@@ -1851,7 +1864,7 @@ local function createSettingsUI()
     makeSectionHeader(scroll, 6, "TOURNAMENT", Color3.fromRGB(255,215,0))
 
     local tourneyLbl = Instance.new("TextLabel", scroll)
-    tourneyLbl.Size = UDim2.new(0, 460, 0, 14)
+    tourneyLbl.Size = UDim2.new(1, -24, 0, 14)
     tourneyLbl.Position = UDim2.new(0, 12, 0, 30)
     tourneyLbl.BackgroundTransparency = 1
     tourneyLbl.Text = "Select Tournament:"
@@ -1862,14 +1875,14 @@ local function createSettingsUI()
 
     local tourneyNames = {"World Cup", "Champions League", "Copa America", "Euro"}
     local tourneyRow = Instance.new("Frame", scroll)
-    tourneyRow.Size = UDim2.new(0, 460, 0, 30)
+    tourneyRow.Size = UDim2.new(1, -24, 0, 30)
     tourneyRow.Position = UDim2.new(0, 12, 0, 46)
     tourneyRow.BackgroundTransparency = 1
     local tourneyBtns = {}
     for i, name in ipairs(tourneyNames) do
         local btn = Instance.new("TextButton", tourneyRow)
-        btn.Size = UDim2.new(0, 112, 1, 0)
-        btn.Position = UDim2.new(0, (i-1) * 116, 0, 0)
+        btn.Size = UDim2.new(0.24, -4, 1, 0)
+        btn.Position = UDim2.new((i-1) * 0.255, 0, 0, 0)
         btn.BackgroundColor3 = (gameState.tournamentType == name) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
         btn.Text = name
         btn.TextColor3 = Color3.new(1,1,1)
@@ -1890,17 +1903,17 @@ local function createSettingsUI()
     end
 
     local stageLbl = Instance.new("TextLabel", scroll)
-    stageLbl.Size = UDim2.new(0, 460, 0, 14)
+    stageLbl.Size = UDim2.new(1, -24, 0, 14)
     stageLbl.Position = UDim2.new(0, 12, 0, 82)
     stageLbl.BackgroundTransparency = 1
-    stageLbl.Text = "Start From Stage:"
+    stageLbl.Text = "Start From Stage (1-10):"
     stageLbl.TextColor3 = Color3.fromRGB(200,200,200)
     stageLbl.TextXAlignment = Enum.TextXAlignment.Left
     stageLbl.Font = Enum.Font.FredokaOne
     stageLbl.TextScaled = true
 
     local stageBox = Instance.new("TextBox", scroll)
-    stageBox.Size = UDim2.new(0, 220, 0, 24)
+    stageBox.Size = UDim2.new(0.48, -6, 0, 24)
     stageBox.Position = UDim2.new(0, 12, 0, 98)
     stageBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
     stageBox.Text = "1"
@@ -1910,8 +1923,8 @@ local function createSettingsUI()
     Instance.new("UICorner", stageBox).CornerRadius = UDim.new(0, 8)
 
     local matchBox = Instance.new("TextBox", scroll)
-    matchBox.Size = UDim2.new(0, 220, 0, 24)
-    matchBox.Position = UDim2.new(0, 252, 0, 98)
+    matchBox.Size = UDim2.new(0.48, -6, 0, 24)
+    matchBox.Position = UDim2.new(0.52, 0, 0, 98)
     matchBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
     matchBox.Text = "1"
     matchBox.TextColor3 = Color3.new(1,1,1)
@@ -1919,20 +1932,10 @@ local function createSettingsUI()
     matchBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", matchBox).CornerRadius = UDim.new(0, 8)
 
-    local stageHint = Instance.new("TextLabel", scroll)
-    stageHint.Size = UDim2.new(0, 460, 0, 12)
-    stageHint.Position = UDim2.new(0, 12, 0, 124)
-    stageHint.BackgroundTransparency = 1
-    stageHint.Text = "Format: [Stage] [Match In Stage]"
-    stageHint.TextColor3 = Color3.fromRGB(150,150,150)
-    stageHint.TextXAlignment = Enum.TextXAlignment.Left
-    stageHint.Font = Enum.Font.FredokaOne
-    stageHint.TextSize = 10
-
     makeSectionHeader(scroll, 142, "TEAM NAMES", Color3.fromRGB(150,200,255))
 
     local name1Lbl = Instance.new("TextLabel", scroll)
-    name1Lbl.Size = UDim2.new(0, 460, 0, 14)
+    name1Lbl.Size = UDim2.new(1, -24, 0, 14)
     name1Lbl.Position = UDim2.new(0, 12, 0, 166)
     name1Lbl.BackgroundTransparency = 1
     name1Lbl.Text = "Team Red Name:"
@@ -1942,7 +1945,7 @@ local function createSettingsUI()
     name1Lbl.TextScaled = true
 
     local teamNameBox = Instance.new("TextBox", scroll)
-    teamNameBox.Size = UDim2.new(0, 460, 0, 24)
+    teamNameBox.Size = UDim2.new(1, -24, 0, 24)
     teamNameBox.Position = UDim2.new(0, 12, 0, 182)
     teamNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
     teamNameBox.Text = gameState.teamRedName
@@ -1952,7 +1955,7 @@ local function createSettingsUI()
     Instance.new("UICorner", teamNameBox).CornerRadius = UDim.new(0, 8)
 
     local name2Lbl = Instance.new("TextLabel", scroll)
-    name2Lbl.Size = UDim2.new(0, 460, 0, 14)
+    name2Lbl.Size = UDim2.new(1, -24, 0, 14)
     name2Lbl.Position = UDim2.new(0, 12, 0, 212)
     name2Lbl.BackgroundTransparency = 1
     name2Lbl.Text = "Team Blue Name:"
@@ -1962,7 +1965,7 @@ local function createSettingsUI()
     name2Lbl.TextScaled = true
 
     local oppNameBox = Instance.new("TextBox", scroll)
-    oppNameBox.Size = UDim2.new(0, 460, 0, 24)
+    oppNameBox.Size = UDim2.new(1, -24, 0, 24)
     oppNameBox.Position = UDim2.new(0, 12, 0, 228)
     oppNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
     oppNameBox.Text = gameState.teamBlueName
@@ -2014,8 +2017,9 @@ local function createSettingsUI()
     makeSectionHeader(scroll, 728, "RED SHIRT COLOR", Color3.fromRGB(255,120,120))
 
     local preview1 = Instance.new("Frame", scroll)
+    preview1.AnchorPoint = Vector2.new(1, 0)
     preview1.Size = UDim2.new(0, 100, 0, 24)
-    preview1.Position = UDim2.new(0, 372, 0, 750)
+    preview1.Position = UDim2.new(1, -12, 0, 750)
     preview1.BackgroundColor3 = curRedColor
     preview1.Parent = scroll
     Instance.new("UICorner", preview1).CornerRadius = UDim.new(0, 6)
@@ -2025,63 +2029,64 @@ local function createSettingsUI()
     local presetVals = {1, 1, 1, 1, 1, 1, 1, 0.08}
 
     local row1 = Instance.new("Frame", scroll)
-    row1.Size = UDim2.new(0, 340, 0, 22)
+    row1.Size = UDim2.new(0.7, 0, 0, 24)
     row1.Position = UDim2.new(0, 12, 0, 752)
     row1.BackgroundTransparency = 1
     for i = 1, 8 do
         local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
         local btn = Instance.new("TextButton", row1)
-        btn.Size = UDim2.new(0, 38, 0, 22)
-        btn.Position = UDim2.new(0, (i-1)*41, 0, 0)
+        btn.Size = UDim2.new(0.115, -2, 1, 0)
+        btn.Position = UDim2.new((i-1) * 0.125, 0, 0, 0)
         btn.BackgroundColor3 = c
         btn.Text = ""
         btn.BorderSizePixel = 0
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     end
 
-    local setRedSat = makeSlider(scroll, 782, "Red Saturation:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v
+    local setRedSat = makeSlider(scroll, 786, "Red Saturation:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v
         preview1.BackgroundColor3 = Color3.fromHSV(hRed, sRed, vRed)
     end)
-    local setRedVal = makeSlider(scroll, 816, "Red Brightness:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v
+    local setRedVal = makeSlider(scroll, 822, "Red Brightness:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v
         preview1.BackgroundColor3 = Color3.fromHSV(hRed, sRed, vRed)
     end)
 
-    makeSectionHeader(scroll, 858, "BLUE SHIRT COLOR", Color3.fromRGB(120,150,255))
+    makeSectionHeader(scroll, 860, "BLUE SHIRT COLOR", Color3.fromRGB(120,150,255))
 
     local preview2 = Instance.new("Frame", scroll)
+    preview2.AnchorPoint = Vector2.new(1, 0)
     preview2.Size = UDim2.new(0, 100, 0, 24)
-    preview2.Position = UDim2.new(0, 372, 0, 880)
+    preview2.Position = UDim2.new(1, -12, 0, 882)
     preview2.BackgroundColor3 = curBlueColor
     preview2.Parent = scroll
     Instance.new("UICorner", preview2).CornerRadius = UDim.new(0, 6)
 
     local row2 = Instance.new("Frame", scroll)
-    row2.Size = UDim2.new(0, 340, 0, 22)
-    row2.Position = UDim2.new(0, 12, 0, 882)
+    row2.Size = UDim2.new(0.7, 0, 0, 24)
+    row2.Position = UDim2.new(0, 12, 0, 884)
     row2.BackgroundTransparency = 1
     for i = 1, 8 do
         local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
         local btn = Instance.new("TextButton", row2)
-        btn.Size = UDim2.new(0, 38, 0, 22)
-        btn.Position = UDim2.new(0, (i-1)*41, 0, 0)
+        btn.Size = UDim2.new(0.115, -2, 1, 0)
+        btn.Position = UDim2.new((i-1) * 0.125, 0, 0, 0)
         btn.BackgroundColor3 = c
         btn.Text = ""
         btn.BorderSizePixel = 0
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     end
 
-    local setBlueSat = makeSlider(scroll, 912, "Blue Saturation:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v
+    local setBlueSat = makeSlider(scroll, 918, "Blue Saturation:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v
         preview2.BackgroundColor3 = Color3.fromHSV(hBlue, sBlue, vBlue)
     end)
-    local setBlueVal = makeSlider(scroll, 946, "Blue Brightness:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v
+    local setBlueVal = makeSlider(scroll, 954, "Blue Brightness:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v
         preview2.BackgroundColor3 = Color3.fromHSV(hBlue, sBlue, vBlue)
     end)
 
-    makeSectionHeader(scroll, 990, "SCORE (RED - BLUE)", Color3.fromRGB(255,255,100))
+    makeSectionHeader(scroll, 992, "SCORE (RED - BLUE)", Color3.fromRGB(255,255,100))
 
     local scoreRedBox = Instance.new("TextBox", scroll)
-    scoreRedBox.Size = UDim2.new(0, 200, 0, 26)
-    scoreRedBox.Position = UDim2.new(0, 12, 0, 1014)
+    scoreRedBox.Size = UDim2.new(0.48, -6, 0, 26)
+    scoreRedBox.Position = UDim2.new(0, 12, 0, 1016)
     scoreRedBox.BackgroundColor3 = Color3.fromRGB(60,40,40)
     scoreRedBox.Text = tostring(gameState.scoreRed)
     scoreRedBox.TextColor3 = Color3.new(1,1,1)
@@ -2090,8 +2095,8 @@ local function createSettingsUI()
     Instance.new("UICorner", scoreRedBox).CornerRadius = UDim.new(0, 8)
 
     local scoreBlueBox = Instance.new("TextBox", scroll)
-    scoreBlueBox.Size = UDim2.new(0, 200, 0, 26)
-    scoreBlueBox.Position = UDim2.new(0, 272, 0, 1014)
+    scoreBlueBox.Size = UDim2.new(0.48, -6, 0, 26)
+    scoreBlueBox.Position = UDim2.new(0.52, 0, 0, 1016)
     scoreBlueBox.BackgroundColor3 = Color3.fromRGB(40,40,60)
     scoreBlueBox.Text = tostring(gameState.scoreBlue)
     scoreBlueBox.TextColor3 = Color3.new(1,1,1)
@@ -2125,11 +2130,11 @@ local function createSettingsUI()
     end
 
     -- ============================================
-    -- BIG APPLY BUTTON (taller, higher up)
+    -- APPLY & CLOSE - in fixed bottom bar, always visible
     -- ============================================
-    local applyBtn = Instance.new("TextButton", panel)
-    applyBtn.Size = UDim2.new(0, 235, 0, 75)
-    applyBtn.Position = UDim2.new(0, 8, 1, -85)
+    local applyBtn = Instance.new("TextButton", buttonBar)
+    applyBtn.Size = UDim2.new(0.49, 0, 1, 0)
+    applyBtn.Position = UDim2.new(0, 0, 0, 0)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50,200,100)
     applyBtn.Text = "APPLY"
     applyBtn.TextColor3 = Color3.new(1,1,1)
@@ -2137,7 +2142,7 @@ local function createSettingsUI()
     applyBtn.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 12)
     local applyStroke = Instance.new("UIStroke", applyBtn)
-    applyStroke.Color = Color3.fromRGB(120,255,150)
+    applyStroke.Color = Color3.fromRGB(150,255,180)
     applyStroke.Thickness = 3
 
     applyBtn.MouseButton1Click:Connect(function()
@@ -2159,12 +2164,9 @@ local function createSettingsUI()
         gameState.settingsOpen = false
     end)
 
-    -- ============================================
-    -- BIG CLOSE BUTTON (taller, higher up)
-    -- ============================================
-    local closeBtn = Instance.new("TextButton", panel)
-    closeBtn.Size = UDim2.new(0, 235, 0, 75)
-    closeBtn.Position = UDim2.new(1, -243, 1, -85)
+    local closeBtn = Instance.new("TextButton", buttonBar)
+    closeBtn.Size = UDim2.new(0.49, 0, 1, 0)
+    closeBtn.Position = UDim2.new(0.51, 0, 0, 0)
     closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
     closeBtn.Text = "CLOSE"
     closeBtn.TextColor3 = Color3.new(1,1,1)
@@ -2172,7 +2174,7 @@ local function createSettingsUI()
     closeBtn.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 12)
     local closeStroke = Instance.new("UIStroke", closeBtn)
-    closeStroke.Color = Color3.fromRGB(255,130,130)
+    closeStroke.Color = Color3.fromRGB(255,150,150)
     closeStroke.Thickness = 3
 
     closeBtn.MouseButton1Click:Connect(function()
@@ -2593,7 +2595,8 @@ local function autoStart()
     end)
 
     print("=== World Cup 2026 - Tournament Edition ===")
-    print("- Apply/Close buttons now bigger and higher")
+    print("- Settings panel now responsive - fits any screen")
+    print("- Apply/Close buttons always visible at bottom")
 end
 
 autoStart()
