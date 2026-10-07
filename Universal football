@@ -1667,6 +1667,7 @@ local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui = Instance.new("ScreenGui")
     gui.Name = "SettingsUI"; gui.ResetOnSpawn = false; gui.Parent = player.PlayerGui
+    gui.DisplayOrder = 500
     gameState.settingsUI = gui
 
     local curRedColor = gameState.teamRedColor
@@ -1683,16 +1684,18 @@ local function createSettingsUI()
     gearBtn.TextColor3 = Color3.new(1,1,1)
     gearBtn.TextScaled = true
     gearBtn.Font = Enum.Font.FredokaOne
+    gearBtn.ZIndex = 20
     gearBtn.Parent = gui
     Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 10)
     local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2; gs.Parent = gearBtn
 
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 500, 0, 620)
-    panel.Position = UDim2.new(0.5, -250, 0.5, -310)
+    panel.Size = UDim2.new(0, 500, 0, 660)
+    panel.Position = UDim2.new(0.5, -250, 0.5, -330)
     panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     panel.BorderSizePixel = 0
     panel.Visible = false
+    panel.ZIndex = 10
     panel.Parent = gui
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
     local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2; ps.Parent = panel
@@ -1705,6 +1708,7 @@ local function createSettingsUI()
     title.TextColor3 = Color3.new(1,1,1)
     title.TextScaled = true
     title.Font = Enum.Font.FredokaOne
+    title.ZIndex = 11
 
     local xCloseBtn = Instance.new("TextButton", panel)
     xCloseBtn.Size = UDim2.new(0, 36, 0, 36)
@@ -1714,17 +1718,36 @@ local function createSettingsUI()
     xCloseBtn.TextColor3 = Color3.new(1,1,1)
     xCloseBtn.TextScaled = true
     xCloseBtn.Font = Enum.Font.GothamBold
+    xCloseBtn.ZIndex = 12
     xCloseBtn.Parent = panel
     Instance.new("UICorner", xCloseBtn).CornerRadius = UDim.new(0, 8)
 
     local scroll = Instance.new("ScrollingFrame", panel)
-    scroll.Size = UDim2.new(1, -10, 1, -110)
+    scroll.Size = UDim2.new(1, -10, 1, -140)
     scroll.Position = UDim2.new(0, 5, 0, 42)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.ScrollBarThickness = 6
     scroll.ScrollBarImageColor3 = Color3.fromRGB(100,150,255)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 1100)
+    scroll.ZIndex = 10
+    scroll.Active = true
+
+    local footer = Instance.new("Frame", panel)
+    footer.Size = UDim2.new(1, 0, 0, 80)
+    footer.Position = UDim2.new(0, 0, 1, -85)
+    footer.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+    footer.BorderSizePixel = 0
+    footer.ZIndex = 14
+    footer.Parent = panel
+    Instance.new("UICorner", footer).CornerRadius = UDim.new(0, 12)
+
+    local footerLine = Instance.new("Frame", footer)
+    footerLine.Size = UDim2.new(1, -20, 0, 2)
+    footerLine.Position = UDim2.new(0, 10, 0, 0)
+    footerLine.BackgroundColor3 = Color3.fromRGB(100,150,255)
+    footerLine.BorderSizePixel = 0
+    footerLine.ZIndex = 15
 
     local function makeSlider(parent, y, label, sliderColor, initialValue, onChange)
         local lbl = Instance.new("TextLabel", parent)
@@ -1789,7 +1812,6 @@ local function createSettingsUI()
         return setValue
     end
 
-    -- Header helper
     local function makeSectionHeader(parent, y, text, color)
         local h = Instance.new("TextLabel", parent)
         h.Size = UDim2.new(0, 460, 0, 20)
@@ -1806,7 +1828,6 @@ local function createSettingsUI()
         return h
     end
 
-    -- Difficulty row helper
     local function makeDifficultyRow(parent, y, label, currentDiff, onSet)
         local lbl = Instance.new("TextLabel", parent)
         lbl.Size = UDim2.new(0, 460, 0, 14)
@@ -1845,7 +1866,6 @@ local function createSettingsUI()
         return btns
     end
 
-    -- Tournament header
     makeSectionHeader(scroll, 6, "TOURNAMENT", Color3.fromRGB(255,215,0))
 
     local tourneyLbl = Instance.new("TextLabel", scroll)
@@ -1927,7 +1947,6 @@ local function createSettingsUI()
     stageHint.Font = Enum.Font.FredokaOne
     stageHint.TextSize = 10
 
-    -- Team names header
     makeSectionHeader(scroll, 142, "TEAM NAMES", Color3.fromRGB(150,200,255))
 
     local name1Lbl = Instance.new("TextLabel", scroll)
@@ -1970,7 +1989,6 @@ local function createSettingsUI()
     oppNameBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", oppNameBox).CornerRadius = UDim.new(0, 8)
 
-    -- ===== RED DIFFICULTY =====
     makeSectionHeader(scroll, 260, "RED TEAM DIFFICULTY", Color3.fromRGB(255,120,120))
 
     local redDiffBtns = {}
@@ -1991,7 +2009,6 @@ local function createSettingsUI()
         refreshDiffStats()
     end)
 
-    -- ===== BLUE DIFFICULTY =====
     makeSectionHeader(scroll, 494, "BLUE TEAM DIFFICULTY", Color3.fromRGB(120,150,255))
 
     local blueDiffBtns = {}
@@ -2012,7 +2029,6 @@ local function createSettingsUI()
         refreshDiffStats()
     end)
 
-    -- ===== TEAM COLORS =====
     makeSectionHeader(scroll, 728, "RED SHIRT COLOR", Color3.fromRGB(255,120,120))
 
     local preview1 = Instance.new("Frame", scroll)
@@ -2079,7 +2095,6 @@ local function createSettingsUI()
         preview2.BackgroundColor3 = Color3.fromHSV(hBlue, sBlue, vBlue)
     end)
 
-    -- ===== SCORE =====
     makeSectionHeader(scroll, 990, "SCORE (RED - BLUE)", Color3.fromRGB(255,255,100))
 
     local scoreRedBox = Instance.new("TextBox", scroll)
@@ -2102,7 +2117,6 @@ local function createSettingsUI()
     scoreBlueBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", scoreBlueBox).CornerRadius = UDim.new(0, 8)
 
-    -- Color preset buttons
     local idx1 = 1
     for _, child in ipairs(row1:GetChildren()) do
         if child:IsA("TextButton") then
@@ -2128,15 +2142,31 @@ local function createSettingsUI()
         end
     end
 
-    local applyBtn = Instance.new("TextButton", panel)
-    applyBtn.Size = UDim2.new(0, 220, 0, 50)
-    applyBtn.Position = UDim2.new(0, 8, 1, -60)
+    local applyBtn = Instance.new("TextButton", footer)
+    applyBtn.Size = UDim2.new(0.48, -12, 0, 60)
+    applyBtn.Position = UDim2.new(0, 12, 0, 10)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50,200,100)
     applyBtn.Text = "APPLY"
     applyBtn.TextColor3 = Color3.new(1,1,1)
     applyBtn.TextScaled = true
     applyBtn.Font = Enum.Font.FredokaOne
+    applyBtn.ZIndex = 20
+    applyBtn.AutoButtonColor = true
+    applyBtn.Active = true
     Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 10)
+
+    local closeBtn = Instance.new("TextButton", footer)
+    closeBtn.Size = UDim2.new(0.48, -12, 0, 60)
+    closeBtn.Position = UDim2.new(0.52, 0, 0, 10)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    closeBtn.Text = "CLOSE"
+    closeBtn.TextColor3 = Color3.new(1,1,1)
+    closeBtn.TextScaled = true
+    closeBtn.Font = Enum.Font.FredokaOne
+    closeBtn.ZIndex = 20
+    closeBtn.AutoButtonColor = true
+    closeBtn.Active = true
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 
     applyBtn.MouseButton1Click:Connect(function()
         if teamNameBox.Text ~= "" then gameState.teamRedName = string.upper(teamNameBox.Text) end
@@ -2156,16 +2186,6 @@ local function createSettingsUI()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
-
-    local closeBtn = Instance.new("TextButton", panel)
-    closeBtn.Size = UDim2.new(0, 220, 0, 50)
-    closeBtn.Position = UDim2.new(1, -228, 1, -60)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    closeBtn.Text = "CLOSE"
-    closeBtn.TextColor3 = Color3.new(1,1,1)
-    closeBtn.TextScaled = true
-    closeBtn.Font = Enum.Font.FredokaOne
-    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 
     closeBtn.MouseButton1Click:Connect(function()
         panel.Visible = false
@@ -2196,7 +2216,6 @@ local function createSettingsUI()
             for j, b in ipairs(tourneyBtns) do
                 b.BackgroundColor3 = (tourneyNames[j] == gameState.tournamentType) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
             end
-            -- Refresh difficulty buttons
             for key, btnList in pairs(redDiffBtns) do
                 local sel = gameState.redDifficulty[key]
                 for j, b in ipairs(btnList) do
@@ -2586,9 +2605,7 @@ local function autoStart()
     end)
 
     print("=== World Cup 2026 - Tournament Edition ===")
-    print("- Per-category difficulty: Defense / Goalkeeper / Attack / Passing")
-    print("- Each team has its own custom difficulty settings")
-    print("- Tournament: " .. gameState.tournamentType)
+    print("- Per-category difficulty for both teams")
 end
 
 autoStart()
