@@ -1663,11 +1663,13 @@ local function startTimer()
     end)
 end
 
+-- ============================================================
+-- SETTINGS UI (FIXED: Taller panel, bigger Apply/Close buttons)
+-- ============================================================
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui = Instance.new("ScreenGui")
     gui.Name = "SettingsUI"; gui.ResetOnSpawn = false; gui.Parent = player.PlayerGui
-    gui.DisplayOrder = 500
     gameState.settingsUI = gui
 
     local curRedColor = gameState.teamRedColor
@@ -1684,18 +1686,17 @@ local function createSettingsUI()
     gearBtn.TextColor3 = Color3.new(1,1,1)
     gearBtn.TextScaled = true
     gearBtn.Font = Enum.Font.FredokaOne
-    gearBtn.ZIndex = 20
     gearBtn.Parent = gui
     Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 10)
     local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2; gs.Parent = gearBtn
 
+    -- Panel taller: 720 (was 620)
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 500, 0, 660)
-    panel.Position = UDim2.new(0.5, -250, 0.5, -330)
+    panel.Size = UDim2.new(0, 500, 0, 720)
+    panel.Position = UDim2.new(0.5, -250, 0.5, -360)
     panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
     panel.BorderSizePixel = 0
     panel.Visible = false
-    panel.ZIndex = 10
     panel.Parent = gui
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
     local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2; ps.Parent = panel
@@ -1708,7 +1709,6 @@ local function createSettingsUI()
     title.TextColor3 = Color3.new(1,1,1)
     title.TextScaled = true
     title.Font = Enum.Font.FredokaOne
-    title.ZIndex = 11
 
     local xCloseBtn = Instance.new("TextButton", panel)
     xCloseBtn.Size = UDim2.new(0, 36, 0, 36)
@@ -1718,36 +1718,18 @@ local function createSettingsUI()
     xCloseBtn.TextColor3 = Color3.new(1,1,1)
     xCloseBtn.TextScaled = true
     xCloseBtn.Font = Enum.Font.GothamBold
-    xCloseBtn.ZIndex = 12
     xCloseBtn.Parent = panel
     Instance.new("UICorner", xCloseBtn).CornerRadius = UDim.new(0, 8)
 
+    -- Scroll ends 165px before bottom (was 110) to leave room for big buttons
     local scroll = Instance.new("ScrollingFrame", panel)
-    scroll.Size = UDim2.new(1, -10, 1, -140)
+    scroll.Size = UDim2.new(1, -10, 1, -165)
     scroll.Position = UDim2.new(0, 5, 0, 42)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.ScrollBarThickness = 6
     scroll.ScrollBarImageColor3 = Color3.fromRGB(100,150,255)
     scroll.CanvasSize = UDim2.new(0, 0, 0, 1100)
-    scroll.ZIndex = 10
-    scroll.Active = true
-
-    local footer = Instance.new("Frame", panel)
-    footer.Size = UDim2.new(1, 0, 0, 80)
-    footer.Position = UDim2.new(0, 0, 1, -85)
-    footer.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
-    footer.BorderSizePixel = 0
-    footer.ZIndex = 14
-    footer.Parent = panel
-    Instance.new("UICorner", footer).CornerRadius = UDim.new(0, 12)
-
-    local footerLine = Instance.new("Frame", footer)
-    footerLine.Size = UDim2.new(1, -20, 0, 2)
-    footerLine.Position = UDim2.new(0, 10, 0, 0)
-    footerLine.BackgroundColor3 = Color3.fromRGB(100,150,255)
-    footerLine.BorderSizePixel = 0
-    footerLine.ZIndex = 15
 
     local function makeSlider(parent, y, label, sliderColor, initialValue, onChange)
         local lbl = Instance.new("TextLabel", parent)
@@ -2142,31 +2124,21 @@ local function createSettingsUI()
         end
     end
 
-    local applyBtn = Instance.new("TextButton", footer)
-    applyBtn.Size = UDim2.new(0.48, -12, 0, 60)
-    applyBtn.Position = UDim2.new(0, 12, 0, 10)
+    -- ============================================
+    -- BIG APPLY BUTTON (taller, higher up)
+    -- ============================================
+    local applyBtn = Instance.new("TextButton", panel)
+    applyBtn.Size = UDim2.new(0, 235, 0, 75)
+    applyBtn.Position = UDim2.new(0, 8, 1, -85)
     applyBtn.BackgroundColor3 = Color3.fromRGB(50,200,100)
     applyBtn.Text = "APPLY"
     applyBtn.TextColor3 = Color3.new(1,1,1)
     applyBtn.TextScaled = true
     applyBtn.Font = Enum.Font.FredokaOne
-    applyBtn.ZIndex = 20
-    applyBtn.AutoButtonColor = true
-    applyBtn.Active = true
-    Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 10)
-
-    local closeBtn = Instance.new("TextButton", footer)
-    closeBtn.Size = UDim2.new(0.48, -12, 0, 60)
-    closeBtn.Position = UDim2.new(0.52, 0, 0, 10)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    closeBtn.Text = "CLOSE"
-    closeBtn.TextColor3 = Color3.new(1,1,1)
-    closeBtn.TextScaled = true
-    closeBtn.Font = Enum.Font.FredokaOne
-    closeBtn.ZIndex = 20
-    closeBtn.AutoButtonColor = true
-    closeBtn.Active = true
-    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 12)
+    local applyStroke = Instance.new("UIStroke", applyBtn)
+    applyStroke.Color = Color3.fromRGB(120,255,150)
+    applyStroke.Thickness = 3
 
     applyBtn.MouseButton1Click:Connect(function()
         if teamNameBox.Text ~= "" then gameState.teamRedName = string.upper(teamNameBox.Text) end
@@ -2186,6 +2158,22 @@ local function createSettingsUI()
         panel.Visible = false
         gameState.settingsOpen = false
     end)
+
+    -- ============================================
+    -- BIG CLOSE BUTTON (taller, higher up)
+    -- ============================================
+    local closeBtn = Instance.new("TextButton", panel)
+    closeBtn.Size = UDim2.new(0, 235, 0, 75)
+    closeBtn.Position = UDim2.new(1, -243, 1, -85)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
+    closeBtn.Text = "CLOSE"
+    closeBtn.TextColor3 = Color3.new(1,1,1)
+    closeBtn.TextScaled = true
+    closeBtn.Font = Enum.Font.FredokaOne
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 12)
+    local closeStroke = Instance.new("UIStroke", closeBtn)
+    closeStroke.Color = Color3.fromRGB(255,130,130)
+    closeStroke.Thickness = 3
 
     closeBtn.MouseButton1Click:Connect(function()
         panel.Visible = false
@@ -2605,7 +2593,7 @@ local function autoStart()
     end)
 
     print("=== World Cup 2026 - Tournament Edition ===")
-    print("- Per-category difficulty for both teams")
+    print("- Apply/Close buttons now bigger and higher")
 end
 
 autoStart()
