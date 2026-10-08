@@ -1,4 +1,4 @@
--- World Cup 2026 | Penalty Shootout Edition | English
+-- World Cup 2026 | Advanced Edition | English
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -56,7 +56,6 @@ local DIFFICULTY_PER_CATEGORY = {
     },
 }
 
--- UPDATED: single group stage with 5 matches, then knockout
 local TOURNAMENTS = {
     ["World Cup"] = {
         stages = {"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},
@@ -79,15 +78,12 @@ local TOURNAMENTS = {
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2,
-    isExtraTime=false, extraTimeWinner=nil,
+    isExtraTime=false,
     restartCountdown=0, gameActive=false, paused=false,
     lastTouchTeam=nil, restartCooldown=false,
     ui=nil, playerTeam="Red", playerChar=nil, lastActionTime=0,
     lastInterceptCheck=0, goalScored=false, lastBallTouchSound=0,
     gkHoldCooldowns = {},
-    shootCharging=false, shootChargePower=0,
-    knuckleCharging=false, knuckleChargePower=0,
-    chargingBall=nil, chargingOriginalPos=nil,
     sprinting=false, ballIsCurving=false,
     passCooldowns={}, gkHolding=false,
     playerDribbling=false, aiDribbleState={},
@@ -97,22 +93,27 @@ local gameState = {
     teamBlueColor=Color3.fromRGB(50,50,255),
     settingsUI=nil, settingsOpen=false,
     gameButtons={},
-    lastViolationTime=0, playerPushConn=nil,
     inPenaltyShootout=false, celebrating=false, celebrationConn=nil,
     redDifficulty={defense=2, goalkeeper=2, attack=2, pass=2},
     blueDifficulty={defense=2, goalkeeper=2, attack=2, pass=2},
     redDiffStats=nil, blueDiffStats=nil,
     playerSkillActive=false,
     aiSkillActive={},
-    shotDirection=nil, gkDirection=nil,
     directionUI=nil,
     tournamentType="World Cup",
     currentStageIndex=1,
     currentMatchInStage=1,
-    tournamentLbl=nil,
-    stageLbl=nil,
-    matchLbl=nil,
-    scoreLbl=nil,
+    tournamentLbl=nil, stageLbl=nil, matchLbl=nil, scoreLbl=nil,
+    -- NEW FEATURES
+    physicsShotEnabled=false,
+    superSkillEnabled=false,
+    superSkillActive=false,
+    cornerActive=false,
+    throwInActive=false,
+    setPieceKicker=nil,
+    setPieceTeam=nil,
+    physicsShotLabel=nil,
+    superSkillLabel=nil,
 }
 
 local function buildCombinedDiff(team)
@@ -122,13 +123,9 @@ local function buildCombinedDiff(team)
     local atk = DIFFICULTY_PER_CATEGORY.attack[d.attack]
     local pss = DIFFICULTY_PER_CATEGORY.pass[d.pass]
     return {
-        speedMul     = def.speedMul,
-        interceptMul = def.interceptMul,
-        skillChance  = def.skillChance,
-        gkSpeedMul   = gk.gkSpeedMul,
-        gkCatchMul   = gk.gkCatchMul,
-        shotMul      = atk.shotMul,
-        passMul      = pss.passMul,
+        speedMul = def.speedMul, interceptMul = def.interceptMul, skillChance = def.skillChance,
+        gkSpeedMul = gk.gkSpeedMul, gkCatchMul = gk.gkCatchMul,
+        shotMul = atk.shotMul, passMul = pss.passMul,
     }
 end
 
@@ -138,11 +135,7 @@ local function refreshDiffStats()
 end
 
 local function getDiff(team)
-    if team == "Red" then
-        return gameState.redDiffStats
-    else
-        return gameState.blueDiffStats
-    end
+    if team == "Red" then return gameState.redDiffStats else return gameState.blueDiffStats end
 end
 
 local function getCurrentStage()
@@ -175,8 +168,7 @@ local function advanceTournament()
             showBigText("TOURNAMENT WON!\n"..gameState.tournamentType, Color3.fromRGB(255,215,0))
             task.wait(4)
         else
-            local newStage = t.stages[gameState.currentStageIndex]
-            showBigText("ADVANCED!\n"..newStage, Color3.fromRGB(100,255,100))
+            showBigText("ADVANCED!\n"..t.stages[gameState.currentStageIndex], Color3.fromRGB(100,255,100))
             task.wait(3)
         end
     end
@@ -278,9 +270,6 @@ local function hideGoalText()
     if gameState.goalTextLabel then gameState.goalTextLabel.Visible = false end
 end
 
--- ============================================================
--- STADIUM (REDESIGNED with proper stands + roof + seats)
--- ============================================================
 local function createStadium()
     local oldMap = workspace:FindFirstChild("WC2026Stadium")
     if oldMap then oldMap:Destroy() end
@@ -294,36 +283,22 @@ local function createStadium()
         p.CanCollide = canCollide ~= false
         return p
     end
-
-    -- Void catcher
     cp("VoidCatcher", Vector3.new(PITCH_WIDTH+1200, 20, PITCH_LENGTH+1200), MAP_POS-Vector3.new(0,15,0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1)
-
-    -- Pitch base
     cp("PitchBase", Vector3.new(PITCH_WIDTH+80, 4, PITCH_LENGTH+80), MAP_POS-Vector3.new(0,2,0), Color3.fromRGB(40,90,40), Enum.Material.Grass)
-    -- Pitch (playing field)
     cp("Pitch", Vector3.new(PITCH_WIDTH, 5, PITCH_LENGTH), MAP_POS, Color3.fromRGB(0,180,0), Enum.Material.Grass)
-
-    -- Field lines
     cp("LineCenter", Vector3.new(5, 5.1, PITCH_LENGTH), MAP_POS, Color3.new(1,1,1), Enum.Material.SmoothPlastic)
     cp("LineFront", Vector3.new(PITCH_WIDTH, 5.1, 5), MAP_POS+Vector3.new(0,0,-PITCH_LENGTH/2), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
     cp("LineBack", Vector3.new(PITCH_WIDTH, 5.1, 5), MAP_POS+Vector3.new(0,0,PITCH_LENGTH/2), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
     local cc = cp("CenterCircle", Vector3.new(100, 5.2, 100), MAP_POS, Color3.new(1,1,1), Enum.Material.SmoothPlastic)
     cc.Shape = Enum.PartType.Cylinder
     cc.CFrame = CFrame.new(MAP_POS+Vector3.new(0,2.6,0)) * CFrame.Angles(0,0,math.rad(90))
-
     local function drawBox(goalZ, dir)
         local boxDepth = PENALTY_BOX_DEPTH
-        cp("Box"..goalZ.."_line", Vector3.new(160, 5.1, 4),
-            MAP_POS+Vector3.new(0, 0, goalZ - dir*boxDepth), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
-        cp("Box"..goalZ.."_sideL", Vector3.new(4, 5.1, boxDepth),
-            MAP_POS+Vector3.new(-80, 0, goalZ - dir*boxDepth/2), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
-        cp("Box"..goalZ.."_sideR", Vector3.new(4, 5.1, boxDepth),
-            MAP_POS+Vector3.new(80, 0, goalZ - dir*boxDepth/2), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
+        cp("Box"..goalZ.."_line", Vector3.new(160, 5.1, 4), MAP_POS+Vector3.new(0, 0, goalZ - dir*boxDepth), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
+        cp("Box"..goalZ.."_sideL", Vector3.new(4, 5.1, boxDepth), MAP_POS+Vector3.new(-80, 0, goalZ - dir*boxDepth/2), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
+        cp("Box"..goalZ.."_sideR", Vector3.new(4, 5.1, boxDepth), MAP_POS+Vector3.new(80, 0, goalZ - dir*boxDepth/2), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
     end
-    drawBox(PITCH_LENGTH/2, 1)
-    drawBox(-PITCH_LENGTH/2, -1)
-
-    -- Goals
+    drawBox(PITCH_LENGTH/2, 1); drawBox(-PITCH_LENGTH/2, -1)
     local function goal(posZ)
         local gp = MAP_POS+Vector3.new(0,0,posZ)
         cp("PostL", Vector3.new(5,GOAL_HEIGHT,5), gp+Vector3.new(-GOAL_WIDTH/2, GOAL_HEIGHT/2, 0), Color3.new(1,1,1), Enum.Material.SmoothPlastic)
@@ -333,171 +308,51 @@ local function createStadium()
         cp("Net", Vector3.new(GOAL_WIDTH, GOAL_HEIGHT, 5), gp+Vector3.new(0, GOAL_HEIGHT/2, netZ), Color3.fromRGB(220,220,220), Enum.Material.SmoothPlastic, 0.6, false)
     end
     goal(-PITCH_LENGTH/2); goal(PITCH_LENGTH/2)
-
-    -- Running track around pitch
     local trackColor = Color3.fromRGB(180,60,60)
     cp("TrackN", Vector3.new(PITCH_WIDTH+100, 3, 20), MAP_POS+Vector3.new(0,-1, -PITCH_LENGTH/2-30), trackColor, Enum.Material.Slate)
     cp("TrackS", Vector3.new(PITCH_WIDTH+100, 3, 20), MAP_POS+Vector3.new(0,-1, PITCH_LENGTH/2+30), trackColor, Enum.Material.Slate)
     cp("TrackW", Vector3.new(20, 3, PITCH_LENGTH+100), MAP_POS+Vector3.new(-PITCH_WIDTH/2-30, -1, 0), trackColor, Enum.Material.Slate)
     cp("TrackE", Vector3.new(20, 3, PITCH_LENGTH+100), MAP_POS+Vector3.new(PITCH_WIDTH/2+30, -1, 0), trackColor, Enum.Material.Slate)
-
-    -- ===== STANDS (tiered seating) =====
-    -- Stand color pattern (stripes alternating)
-    local standColors = {
-        Color3.fromRGB(200,200,200),
-        Color3.fromRGB(60,60,80),
-    }
-    local seatColors = {
-        Color3.fromRGB(255,80,80),
-        Color3.fromRGB(80,80,255),
-        Color3.fromRGB(255,255,255),
-        Color3.fromRGB(80,200,80),
-    }
-
-    -- Build one stand (side)
-    local function buildStand(side, sign, length)
+    local seatColors = {Color3.fromRGB(255,80,80),Color3.fromRGB(80,80,255),Color3.fromRGB(255,255,255),Color3.fromRGB(80,200,80)}
+    local function buildStand(side, length)
         local tiers = 8
         for tier = 1, tiers do
-            local stepHeight = 8
-            local stepDepth = 12
-            local y = tier * stepHeight
-            local zOffset = tier * stepDepth
-            local width = length
-            local seatRow = math.random(1, #seatColors)
-
-            -- Row platform
-            local rowPos
-            if side == "N" then
-                rowPos = MAP_POS + Vector3.new(0, y, -PITCH_LENGTH/2 - 40 - zOffset)
-            elseif side == "S" then
-                rowPos = MAP_POS + Vector3.new(0, y, PITCH_LENGTH/2 + 40 + zOffset)
-            elseif side == "W" then
-                rowPos = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 40 - zOffset, y, 0)
-            else
-                rowPos = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 40 + zOffset, y, 0)
-            end
-
-            local rowSize
-            if side == "N" or side == "S" then
-                rowSize = Vector3.new(width, stepHeight, stepDepth)
-            else
-                rowSize = Vector3.new(stepDepth, stepHeight, length)
-            end
-
-            local rowPart = cp("StandRow_"..side.."_"..tier, rowSize, rowPos, Color3.fromRGB(120,120,130), Enum.Material.Concrete)
-
-            -- Seat blocks along the row (simulating crowd)
+            local stepHeight = 8; local stepDepth = 12
+            local y = tier * stepHeight; local zOffset = tier * stepDepth
+            local rowPos, rowSize
+            if side == "N" then rowPos = MAP_POS + Vector3.new(0, y, -PITCH_LENGTH/2 - 40 - zOffset); rowSize = Vector3.new(length, stepHeight, stepDepth)
+            elseif side == "S" then rowPos = MAP_POS + Vector3.new(0, y, PITCH_LENGTH/2 + 40 + zOffset); rowSize = Vector3.new(length, stepHeight, stepDepth)
+            elseif side == "W" then rowPos = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 40 - zOffset, y, 0); rowSize = Vector3.new(stepDepth, stepHeight, length)
+            else rowPos = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 40 + zOffset, y, 0); rowSize = Vector3.new(stepDepth, stepHeight, length) end
+            cp("StandRow_"..side.."_"..tier, rowSize, rowPos, Color3.fromRGB(120,120,130), Enum.Material.Concrete)
             local seatsPerRow = math.floor(length / 10)
             for s = 1, seatsPerRow do
                 local seatPos
-                if side == "N" then
-                    seatPos = rowPos + Vector3.new(-length/2 + s*10 - 5, stepHeight/2 + 2, stepDepth/2 - 2)
-                elseif side == "S" then
-                    seatPos = rowPos + Vector3.new(-length/2 + s*10 - 5, stepHeight/2 + 2, -stepDepth/2 + 2)
-                elseif side == "W" then
-                    seatPos = rowPos + Vector3.new(stepDepth/2 - 2, stepHeight/2 + 2, -length/2 + s*10 - 5)
-                else
-                    seatPos = rowPos + Vector3.new(-stepDepth/2 + 2, stepHeight/2 + 2, -length/2 + s*10 - 5)
-                end
+                if side == "N" then seatPos = rowPos + Vector3.new(-length/2 + s*10 - 5, stepHeight/2 + 2, stepDepth/2 - 2)
+                elseif side == "S" then seatPos = rowPos + Vector3.new(-length/2 + s*10 - 5, stepHeight/2 + 2, -stepDepth/2 + 2)
+                elseif side == "W" then seatPos = rowPos + Vector3.new(stepDepth/2 - 2, stepHeight/2 + 2, -length/2 + s*10 - 5)
+                else seatPos = rowPos + Vector3.new(-stepDepth/2 + 2, stepHeight/2 + 2, -length/2 + s*10 - 5) end
                 local sc = seatColors[math.random(1, #seatColors)]
                 cp("Seat_"..side.."_"..tier.."_"..s, Vector3.new(6, 3, 6), seatPos, sc, Enum.Material.SmoothPlastic, nil, false)
             end
-
-            -- Occasionally add "person" figures (small spheres) for crowd effect
-            if tier >= 2 and tier <= 6 then
-                for p = 1, math.floor(seatsPerRow/3) do
-                    local pPos
-                    if side == "N" then
-                        pPos = rowPos + Vector3.new(-length/2 + p*30 - 15, stepHeight/2 + 3.5, stepDepth/2 - 2)
-                    elseif side == "S" then
-                        pPos = rowPos + Vector3.new(-length/2 + p*30 - 15, stepHeight/2 + 3.5, -stepDepth/2 + 2)
-                    elseif side == "W" then
-                        pPos = rowPos + Vector3.new(stepDepth/2 - 2, stepHeight/2 + 3.5, -length/2 + p*30 - 15)
-                    else
-                        pPos = rowPos + Vector3.new(-stepDepth/2 + 2, stepHeight/2 + 3.5, -length/2 + p*30 - 15)
-                    end
-                    local person = cp("Crowd_"..side.."_"..tier.."_"..p, Vector3.new(2, 2, 2), pPos, Color3.fromRGB(255,215,170), Enum.Material.SmoothPlastic, nil, false)
-                    person.Shape = Enum.PartType.Ball
-                end
-            end
         end
-
-        -- Stand roof
         local roofY = tiers * 8 + 20
-        local roofPos
-        local roofSize
-        if side == "N" then
-            roofPos = MAP_POS + Vector3.new(0, roofY, -PITCH_LENGTH/2 - 40 - (tiers * 12 / 2))
-            roofSize = Vector3.new(length + 20, 3, tiers * 12 + 10)
-        elseif side == "S" then
-            roofPos = MAP_POS + Vector3.new(0, roofY, PITCH_LENGTH/2 + 40 + (tiers * 12 / 2))
-            roofSize = Vector3.new(length + 20, 3, tiers * 12 + 10)
-        elseif side == "W" then
-            roofPos = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 40 - (tiers * 12 / 2), roofY, 0)
-            roofSize = Vector3.new(tiers * 12 + 10, 3, length + 20)
-        else
-            roofPos = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 40 + (tiers * 12 / 2), roofY, 0)
-            roofSize = Vector3.new(tiers * 12 + 10, 3, length + 20)
-        end
+        local roofPos, roofSize
+        if side == "N" then roofPos = MAP_POS + Vector3.new(0, roofY, -PITCH_LENGTH/2 - 40 - (tiers * 12 / 2)); roofSize = Vector3.new(length + 20, 3, tiers * 12 + 10)
+        elseif side == "S" then roofPos = MAP_POS + Vector3.new(0, roofY, PITCH_LENGTH/2 + 40 + (tiers * 12 / 2)); roofSize = Vector3.new(length + 20, 3, tiers * 12 + 10)
+        elseif side == "W" then roofPos = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 40 - (tiers * 12 / 2), roofY, 0); roofSize = Vector3.new(tiers * 12 + 10, 3, length + 20)
+        else roofPos = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 40 + (tiers * 12 / 2), roofY, 0); roofSize = Vector3.new(tiers * 12 + 10, 3, length + 20) end
         cp("Roof_"..side, roofSize, roofPos, Color3.fromRGB(60,60,70), Enum.Material.Metal)
-
-        -- Roof support columns
-        for c = 1, 4 do
-            local colPos
-            local offset = -length/2 + (c-1) * (length/3)
-            if side == "N" then
-                colPos = MAP_POS + Vector3.new(offset, roofY/2, -PITCH_LENGTH/2 - 40 - tiers * 12 + 5)
-            elseif side == "S" then
-                colPos = MAP_POS + Vector3.new(offset, roofY/2, PITCH_LENGTH/2 + 40 + tiers * 12 - 5)
-            elseif side == "W" then
-                colPos = MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 40 - tiers * 12 + 5, roofY/2, offset)
-            else
-                colPos = MAP_POS + Vector3.new(PITCH_WIDTH/2 + 40 + tiers * 12 - 5, roofY/2, offset)
-            end
-            cp("Column_"..side.."_"..c, Vector3.new(4, roofY, 4), colPos, Color3.fromRGB(50,50,60), Enum.Material.Metal)
-        end
     end
-
-    buildStand("N", -1, PITCH_WIDTH + 80)
-    buildStand("S", 1, PITCH_WIDTH + 80)
-    buildStand("W", -1, PITCH_LENGTH + 80)
-    buildStand("E", 1, PITCH_LENGTH + 80)
-
-    -- Corner floodlights (4 tall towers)
-    for _, corner in ipairs({
-        MAP_POS + Vector3.new(-260, 0, -340),
-        MAP_POS + Vector3.new(260, 0, -340),
-        MAP_POS + Vector3.new(-260, 0, 340),
-        MAP_POS + Vector3.new(260, 0, 340),
-    }) do
+    buildStand("N", PITCH_WIDTH + 80); buildStand("S", PITCH_WIDTH + 80)
+    buildStand("W", PITCH_LENGTH + 80); buildStand("E", PITCH_LENGTH + 80)
+    for _, corner in ipairs({MAP_POS + Vector3.new(-260, 0, -340),MAP_POS + Vector3.new(260, 0, -340),MAP_POS + Vector3.new(-260, 0, 340),MAP_POS + Vector3.new(260, 0, 340)}) do
         cp("Pole", Vector3.new(10, 200, 10), corner + Vector3.new(0, 100, 0), Color3.fromRGB(80,80,80), Enum.Material.Metal)
-        -- Light head
         local head = cp("LightHead", Vector3.new(80, 25, 25), corner + Vector3.new(0, 210, 0), Color3.new(1,1,1), Enum.Material.Neon)
         local pl = Instance.new("PointLight", head); pl.Brightness = 6; pl.Range = 700; pl.Color = Color3.fromRGB(255,250,220)
     end
-
-    -- Big screen boards at corners
-    for _, corner in ipairs({
-        MAP_POS + Vector3.new(-230, 0, -300),
-        MAP_POS + Vector3.new(230, 0, 300),
-    }) do
-        local screen = cp("BigScreen", Vector3.new(50, 30, 3), corner + Vector3.new(0, 40, 0), Color3.fromRGB(15,15,20), Enum.Material.SmoothPlastic)
-        local screenLight = Instance.new("SurfaceGui", screen)
-        screenLight.Face = Enum.NormalId.Front
-        screenLight.CanvasSize = Vector2.new(500, 300)
-        local txt = Instance.new("TextLabel", screenLight)
-        txt.Size = UDim2.new(1, 0, 1, 0)
-        txt.BackgroundTransparency = 1
-        txt.Text = "WC 2026"
-        txt.TextColor3 = Color3.fromRGB(255,215,0)
-        txt.Font = Enum.Font.FredokaOne
-        txt.TextScaled = true
-    end
 end
 
--- ============================================================
--- BALL (with football texture)
--- ============================================================
 local function createBall()
     local ball = Instance.new("Part")
     ball.Name = "WC2026Ball"; ball.Shape = Enum.PartType.Ball
@@ -505,28 +360,10 @@ local function createBall()
     ball.Color = Color3.fromRGB(255,255,255); ball.Material = Enum.Material.SmoothPlastic
     ball.Anchored = false; ball.CanCollide = true
     ball.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5, 1, 1)
-
-    -- Classic football texture (black pentagons on white)
-    local decalFront = Instance.new("Decal")
-    decalFront.Texture = "rbxassetid://243098098"
-    decalFront.Face = Enum.NormalId.Front
-    decalFront.Parent = ball
-    local decalBack = decalFront:Clone()
-    decalBack.Face = Enum.NormalId.Back
-    decalBack.Parent = ball
-    local decalLeft = decalFront:Clone()
-    decalLeft.Face = Enum.NormalId.Left
-    decalLeft.Parent = ball
-    local decalRight = decalFront:Clone()
-    decalRight.Face = Enum.NormalId.Right
-    decalRight.Parent = ball
-    local decalTop = decalFront:Clone()
-    decalTop.Face = Enum.NormalId.Top
-    decalTop.Parent = ball
-    local decalBottom = decalFront:Clone()
-    decalBottom.Face = Enum.NormalId.Bottom
-    decalBottom.Parent = ball
-
+    for _, face in ipairs({Enum.NormalId.Front, Enum.NormalId.Back, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Top, Enum.NormalId.Bottom}) do
+        local d = Instance.new("Decal")
+        d.Texture = "rbxassetid://243098098"; d.Face = face; d.Parent = ball
+    end
     ball.Parent = workspace
     gameState.ball = ball
 end
@@ -542,13 +379,9 @@ local function createAIPlayer(team, role, idx)
         p.Name = name; p.Size = size; p.Color = color
         p.Material = Enum.Material.SmoothPlastic
         p.Anchored = true; p.CanCollide = true
-        p.TopSurface = Enum.SurfaceType.Smooth
-        p.BottomSurface = Enum.SurfaceType.Smooth
-        p:SetAttribute("OffX", offX or 0)
-        p:SetAttribute("OffY", offY or 0)
-        p:SetAttribute("OffZ", offZ or 0)
-        p.Parent = bot
-        return p
+        p.TopSurface = Enum.SurfaceType.Smooth; p.BottomSurface = Enum.SurfaceType.Smooth
+        p:SetAttribute("OffX", offX or 0); p:SetAttribute("OffY", offY or 0); p:SetAttribute("OffZ", offZ or 0)
+        p.Parent = bot; return p
     end
     mp("Torso", Vector3.new(2,2,1), teamColor, 0, 0, 0)
     local head = mp("Head", Vector3.new(2,1,1), skinColor, 0, 1.5, 0)
@@ -556,8 +389,7 @@ local function createAIPlayer(team, role, idx)
     mp("RightArm", Vector3.new(1,2,1), teamColor, 1.5, 0, 0)
     mp("LeftLeg", Vector3.new(1,2,1), shortsColor, -0.5, -2, 0)
     mp("RightLeg", Vector3.new(1,2,1), shortsColor, 0.5, -2, 0)
-    local face = Instance.new("Decal")
-    face.Texture = "rbxasset://textures/face.png"; face.Face = Enum.NormalId.Front; face.Parent = head
+    local face = Instance.new("Decal"); face.Texture = "rbxasset://textures/face.png"; face.Face = Enum.NormalId.Front; face.Parent = head
     bot.PrimaryPart = bot:FindFirstChild("Torso")
     local tv = Instance.new("StringValue", bot); tv.Name = "Team"; tv.Value = team
     local rv = Instance.new("StringValue", bot); rv.Name = "Role"; rv.Value = role
@@ -591,8 +423,7 @@ local function getHomePos(bot, useBall)
     local tX, tZ
     if role == "Goalkeeper" then
         local gz = (team == "Red") and (MAP_POS.Z-PITCH_LENGTH/2+12) or (MAP_POS.Z+PITCH_LENGTH/2-12)
-        tX = MAP_POS.X + math.clamp(bX, -0.5, 0.5) * (GOAL_WIDTH/2)
-        tZ = gz
+        tX = MAP_POS.X + math.clamp(bX, -0.5, 0.5) * (GOAL_WIDTH/2); tZ = gz
     else
         tZ = MAP_POS.Z + (baseZ*attackDir+bZ*zW) * (PITCH_LENGTH/2)
         tX = MAP_POS.X + (baseX+bX*xW) * (PITCH_WIDTH/2)
@@ -616,8 +447,7 @@ local function applyKnuckleball(ball, direction, power)
     local conn
     conn = RunService.Heartbeat:Connect(function(dt)
         if not ball or not ball.Parent or tick()-startTime > 2.2 then
-            if conn then conn:Disconnect() end
-            return
+            if conn then conn:Disconnect() end; return
         end
         local t = (tick()-startTime)/2.2
         local wobble = math.sin((tick()-startTime)*22)*220*(1-t)
@@ -635,8 +465,7 @@ local function applyPowerShot(ball, direction, power, spin)
         local conn
         conn = RunService.Heartbeat:Connect(function(dt)
             if not ball or not ball.Parent or tick()-startTime > 1.8 then
-                if conn then conn:Disconnect() end
-                return
+                if conn then conn:Disconnect() end; return
             end
             local t = (tick()-startTime)/1.8
             local angle = spinRate*(1-t)*dt
@@ -670,6 +499,352 @@ local function applyGroundPass(ball, targetPos, powerBase)
     ball.AssemblyLinearVelocity = horizDir*power + Vector3.new(0,12,0)
 end
 
+-- ============================================================
+-- NEW: PHYSICS DEFYING SHOT
+-- ============================================================
+local function physicsDefyingShot()
+    if gameState.inPenaltyShootout or gameState.celebrating then return end
+    local char = gameState.playerChar
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local ball = gameState.ball
+    if not hrp or not ball then return end
+    if (hrp.Position - ball.Position).Magnitude > 25 then
+        showBigText("TOO FAR FROM BALL!", Color3.fromRGB(255,100,100))
+        task.delay(1, hideBigText)
+        return
+    end
+
+    -- Compute goal direction based on player team
+    local attackGoalZ = (gameState.playerTeam == "Red") and (MAP_POS.Z + PITCH_LENGTH/2) or (MAP_POS.Z - PITCH_LENGTH/2)
+    local goalCenter = Vector3.new(MAP_POS.X, MAP_POS.Y + GOAL_HEIGHT/2 - 2, attackGoalZ)
+
+    -- Pick a random target point in the goal
+    local targetX = MAP_POS.X + (math.random() - 0.5) * (GOAL_WIDTH - 15)
+    local targetY = MAP_POS.Y + math.random(8, GOAL_HEIGHT - 5)
+    local target = Vector3.new(targetX, targetY, attackGoalZ)
+
+    gameState.lastTouchTeam = gameState.playerTeam
+    playBallKick(ball.Position, 0.7)
+
+    -- Launched ball with extreme power and abnormal trajectory
+    local dir = (target - ball.Position).Unit
+    ball.AssemblyLinearVelocity = dir * 450 + Vector3.new(0, 80, 0)
+    ball.AssemblyAngularVelocity = Vector3.new(math.random(-50,50), math.random(-50,50), math.random(-50,50))
+
+    -- Wild trajectory: multiple simultaneous effects
+    task.spawn(function()
+        local startTime = tick()
+        local duration = 2.0
+        local conn
+        conn = RunService.Heartbeat:Connect(function(dt)
+            if not ball or not ball.Parent or tick() - startTime > duration then
+                if conn then conn:Disconnect() end
+                return
+            end
+            local t = (tick() - startTime) / duration
+            local v = ball.AssemblyLinearVelocity
+            -- Wobble (sideways sine)
+            local perp = Vector3.new(-v.Z, 0, v.X)
+            if perp.Magnitude > 0.1 then
+                perp = perp.Unit
+                ball.AssemblyLinearVelocity = v + perp * math.sin(tick() * 35) * 250 * (1 - t) * dt
+            end
+            -- Vertical bob
+            ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity + Vector3.new(0, math.sin(tick() * 28) * 180 * (1 - t) * dt, 0)
+            -- Gradual curve
+            ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity + Vector3.new(math.sin(tick() * 15) * 80 * (1 - t) * dt, 0, 0)
+        end)
+    end)
+
+    -- Freeze all goalkeepers for 2 seconds
+    local targetTeam = (gameState.playerTeam == "Red") and "Blue" or "Red"
+    local gkList = (targetTeam == "Red") and gameState.redTeam or gameState.blueTeam
+    for _, gk in ipairs(gkList) do
+        if gk.Role.Value == "Goalkeeper" and gk.PrimaryPart then
+            local gkId = gk:GetDebugId()
+            gameState.gkHoldCooldowns[gkId] = tick() + 2.5
+            -- Make them "look" at ball
+            task.spawn(function()
+                local endT = tick() + 2.5
+                while tick() < endT and gk.PrimaryPart do
+                    local bp = gameState.ball and gameState.ball.Position or gk.PrimaryPart.Position
+                    moveCharacter(gk, gk.PrimaryPart.Position, Vector3.new(bp.X, gk.PrimaryPart.Position.Y, bp.Z))
+                    task.wait(0.05)
+                end
+            end)
+        end
+    end
+
+    showBigText("⚡ PHYSICS SHOT! ⚡", Color3.fromRGB(255,100,255))
+    task.delay(2, hideBigText)
+end
+
+-- ============================================================
+-- NEW: SUPER SKILL (ball orbits player)
+-- ============================================================
+local function activateSuperSkill()
+    if gameState.inPenaltyShootout or gameState.celebrating then return end
+    if gameState.superSkillActive then return end
+    local char = gameState.playerChar
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local ball = gameState.ball
+    if not hrp or not ball then return end
+    if (hrp.Position - ball.Position).Magnitude > 15 then
+        showBigText("NEED BALL CLOSE!", Color3.fromRGB(255,100,100))
+        task.delay(1, hideBigText)
+        return
+    end
+
+    gameState.superSkillActive = true
+    gameState.playerDribbling = false
+    gameState.lastTouchTeam = gameState.playerTeam
+
+    -- Ball spins around player for 0.5s
+    local startTime = tick()
+    local duration = 0.5
+    ball.AssemblyLinearVelocity = Vector3.zero
+    ball.AssemblyAngularVelocity = Vector3.zero
+    ball.CanCollide = false  -- phase through everyone
+
+    task.spawn(function()
+        while tick() - startTime < duration do
+            if not ball or not ball.Parent or not hrp.Parent then break end
+            local angle = (tick() - startTime) / duration * math.pi * 4  -- 2 full circles
+            local radius = 4
+            local pos = hrp.Position + Vector3.new(math.cos(angle) * radius, 1.5, math.sin(angle) * radius)
+            ball.CFrame = CFrame.new(pos)
+            ball.AssemblyLinearVelocity = Vector3.zero
+            RunService.Heartbeat:Wait()
+        end
+
+        if ball and ball.Parent then
+            ball.CanCollide = true
+            -- Give ball slight forward momentum after skill
+            local forward = hrp.CFrame.LookVector * 25 + Vector3.new(0, 12, 0)
+            ball.AssemblyLinearVelocity = forward
+        end
+        gameState.superSkillActive = false
+        showBigText("SUPER SKILL!", Color3.fromRGB(180,0,220))
+        task.delay(0.6, hideBigText)
+    end)
+end
+
+-- ============================================================
+-- CORNER KICK SYSTEM
+-- ============================================================
+local function setupCornerKick(attackingTeam)
+    local defendingTeam = (attackingTeam == "Red") and "Blue" or "Red"
+    local attackGoalZ = (attackingTeam == "Red") and (MAP_POS.Z + PITCH_LENGTH/2) or (MAP_POS.Z - PITCH_LENGTH/2)
+    local sign = (attackingTeam == "Red") and 1 or -1
+    local cornerX = MAP_POS.X + ((math.random(1,2) == 1) and 1 or -1) * (PITCH_WIDTH/2 - 5)
+    local cornerPos = Vector3.new(cornerX, MAP_POS.Y + 3, attackGoalZ - sign * 5)
+
+    -- Move kicker to corner
+    local attackers = (attackingTeam == "Red") and gameState.redTeam or gameState.blueTeam
+    local defenders = (defendingTeam == "Red") and gameState.redTeam or gameState.blueTeam
+
+    -- Pick kicker (best striker)
+    local kicker = nil
+    for _, bot in ipairs(attackers) do
+        if bot.Role.Value == "Striker" and bot.PrimaryPart then
+            kicker = bot; break
+        end
+    end
+    if not kicker then kicker = attackers[2] end
+
+    if kicker and kicker.PrimaryPart then
+        moveCharacter(kicker, cornerPos, Vector3.new(MAP_POS.X, cornerPos.Y, attackGoalZ))
+    end
+
+    -- Move attackers into box for header chance
+    local boxCenterZ = attackGoalZ - sign * 25
+    local attackerPositions = {
+        Vector3.new(-15, TORSO_Y, boxCenterZ - sign*5),
+        Vector3.new(0, TORSO_Y, boxCenterZ - sign*10),
+        Vector3.new(15, TORSO_Y, boxCenterZ - sign*5),
+        Vector3.new(-8, TORSO_Y, boxCenterZ + sign*5),
+        Vector3.new(8, TORSO_Y, boxCenterZ + sign*5),
+    }
+    local apIdx = 1
+    for _, bot in ipairs(attackers) do
+        if bot ~= kicker and bot.Role.Value ~= "Goalkeeper" and bot.PrimaryPart and apIdx <= #attackerPositions then
+            local pos = MAP_POS + Vector3.new(attackerPositions[apIdx].X, TORSO_Y - MAP_POS.Y, attackerPositions[apIdx].Z - MAP_POS.Z)
+            moveCharacter(bot, pos, Vector3.new(MAP_POS.X, pos.Y, attackGoalZ))
+            apIdx = apIdx + 1
+        end
+    end
+
+    -- Move defenders to mark attackers
+    local dpIdx = 1
+    for _, bot in ipairs(defenders) do
+        if bot.Role.Value ~= "Goalkeeper" and bot.PrimaryPart and dpIdx <= #attackerPositions then
+            local markPos = MAP_POS + Vector3.new(attackerPositions[dpIdx].X + (math.random()-0.5)*4, TORSO_Y - MAP_POS.Y, attackerPositions[dpIdx].Z - MAP_POS.Z - sign*3)
+            moveCharacter(bot, markPos, Vector3.new(MAP_POS.X, markPos.Y, attackGoalZ))
+            dpIdx = dpIdx + 1
+        end
+    end
+
+    -- Place ball at corner
+    if gameState.ball then
+        gameState.ball.CFrame = CFrame.new(cornerPos + Vector3.new(0, 1, 0))
+        gameState.ball.AssemblyLinearVelocity = Vector3.zero
+        gameState.ball.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    gameState.cornerActive = true
+    gameState.setPieceKicker = kicker
+    gameState.setPieceTeam = attackingTeam
+    gameState.lastTouchTeam = attackingTeam
+
+    showBigText("CORNER KICK!\n"..attackingTeam.." TEAM", Color3.fromRGB(255,215,0))
+    task.wait(1.5)
+    hideBigText()
+
+    -- After 1.5s, kicker crosses the ball
+    task.delay(1.8, function()
+        if not gameState.cornerActive then return end
+        if kicker and kicker.PrimaryPart and gameState.ball then
+            -- Kick ball towards goal area (cross)
+            local crossTarget = Vector3.new(
+                MAP_POS.X + (math.random()-0.5) * 30,
+                MAP_POS.Y + 15,
+                attackGoalZ - sign * 18
+            )
+            local dir = (crossTarget - gameState.ball.Position).Unit
+            gameState.ball.AssemblyLinearVelocity = dir * 150 + Vector3.new(0, 60, 0)
+            gameState.ball.AssemblyAngularVelocity = Vector3.new(0, math.random(-30,30), 0)
+            playBallKick(gameState.ball.Position, 1.1)
+        end
+        gameState.cornerActive = false
+    end)
+end
+
+-- ============================================================
+-- THROW-IN SYSTEM
+-- ============================================================
+local function setupThrowIn(team, sideX)
+    local thrower = nil
+    local teamList = (team == "Red") and gameState.redTeam or gameState.blueTeam
+    for _, bot in ipairs(teamList) do
+        if bot.Role.Value == "Defender" and bot.PrimaryPart then thrower = bot; break end
+    end
+    if not thrower then thrower = teamList[2] end
+
+    local ballZ = gameState.ball and gameState.ball.Position.Z or MAP_POS.Z
+    ballZ = math.clamp(ballZ, MAP_POS.Z - PITCH_LENGTH/2 + 20, MAP_POS.Z + PITCH_LENGTH/2 - 20)
+    local throwPos = Vector3.new(sideX, TORSO_Y, ballZ)
+
+    if thrower and thrower.PrimaryPart then
+        moveCharacter(thrower, throwPos, Vector3.new(MAP_POS.X, throwPos.Y, ballZ))
+    end
+
+    -- Move teammates nearby for a short pass option
+    local nearby = {}
+    for _, bot in ipairs(teamList) do
+        if bot ~= thrower and bot.Role.Value ~= "Goalkeeper" and bot.PrimaryPart then
+            local offset = Vector3.new(
+                (sideX > MAP_POS.X) and -20 or 20,
+                0,
+                (math.random() - 0.5) * 40
+            )
+            local pos = Vector3.new(sideX + offset.X, TORSO_Y, ballZ + offset.Z)
+            moveCharacter(bot, pos, Vector3.new(MAP_POS.X, pos.Y, pos.Z))
+            table.insert(nearby, bot)
+        end
+    end
+
+    if gameState.ball then
+        gameState.ball.CFrame = CFrame.new(sideX, MAP_POS.Y + 5, ballZ)
+        gameState.ball.AssemblyLinearVelocity = Vector3.zero
+        gameState.ball.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    gameState.throwInActive = true
+    gameState.setPieceTeam = team
+
+    showBigText("THROW-IN", Color3.fromRGB(150,220,255))
+    task.wait(1.2)
+    hideBigText()
+
+    task.delay(1.5, function()
+        if not gameState.throwInActive then return end
+        if thrower and thrower.PrimaryPart and gameState.ball then
+            -- 50/50 lob or ground pass to nearest teammate
+            local chosen = nearby[math.random(1, math.max(1, #nearby))]
+            if chosen and chosen.PrimaryPart and math.random() < 0.7 then
+                applyLobPass(gameState.ball, chosen.PrimaryPart.Position, 30)
+            else
+                -- Long throw forward
+                local forwardDir = (sideX > MAP_POS.X) and -1 or 1
+                gameState.ball.AssemblyLinearVelocity = Vector3.new(forwardDir * 80, 100, (math.random()-0.5) * 60)
+            end
+            playBallKick(gameState.ball.Position, 0.9)
+        end
+        gameState.throwInActive = false
+    end)
+end
+
+-- ============================================================
+-- AI OPPONENT AVOIDANCE (when carrying ball)
+-- ============================================================
+local function aiAvoidOpponent(bot)
+    local ball = gameState.ball
+    if not ball or not bot.PrimaryPart then return false end
+    local botPos = bot.PrimaryPart.Position
+    local team = bot.Team.Value
+    local attackGoalZ = (team == "Red") and (MAP_POS.Z + PITCH_LENGTH/2) or (MAP_POS.Z - PITCH_LENGTH/2)
+    local attackDir = Vector3.new(0, 0, (team == "Red") and 1 or -1)
+    local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
+
+    -- Check for nearest opponent in front
+    local nearestOpp = nil
+    local nearestDist = math.huge
+    local forwardDir = Vector3.new(0, 0, (team == "Red") and 1 or -1)
+    for _, opp in ipairs(oppList) do
+        if opp.PrimaryPart and opp.Role.Value ~= "Goalkeeper" then
+            local oppPos = opp.PrimaryPart.Position
+            local toOpp = oppPos - botPos
+            local dist = toOpp.Magnitude
+            local dot = toOpp.Unit:Dot(forwardDir)
+            if dot > 0.4 and dist < 25 and dist < nearestDist then
+                nearestDist = dist
+                nearestOpp = opp
+            end
+        end
+    end
+
+    if not nearestOpp then return false end
+
+    -- Opponent in front -> choose evade action
+    local action = math.random(1, 3)
+    if action == 1 then
+        -- Dribble sideways (left or right)
+        local sideDir = (math.random(1,2) == 1) and 1 or -1
+        local perp = Vector3.new(forwardDir.Z * sideDir, 0, -forwardDir.X * sideDir)
+        local targetPos = botPos + perp * 20 + forwardDir * 10
+        ball.CFrame = CFrame.new(botPos + perp*4 + forwardDir*2)
+        ball.AssemblyLinearVelocity = perp * 60 + forwardDir * 20 + Vector3.new(0, 8, 0)
+        return true
+    elseif action == 2 then
+        -- Lob pass over opponent
+        local bestTarget, _ = findBestPassTarget(bot)
+        if bestTarget and bestTarget.PrimaryPart then
+            applyLobPass(ball, bestTarget.PrimaryPart.Position, 30)
+            return true
+        end
+    else
+        -- Ground pass to teammate
+        local bestTarget, _ = findBestPassTarget(bot)
+        if bestTarget and bestTarget.PrimaryPart then
+            applyGroundPass(ball, bestTarget.PrimaryPart.Position, 20)
+            return true
+        end
+    end
+    return false
+end
+
 local function useSkill(bot, team)
     local ball = gameState.ball
     if not ball or not bot.PrimaryPart then return false end
@@ -692,6 +867,15 @@ local function aiDribble(bot)
     if distToBall > 20 then return false end
     local team = bot.Team.Value
     local diff = getDiff(team)
+
+    -- NEW: Check for opponent in front -> evade
+    if distToBall < 12 then
+        if aiAvoidOpponent(bot) then
+            gameState.aiDribbleState[botId] = {active = true}
+            return true
+        end
+    end
+
     local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
     local nearestOppDist = math.huge
@@ -749,7 +933,7 @@ local function aiShootBall(bot)
     end
 end
 
-local function findBestPassTarget(bot)
+function findBestPassTarget(bot)
     local ball = gameState.ball
     local team = bot.Team.Value
     local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
@@ -930,8 +1114,7 @@ local function updateGoalkeeperAI(gk, dt)
         local ballIsHigh = bp.Y > MAP_POS.Y+16
         local ballIsKnuckle = gameState.ballIsCurving and bSpeed > 300
         local shouldParry, shouldCatch = false, false
-        if ballIsKnuckle or ballIsHigh then shouldParry = true
-        else shouldCatch = true end
+        if ballIsKnuckle or ballIsHigh then shouldParry = true else shouldCatch = true end
         if diff.gkCatchMul < 0.8 and math.random() < 0.5 then shouldCatch = false; shouldParry = true end
         if shouldCatch then
             ball.AssemblyLinearVelocity = Vector3.zero
@@ -976,7 +1159,10 @@ local function updateOutfieldAI(bot, allBots, closestBot, dt)
     local teamHasBall = gameState.lastTouchTeam == team
     local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
 
-    if gameState.playerSkillActive then
+    -- Don't move during corner/throw-in
+    if gameState.cornerActive or gameState.throwInActive then return end
+
+    if gameState.playerSkillActive or gameState.superSkillActive then
         local target = getHomePos(bot, false)
         local dir = target - botPos
         if dir.Magnitude > 3 then
@@ -1095,8 +1281,8 @@ local function updateAILogic(dt)
             if d < minDist then minDist = d; closestBot = bot end
         end
     end
-    local canTouch = tick()-gameState.lastActionTime > 0.6 and not gameState.shootCharging and not gameState.knuckleCharging
-    if gameState.gkHolding or gameState.playerDribbling then canTouch = false end
+    local canTouch = tick()-gameState.lastActionTime > 0.6
+    if gameState.gkHolding or gameState.playerDribbling or gameState.cornerActive or gameState.throwInActive then canTouch = false end
     for _, bot in ipairs(allBots) do
         if bot.PrimaryPart then
             if bot.Role.Value == "Goalkeeper" then
@@ -1105,9 +1291,9 @@ local function updateAILogic(dt)
                 local playerDribbling = gameState.playerDribbling and (gameState.playerTeam == bot.Team.Value)
                 local isStriker = bot.Role.Value == "Striker"
                 local shouldChase = bot == closestBot and not canTouch and not playerDribbling
-                if gameState.playerSkillActive then shouldChase = false end
+                if gameState.playerSkillActive or gameState.superSkillActive then shouldChase = false end
                 if isStriker and (bot.PrimaryPart.Position-ball.Position).Magnitude > 60 then shouldChase = false end
-                if gameState.gkHolding then shouldChase = false end
+                if gameState.gkHolding or gameState.cornerActive or gameState.throwInActive then shouldChase = false end
                 if shouldChase then
                     local dir = ball.Position - bot.PrimaryPart.Position
                     if dir.Magnitude > 3 then
@@ -1127,9 +1313,10 @@ end
 
 local function checkInterception()
     local ball = gameState.ball
-    if not ball or gameState.gkHolding or gameState.shootCharging or gameState.knuckleCharging then return end
+    if not ball or gameState.gkHolding then return end
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown > 0 then return end
-    if gameState.playerSkillActive then return end
+    if gameState.playerSkillActive or gameState.superSkillActive then return end
+    if gameState.cornerActive or gameState.throwInActive then return end
     local speed = ball.AssemblyLinearVelocity.Magnitude
     local isDribbled = gameState.playerDribbling
     if speed < 20 and not isDribbled then return end
@@ -1161,7 +1348,7 @@ local function checkInterception()
 end
 
 local function updatePlayerDribble(dt)
-    if gameState.inPenaltyShootout or gameState.celebrating then
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive then
         gameState.playerDribbling = false
         return
     end
@@ -1192,24 +1379,6 @@ local function doDribble()
     playBallTouchSound()
 end
 
-local function doPlayerSkill()
-    if gameState.inPenaltyShootout or gameState.celebrating then return end
-    local char = gameState.playerChar
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    local ball = gameState.ball
-    if not hrp or not ball or (hrp.Position-ball.Position).Magnitude > 20 then return end
-    gameState.playerSkillActive = true
-    gameState.playerDribbling = false
-    local forward = hrp.CFrame.LookVector
-    local flat = Vector3.new(forward.X, 0, forward.Z).Unit
-    ball.CFrame = CFrame.new(hrp.Position + flat*3 + Vector3.new(0, 2, 0))
-    ball.AssemblyLinearVelocity = Vector3.new(flat.X*45, 68, flat.Z*45)
-    gameState.lastTouchTeam = gameState.playerTeam
-    playBallKick(ball.Position, 0.85)
-    task.delay(2.5, function() gameState.playerSkillActive = false end)
-end
-
 local function createFireworks(position)
     for i = 1, 6 do
         local part = Instance.new("Part")
@@ -1237,7 +1406,11 @@ local function resetPositions(concedingTeam)
     gameState.gkHolding = false
     gameState.gkHoldingTeam = nil
     gameState.playerSkillActive = false
+    gameState.superSkillActive = false
+    gameState.cornerActive = false
+    gameState.throwInActive = false
     gameState.aiSkillActive = {}
+    if gameState.ball then gameState.ball.CanCollide = true end
     for _, bot in ipairs(gameState.redTeam) do
         if bot.PrimaryPart then
             local p = getHomePos(bot, false)
@@ -1312,18 +1485,6 @@ local function startCelebration(winningTeam)
                 end
             end
         end
-        if pcIsWinner and pc then
-            local hrp = pc:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local current = hrp.Position
-                local dir = centerPos-current
-                if Vector3.new(dir.X, 0, dir.Z).Magnitude > 6 then
-                    local newPos = current + Vector3.new(dir.X, 0, dir.Z).Unit*20*0.05
-                    hrp.CFrame = CFrame.new(newPos.X, math.max(hrp.Position.Y, MAP_POS.Y+5), newPos.Z)
-                    hrp.AssemblyLinearVelocity = Vector3.new(dir.X, 0, dir.Z).Unit*20
-                end
-            end
-        end
     end)
     task.delay(10, function()
         gameState.celebrating = false
@@ -1331,6 +1492,9 @@ local function startCelebration(winningTeam)
     end)
 end
 
+-- ============================================================
+-- PENALTY SHOOTOUT
+-- ============================================================
 local function clearDirectionUI()
     if gameState.directionUI then
         gameState.directionUI:Destroy()
@@ -1341,49 +1505,23 @@ end
 local function makeDirectionUI()
     clearDirectionUI()
     local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-    gui.Name = "PenaltyDirUI"
-    gui.ResetOnSpawn = false
-    gui.DisplayOrder = 1000
+    gui.Name = "PenaltyDirUI"; gui.ResetOnSpawn = false; gui.DisplayOrder = 1000
     gameState.directionUI = gui
-
-    local title = Instance.new("TextLabel", gui)
-    title.Size = UDim2.new(0, 600, 0, 50)
-    title.Position = UDim2.new(0.5, -300, 0.15, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "CHOOSE YOUR SHOT"
-    title.TextColor3 = Color3.fromRGB(255, 220, 100)
-    title.TextScaled = true
-    title.Font = Enum.Font.FredokaOne
-    title.TextStrokeTransparency = 0.3
-    title.TextStrokeColor3 = Color3.new(0,0,0)
-
     local result = {value = nil}
-
     local function makeDirBtn(text, color, pos, value)
         local btn = Instance.new("TextButton", gui)
-        btn.Size = UDim2.new(0, 140, 0, 90)
-        btn.Position = pos
-        btn.BackgroundColor3 = color
-        btn.Text = text
-        btn.TextColor3 = Color3.new(1,1,1)
-        btn.TextScaled = true
-        btn.Font = Enum.Font.FredokaOne
-        btn.BorderSizePixel = 0
+        btn.Size = UDim2.new(0, 140, 0, 90); btn.Position = pos
+        btn.BackgroundColor3 = color; btn.Text = text
+        btn.TextColor3 = Color3.new(1,1,1); btn.TextScaled = true
+        btn.Font = Enum.Font.FredokaOne; btn.BorderSizePixel = 0
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
-        local st = Instance.new("UIStroke", btn)
-        st.Color = Color3.new(1,1,1)
-        st.Thickness = 3
-        btn.MouseButton1Click:Connect(function()
-            result.value = value
-        end)
+        btn.MouseButton1Click:Connect(function() result.value = value end)
         return btn
     end
-
     makeDirBtn("LEFT", Color3.fromRGB(200, 60, 60), UDim2.new(0.5, -230, 0.5, -110), "Left")
     makeDirBtn("CENTER", Color3.fromRGB(60, 140, 200), UDim2.new(0.5, -70, 0.5, -110), "Center")
     makeDirBtn("RIGHT", Color3.fromRGB(60, 180, 80), UDim2.new(0.5, 90, 0.5, -110), "Right")
-    makeDirBtn("OVER\n(chip)", Color3.fromRGB(180, 100, 40), UDim2.new(0.5, -70, 0.5, 5), "Over")
-
+    makeDirBtn("OVER", Color3.fromRGB(180, 100, 40), UDim2.new(0.5, -70, 0.5, 5), "Over")
     return result
 end
 
@@ -1391,44 +1529,14 @@ local function runPenaltyShootout()
     gameState.inPenaltyShootout = true
     hideGoalText()
     gameState.playerDribbling = false
-
     local redScore, blueScore = 0, 0
     local maxRounds = 5
     local goalZFor = {Red = MAP_POS.Z + PITCH_LENGTH/2, Blue = MAP_POS.Z - PITCH_LENGTH/2}
-
-    local function gatherInCircle()
-        local positions = {}
-        for _, bot in ipairs(gameState.redTeam) do
-            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then table.insert(positions, bot) end
-        end
-        for _, bot in ipairs(gameState.blueTeam) do
-            if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then table.insert(positions, bot) end
-        end
-        for i, bot in ipairs(positions) do
-            local angle = (i / #positions) * math.pi * 2
-            local r = 25
-            local p = MAP_POS + Vector3.new(math.cos(angle)*r, TORSO_Y-MAP_POS.Y, math.sin(angle)*r)
-            moveCharacter(bot, p, Vector3.new(MAP_POS.X, p.Y, MAP_POS.Z))
-        end
-    end
-
-    gatherInCircle()
-    if gameState.ball then
-        gameState.ball.Anchored = true
-        gameState.ball.AssemblyLinearVelocity = Vector3.zero
-        gameState.ball.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    showBigText("PENALTY SHOOTOUT!", Color3.fromRGB(255,220,100))
-    task.wait(2)
-    hideBigText()
-
     local function findGK(team)
         for _, bot in ipairs((team == "Red") and gameState.redTeam or gameState.blueTeam) do
             if bot.Role.Value == "Goalkeeper" then return bot end
         end
     end
-
     local redUsed, blueUsed = {}, {}
     local function getShooter(team)
         local usedList = (team == "Red") and redUsed or blueUsed
@@ -1448,23 +1556,19 @@ local function runPenaltyShootout()
             end
         end
     end
-
     local function takeShot(team, round)
         local shooter = getShooter(team)
         if not shooter then return false end
         local usedList = (team == "Red") and redUsed or blueUsed
         usedList[shooter.key] = true
-
         local goalZ = goalZFor[team]
         local sign = (goalZ > MAP_POS.Z) and 1 or -1
         local spotZ = goalZ - sign * PENALTY_DIST
         local opponentTeam = (team == "Red") and "Blue" or "Red"
-
         local gk = findGK(opponentTeam)
         if gk and gk.PrimaryPart then
             moveCharacter(gk, Vector3.new(MAP_POS.X, TORSO_Y, goalZ - sign*6), Vector3.new(MAP_POS.X, TORSO_Y, MAP_POS.Z))
         end
-
         local ballPos = Vector3.new(MAP_POS.X, MAP_POS.Y+3, spotZ)
         if gameState.ball then
             gameState.ball.Anchored = true
@@ -1472,7 +1576,6 @@ local function runPenaltyShootout()
             gameState.ball.AssemblyLinearVelocity = Vector3.zero
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
         end
-
         local approachZ = spotZ - sign * 8
         local approachPos = Vector3.new(MAP_POS.X, TORSO_Y, approachZ)
         if shooter.isPlayer then
@@ -1484,44 +1587,31 @@ local function runPenaltyShootout()
         elseif shooter.bot.PrimaryPart then
             moveCharacter(shooter.bot, approachPos, Vector3.new(MAP_POS.X, approachPos.Y, goalZ))
         end
-
         task.wait(0.8)
-
         local teamName = (team == "Red") and gameState.teamRedName or gameState.teamBlueName
-
         local shotDir
         if shooter.isPlayer then
-            showBigText("YOUR TURN!\nCHOOSE A DIRECTION", Color3.fromRGB(255,255,100))
+            showBigText("YOUR TURN!", Color3.fromRGB(255,255,100))
             local dirResult = makeDirectionUI()
             local startWait = tick()
-            while not dirResult.value and tick() - startWait < 8 do
-                task.wait(0.05)
-            end
+            while not dirResult.value and tick() - startWait < 8 do task.wait(0.05) end
             shotDir = dirResult.value or "Center"
             clearDirectionUI()
         else
             showBigText(teamName.." - ROUND "..round, Color3.fromRGB(255,220,100))
             task.wait(1)
             local roll = math.random(1, 100)
-            if roll <= 25 then shotDir = "Left"
-            elseif roll <= 50 then shotDir = "Right"
-            elseif roll <= 75 then shotDir = "Center"
-            else shotDir = "Over" end
+            if roll <= 25 then shotDir = "Left" elseif roll <= 50 then shotDir = "Right"
+            elseif roll <= 75 then shotDir = "Center" else shotDir = "Over" end
         end
-
         hideBigText()
-
-        local gkDirRoll = math.random(1, 100)
         local gkDir
-        if gkDirRoll <= 40 then gkDir = "Left"
-        elseif gkDirRoll <= 80 then gkDir = "Right"
-        else gkDir = "Center" end
-
+        local gkRoll = math.random(1, 100)
+        if gkRoll <= 40 then gkDir = "Left" elseif gkRoll <= 80 then gkDir = "Right" else gkDir = "Center" end
         if gk and gk.PrimaryPart then
             local gkStart = gk.PrimaryPart.Position
             local targetX = MAP_POS.X
-            if gkDir == "Left" then targetX = MAP_POS.X - 18
-            elseif gkDir == "Right" then targetX = MAP_POS.X + 18 end
+            if gkDir == "Left" then targetX = MAP_POS.X - 18 elseif gkDir == "Right" then targetX = MAP_POS.X + 18 end
             task.spawn(function()
                 local startT = tick()
                 while tick() - startT < 0.7 do
@@ -1534,48 +1624,30 @@ local function runPenaltyShootout()
                 end
             end)
         end
-
         task.wait(0.3)
-
         if gameState.ball then
             gameState.ball.Anchored = false
             local dirX = 0
-            if shotDir == "Left" then dirX = -0.35
-            elseif shotDir == "Right" then dirX = 0.35 end
+            if shotDir == "Left" then dirX = -0.35 elseif shotDir == "Right" then dirX = 0.35 end
             local dirY = (shotDir == "Over") and 0.6 or 0.15
             local power = (shotDir == "Over") and 130 or 200
             local dir = Vector3.new(dirX, dirY, sign).Unit
             applyKnuckleball(gameState.ball, dir, power)
         end
-
         task.wait(1.4)
-
-        local resultText, resultColor
-        local scored = false
-        if shotDir == "Over" then
-            resultText = "MISSED!"
-            resultColor = Color3.fromRGB(255, 100, 100)
-        elseif shotDir == gkDir then
-            resultText = "SAVED!"
-            resultColor = Color3.fromRGB(255, 150, 50)
-        else
-            resultText = "GOAL!"
-            resultColor = Color3.fromRGB(100, 255, 100)
-            scored = true
-            playNetSound()
-        end
-
+        local resultText, resultColor, scored = "", Color3.new(1,1,1), false
+        if shotDir == "Over" then resultText = "MISSED!" resultColor = Color3.fromRGB(255, 100, 100)
+        elseif shotDir == gkDir then resultText = "SAVED!" resultColor = Color3.fromRGB(255, 150, 50)
+        else resultText = "GOAL!" resultColor = Color3.fromRGB(100, 255, 100) scored = true playNetSound() end
         showBigText(resultText, resultColor)
         task.wait(1.5)
         hideBigText()
-
         if gameState.ball then
             gameState.ball.Anchored = true
             gameState.ball.CFrame = CFrame.new(ballPos)
             gameState.ball.AssemblyLinearVelocity = Vector3.zero
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
         end
-
         if shooter.isPlayer then
             local hrp = shooter.char:FindFirstChild("HumanoidRootPart")
             if hrp then hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 5, 0)) end
@@ -1584,23 +1656,18 @@ local function runPenaltyShootout()
             local p = MAP_POS + Vector3.new(math.cos(angle)*25, TORSO_Y-MAP_POS.Y, math.sin(angle)*25)
             moveCharacter(shooter.bot, p, Vector3.new(MAP_POS.X, p.Y, MAP_POS.Z))
         end
-
         return scored
     end
-
     for round = 1, maxRounds do
         if takeShot("Red", round) then redScore = redScore + 1 end
         showBigText(string.format("%s %d - %d %s", gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.new(1,1,1))
         task.wait(1.3)
-
         if takeShot("Blue", round) then blueScore = blueScore + 1 end
         showBigText(string.format("%s %d - %d %s", gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.new(1,1,1))
         task.wait(1.3)
-
         if redScore > blueScore + (maxRounds - round) then break end
         if blueScore > redScore + (maxRounds - round) then break end
     end
-
     local sdRound = 0
     while redScore == blueScore do
         sdRound = sdRound + 1
@@ -1609,21 +1676,16 @@ local function runPenaltyShootout()
         showBigText(string.format("SUDDEN DEATH %d\n%s %d - %d %s", sdRound, gameState.teamRedName, redScore, blueScore, gameState.teamBlueName), Color3.fromRGB(255,200,100))
         task.wait(1.3)
     end
-
     gameState.inPenaltyShootout = false
     gameState.scoreRed = redScore
     gameState.scoreBlue = blueScore
-
     local winner = redScore > blueScore and "Red" or "Blue"
     local winnerName = (winner == "Red") and gameState.teamRedName or gameState.teamBlueName
-
     showBigText(winnerName.." WINS!\n"..redScore.." - "..blueScore, Color3.fromRGB(255,220,100))
     task.wait(2.5)
     hideBigText()
-
     startCelebration(winner)
     task.wait(12)
-
     gameState.paused = true
     gameState.gameActive = false
     gameState.currentHalf = 1
@@ -1677,10 +1739,7 @@ local function endMatch(winnerText)
         task.wait(12)
     end
     gameState.restartCountdown = FULL_BREAK
-    while gameState.restartCountdown > 0 do
-        task.wait(1)
-        gameState.restartCountdown = gameState.restartCountdown - 1
-    end
+    while gameState.restartCountdown > 0 do task.wait(1) gameState.restartCountdown = gameState.restartCountdown - 1 end
     gameState.currentHalf = 1
     gameState.timeLeft = HALF_TIME
     gameState.scoreRed = 0
@@ -1732,35 +1791,23 @@ local function onGoalScored(scoringTeam)
     gameState.goalScored = false
 end
 
-local function restart(type, sideX)
-    if gameState.restartCooldown then return end
-    gameState.restartCooldown = true
-    local ball = gameState.ball
-    if not ball then gameState.restartCooldown = false return end
-    if type == "ThrowIn" then ball.CFrame = CFrame.new(Vector3.new(sideX, MAP_POS.Y, ball.Position.Z)+Vector3.new(0,5,0))
-    elseif type == "Corner" then
-        local sideZ = (ball.Position.Z > MAP_POS.Z) and (PITCH_LENGTH/2) or (-PITCH_LENGTH/2)
-        local sideX2 = (ball.Position.X > MAP_POS.X) and (PITCH_WIDTH/2) or (-PITCH_WIDTH/2)
-        ball.CFrame = CFrame.new(MAP_POS+Vector3.new(sideX2, 5, sideZ))
-    elseif type == "GoalKick" then
-        local sideZ = (ball.Position.Z > MAP_POS.Z) and (PITCH_LENGTH/2-30) or (-PITCH_LENGTH/2+30)
-        ball.CFrame = CFrame.new(MAP_POS+Vector3.new(0,5,sideZ))
-    end
-    ball.AssemblyLinearVelocity = Vector3.zero
-    ball.AssemblyAngularVelocity = Vector3.zero
-    task.wait(1)
-    gameState.restartCooldown = false
-end
-
 local function checkRules()
     local ball = gameState.ball
     if not ball or not ball.Parent or gameState.restartCooldown or not gameState.gameActive or gameState.goalScored then return end
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown > 0 then return end
+    if gameState.cornerActive or gameState.throwInActive then return end
     local bp = ball.Position
+    -- Side out -> Throw-in
     if math.abs(bp.X-MAP_POS.X) > PITCH_WIDTH/2+5 then
-        restart("ThrowIn", bp.X > MAP_POS.X and (PITCH_WIDTH/2-3) or (-PITCH_WIDTH/2+3))
+        gameState.restartCooldown = true
+        local sideX = bp.X > MAP_POS.X and (PITCH_WIDTH/2-3) or (-PITCH_WIDTH/2+3)
+        local throwTeam = (gameState.lastTouchTeam == "Red") and "Blue" or "Red"
+        setupThrowIn(throwTeam, sideX)
+        task.wait(2.5)
+        gameState.restartCooldown = false
         return
     end
+    -- End out -> Goal / Corner / Goal kick
     if math.abs(bp.Z-MAP_POS.Z) > PITCH_LENGTH/2+5 then
         local withinW = math.abs(bp.X-MAP_POS.X) < GOAL_WIDTH/2
         local underBar = (bp.Y-MAP_POS.Y) < (GOAL_HEIGHT+2) and (bp.Y-MAP_POS.Y) > -5
@@ -1770,8 +1817,19 @@ local function checkRules()
             if isBack then task.spawn(onGoalScored, "Red")
             else task.spawn(onGoalScored, "Blue") end
         else
-            if gameState.lastTouchTeam == "Red" then restart("GoalKick")
-            else restart("Corner") end
+            gameState.restartCooldown = true
+            if gameState.lastTouchTeam == "Red" then
+                -- Red touched it last -> goal kick for Blue
+                ball.CFrame = CFrame.new(MAP_POS+Vector3.new(0,5,(isFront and -1 or 1)*(PITCH_LENGTH/2-30)))
+                ball.AssemblyLinearVelocity = Vector3.zero
+                ball.AssemblyAngularVelocity = Vector3.zero
+            else
+                -- Blue touched it last -> corner for Red
+                local attackTeam = (isBack) and "Red" or "Blue"
+                setupCornerKick(attackTeam)
+            end
+            task.wait(2.5)
+            gameState.restartCooldown = false
         end
     end
 end
@@ -1781,7 +1839,8 @@ local function startTimer()
         while true do
             task.wait(1)
             if gameState.gameActive and not gameState.paused and not gameState.gkHolding
-               and not gameState.goalScored and not gameState.inPenaltyShootout and not gameState.celebrating then
+               and not gameState.goalScored and not gameState.inPenaltyShootout and not gameState.celebrating
+               and not gameState.cornerActive and not gameState.throwInActive then
                 gameState.timeLeft = gameState.timeLeft - 1
                 if gameState.timeLeft <= 0 then
                     if gameState.isExtraTime then
@@ -1839,6 +1898,9 @@ local function startTimer()
     end)
 end
 
+-- ============================================================
+-- SETTINGS UI (with new toggles for Physics Shot and Super Skill)
+-- ============================================================
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui = Instance.new("ScreenGui")
@@ -1847,7 +1909,6 @@ local function createSettingsUI()
 
     local curRedColor = gameState.teamRedColor
     local curBlueColor = gameState.teamBlueColor
-
     local hRed, sRed, vRed = Color3.toHSV(curRedColor)
     local hBlue, sBlue, vBlue = Color3.toHSV(curBlueColor)
 
@@ -1855,42 +1916,31 @@ local function createSettingsUI()
     gearBtn.Size = UDim2.new(0, 44, 0, 44)
     gearBtn.Position = UDim2.new(1, -60, 0, 15)
     gearBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-    gearBtn.Text = "*"
-    gearBtn.TextColor3 = Color3.new(1,1,1)
-    gearBtn.TextScaled = true
-    gearBtn.Font = Enum.Font.FredokaOne
+    gearBtn.Text = "*"; gearBtn.TextColor3 = Color3.new(1,1,1)
+    gearBtn.TextScaled = true; gearBtn.Font = Enum.Font.FredokaOne
     gearBtn.Parent = gui
     Instance.new("UICorner", gearBtn).CornerRadius = UDim.new(0, 10)
-    local gs = Instance.new("UIStroke", gearBtn); gs.Color = Color3.fromRGB(100,100,120); gs.Thickness = 2; gs.Parent = gearBtn
 
     local panel = Instance.new("Frame")
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
     panel.Size = UDim2.new(0.95, 0, 0.95, 0)
     panel.Position = UDim2.new(0.5, 0, 0.5, 0)
     panel.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-    panel.BorderSizePixel = 0
-    panel.Visible = false
-    panel.Parent = gui
+    panel.BorderSizePixel = 0; panel.Visible = false; panel.Parent = gui
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 15)
     local ps = Instance.new("UIStroke", panel); ps.Color = Color3.fromRGB(100,150,255); ps.Thickness = 2; ps.Parent = panel
 
     local title = Instance.new("TextLabel", panel)
-    title.Size = UDim2.new(1, -60, 0, 30)
-    title.Position = UDim2.new(0, 0, 0, 6)
-    title.BackgroundTransparency = 1
-    title.Text = "MATCH SETTINGS"
-    title.TextColor3 = Color3.new(1,1,1)
-    title.TextScaled = true
+    title.Size = UDim2.new(1, -60, 0, 30); title.Position = UDim2.new(0, 0, 0, 6)
+    title.BackgroundTransparency = 1; title.Text = "MATCH SETTINGS"
+    title.TextColor3 = Color3.new(1,1,1); title.TextScaled = true
     title.Font = Enum.Font.FredokaOne
 
     local xCloseBtn = Instance.new("TextButton", panel)
-    xCloseBtn.Size = UDim2.new(0, 36, 0, 36)
-    xCloseBtn.Position = UDim2.new(1, -42, 0, 4)
+    xCloseBtn.Size = UDim2.new(0, 36, 0, 36); xCloseBtn.Position = UDim2.new(1, -42, 0, 4)
     xCloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    xCloseBtn.Text = "X"
-    xCloseBtn.TextColor3 = Color3.new(1,1,1)
-    xCloseBtn.TextScaled = true
-    xCloseBtn.Font = Enum.Font.GothamBold
+    xCloseBtn.Text = "X"; xCloseBtn.TextColor3 = Color3.new(1,1,1)
+    xCloseBtn.TextScaled = true; xCloseBtn.Font = Enum.Font.GothamBold
     xCloseBtn.Parent = panel
     Instance.new("UICorner", xCloseBtn).CornerRadius = UDim.new(0, 8)
 
@@ -1898,57 +1948,42 @@ local function createSettingsUI()
     buttonBar.AnchorPoint = Vector2.new(0, 1)
     buttonBar.Size = UDim2.new(1, -16, 0, 70)
     buttonBar.Position = UDim2.new(0, 8, 1, -8)
-    buttonBar.BackgroundTransparency = 1
-    buttonBar.Parent = panel
+    buttonBar.BackgroundTransparency = 1; buttonBar.Parent = panel
 
     local scroll = Instance.new("ScrollingFrame", panel)
     scroll.Size = UDim2.new(1, -10, 1, -130)
     scroll.Position = UDim2.new(0, 5, 0, 42)
-    scroll.BackgroundTransparency = 1
-    scroll.BorderSizePixel = 0
-    scroll.ScrollBarThickness = 6
-    scroll.ScrollBarImageColor3 = Color3.fromRGB(100,150,255)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 1000)
+    scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 6; scroll.ScrollBarImageColor3 = Color3.fromRGB(100,150,255)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 1180)
 
     local function makeSlider(parent, y, label, sliderColor, initialValue, onChange)
         local lbl = Instance.new("TextLabel", parent)
-        lbl.Size = UDim2.new(1, -24, 0, 14)
-        lbl.Position = UDim2.new(0, 12, 0, y)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = label
+        lbl.Size = UDim2.new(1, -24, 0, 14); lbl.Position = UDim2.new(0, 12, 0, y)
+        lbl.BackgroundTransparency = 1; lbl.Text = label
         lbl.TextColor3 = Color3.fromRGB(180,180,180)
         lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.Font = Enum.Font.FredokaOne
-        lbl.TextScaled = true
+        lbl.Font = Enum.Font.FredokaOne; lbl.TextScaled = true
         local track = Instance.new("Frame", parent)
-        track.Size = UDim2.new(1, -24, 0, 14)
-        track.Position = UDim2.new(0, 12, 0, y+16)
-        track.BackgroundColor3 = Color3.fromRGB(45,45,60)
-        track.BorderSizePixel = 0
+        track.Size = UDim2.new(1, -24, 0, 14); track.Position = UDim2.new(0, 12, 0, y+16)
+        track.BackgroundColor3 = Color3.fromRGB(45,45,60); track.BorderSizePixel = 0
         Instance.new("UICorner", track).CornerRadius = UDim.new(0, 7)
         local fill = Instance.new("Frame", track)
-        fill.Size = UDim2.new(initialValue, 0, 1, 0)
-        fill.BackgroundColor3 = sliderColor
-        fill.BorderSizePixel = 0
-        Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 7)
+        fill.Size = UDim2.new(initialValue, 0, 1, 0); fill.BackgroundColor3 = sliderColor
+        fill.BorderSizePixel = 0; Instance.new("UICorner", fill).CornerRadius = UDim.new(0, 7)
         local knob = Instance.new("TextButton", track)
-        knob.Size = UDim2.new(0, 22, 0, 22)
-        knob.Position = UDim2.new(initialValue, -11, 0.5, -11)
-        knob.BackgroundColor3 = Color3.new(1,1,1)
-        knob.Text = ""
-        knob.BorderSizePixel = 0
-        knob.AutoButtonColor = false
+        knob.Size = UDim2.new(0, 22, 0, 22); knob.Position = UDim2.new(initialValue, -11, 0.5, -11)
+        knob.BackgroundColor3 = Color3.new(1,1,1); knob.Text = ""
+        knob.BorderSizePixel = 0; knob.AutoButtonColor = false
         Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
         local dragging = false
         local function setValue(v)
-            v = math.clamp(v, 0, 1)
-            fill.Size = UDim2.new(v, 0, 1, 0)
+            v = math.clamp(v, 0, 1); fill.Size = UDim2.new(v, 0, 1, 0)
             knob.Position = UDim2.new(v, -11, 0.5, -11)
         end
         local function updateFromX(x)
             local rel = math.clamp((x-track.AbsolutePosition.X)/math.max(track.AbsoluteSize.X, 1), 0, 1)
-            setValue(rel)
-            onChange(rel)
+            setValue(rel); onChange(rel)
         end
         knob.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -1961,61 +1996,43 @@ local function createSettingsUI()
             end
         end)
         UIS.InputChanged:Connect(function(input)
-            if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-                updateFromX(input.Position.X)
-            end
+            if dragging then updateFromX(input.Position.X) end
         end)
         UIS.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
         end)
         return setValue
     end
 
     local function makeSectionHeader(parent, y, text, color)
         local h = Instance.new("TextLabel", parent)
-        h.Size = UDim2.new(1, -24, 0, 20)
-        h.Position = UDim2.new(0, 12, 0, y)
-        h.BackgroundColor3 = Color3.fromRGB(35,35,50)
-        h.Text = text
-        h.TextColor3 = color
-        h.TextXAlignment = Enum.TextXAlignment.Left
-        h.Font = Enum.Font.FredokaOne
-        h.TextScaled = true
+        h.Size = UDim2.new(1, -24, 0, 20); h.Position = UDim2.new(0, 12, 0, y)
+        h.BackgroundColor3 = Color3.fromRGB(35,35,50); h.Text = text
+        h.TextColor3 = color; h.TextXAlignment = Enum.TextXAlignment.Left
+        h.Font = Enum.Font.FredokaOne; h.TextScaled = true
         Instance.new("UICorner", h).CornerRadius = UDim.new(0, 6)
-        local pad = Instance.new("UIPadding", h)
-        pad.PaddingLeft = UDim.new(0, 10)
+        local pad = Instance.new("UIPadding", h); pad.PaddingLeft = UDim.new(0, 10)
         return h
     end
 
     local function makeDifficultyRow(parent, y, label, currentDiff, onSet)
         local lbl = Instance.new("TextLabel", parent)
-        lbl.Size = UDim2.new(1, -24, 0, 14)
-        lbl.Position = UDim2.new(0, 12, 0, y)
-        lbl.BackgroundTransparency = 1
-        lbl.Text = label
+        lbl.Size = UDim2.new(1, -24, 0, 14); lbl.Position = UDim2.new(0, 12, 0, y)
+        lbl.BackgroundTransparency = 1; lbl.Text = label
         lbl.TextColor3 = Color3.fromRGB(200,200,200)
         lbl.TextXAlignment = Enum.TextXAlignment.Left
-        lbl.Font = Enum.Font.FredokaOne
-        lbl.TextScaled = true
-
+        lbl.Font = Enum.Font.FredokaOne; lbl.TextScaled = true
         local row = Instance.new("Frame", parent)
-        row.Size = UDim2.new(1, -24, 0, 28)
-        row.Position = UDim2.new(0, 12, 0, y+16)
+        row.Size = UDim2.new(1, -24, 0, 28); row.Position = UDim2.new(0, 12, 0, y+16)
         row.BackgroundTransparency = 1
         local btns = {}
         for i = 1, 3 do
             local btn = Instance.new("TextButton", row)
-            btn.Size = UDim2.new(0.32, -4, 1, 0)
-            btn.Position = UDim2.new((i-1) * 0.34, 0, 0, 0)
+            btn.Size = UDim2.new(0.32, -4, 1, 0); btn.Position = UDim2.new((i-1) * 0.34, 0, 0, 0)
             btn.BackgroundColor3 = (currentDiff == i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-            btn.Text = DIFFICULTY_LEVELS[i].name
-            btn.TextColor3 = Color3.new(1,1,1)
-            btn.TextScaled = true
-            btn.Font = Enum.Font.FredokaOne
-            btn.Parent = row
-            Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+            btn.Text = DIFFICULTY_LEVELS[i].name; btn.TextColor3 = Color3.new(1,1,1)
+            btn.TextScaled = true; btn.Font = Enum.Font.FredokaOne
+            btn.Parent = row; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
             btn.MouseButton1Click:Connect(function()
                 onSet(i)
                 for j, b in ipairs(btns) do
@@ -2027,35 +2044,81 @@ local function createSettingsUI()
         return btns
     end
 
-    makeSectionHeader(scroll, 6, "TOURNAMENT", Color3.fromRGB(255,215,0))
+    -- ===== SPECIAL BUTTONS SECTION =====
+    makeSectionHeader(scroll, 6, "⚡ SPECIAL ABILITIES ⚡", Color3.fromRGB(255,100,255))
 
-    local tourneyLbl = Instance.new("TextLabel", scroll)
-    tourneyLbl.Size = UDim2.new(1, -24, 0, 14)
-    tourneyLbl.Position = UDim2.new(0, 12, 0, 30)
-    tourneyLbl.BackgroundTransparency = 1
-    tourneyLbl.Text = "Select Tournament:"
-    tourneyLbl.TextColor3 = Color3.fromRGB(200,200,200)
-    tourneyLbl.TextXAlignment = Enum.TextXAlignment.Left
-    tourneyLbl.Font = Enum.Font.FredokaOne
-    tourneyLbl.TextScaled = true
+    local toggleRow = Instance.new("Frame", scroll)
+    toggleRow.Size = UDim2.new(1, -24, 0, 44)
+    toggleRow.Position = UDim2.new(0, 12, 0, 30)
+    toggleRow.BackgroundTransparency = 1
+
+    local physicsToggle = Instance.new("TextButton", toggleRow)
+    physicsToggle.Size = UDim2.new(0.49, -2, 1, 0)
+    physicsToggle.Position = UDim2.new(0, 0, 0, 0)
+    physicsToggle.BackgroundColor3 = Color3.fromRGB(150,30,200)
+    physicsToggle.Text = "PHYSICS SHOT: OFF"
+    physicsToggle.TextColor3 = Color3.new(1,1,1)
+    physicsToggle.TextScaled = true; physicsToggle.Font = Enum.Font.FredokaOne
+    physicsToggle.Parent = toggleRow
+    Instance.new("UICorner", physicsToggle).CornerRadius = UDim.new(0, 10)
+    local ps1 = Instance.new("UIStroke", physicsToggle); ps1.Color = Color3.fromRGB(220,150,255); ps1.Thickness = 2; ps1.Parent = physicsToggle
+
+    local superToggle = Instance.new("TextButton", toggleRow)
+    superToggle.Size = UDim2.new(0.49, -2, 1, 0)
+    superToggle.Position = UDim2.new(0.51, 0, 0, 0)
+    superToggle.BackgroundColor3 = Color3.fromRGB(200,100,20)
+    superToggle.Text = "SUPER SKILL: OFF"
+    superToggle.TextColor3 = Color3.new(1,1,1)
+    superToggle.TextScaled = true; superToggle.Font = Enum.Font.FredokaOne
+    superToggle.Parent = toggleRow
+    Instance.new("UICorner", superToggle).CornerRadius = UDim.new(0, 10)
+    local ps2 = Instance.new("UIStroke", superToggle); ps2.Color = Color3.fromRGB(255,180,100); ps2.Thickness = 2; ps2.Parent = superToggle
+
+    physicsToggle.MouseButton1Click:Connect(function()
+        gameState.physicsShotEnabled = not gameState.physicsShotEnabled
+        if gameState.physicsShotEnabled then
+            physicsToggle.Text = "PHYSICS SHOT: ON"
+            physicsToggle.BackgroundColor3 = Color3.fromRGB(80,200,100)
+        else
+            physicsToggle.Text = "PHYSICS SHOT: OFF"
+            physicsToggle.BackgroundColor3 = Color3.fromRGB(150,30,200)
+        end
+    end)
+
+    superToggle.MouseButton1Click:Connect(function()
+        gameState.superSkillEnabled = not gameState.superSkillEnabled
+        if gameState.superSkillEnabled then
+            superToggle.Text = "SUPER SKILL: ON"
+            superToggle.BackgroundColor3 = Color3.fromRGB(80,200,100)
+        else
+            superToggle.Text = "SUPER SKILL: OFF"
+            superToggle.BackgroundColor3 = Color3.fromRGB(200,100,20)
+        end
+    end)
+
+    local hintLbl = Instance.new("TextLabel", scroll)
+    hintLbl.Size = UDim2.new(1, -24, 0, 30); hintLbl.Position = UDim2.new(0, 12, 0, 82)
+    hintLbl.BackgroundTransparency = 1
+    hintLbl.Text = "When ON: extra buttons appear during match"
+    hintLbl.TextColor3 = Color3.fromRGB(150,150,150)
+    hintLbl.TextScaled = true; hintLbl.Font = Enum.Font.FredokaOne
+    hintLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- ===== TOURNAMENT =====
+    makeSectionHeader(scroll, 122, "TOURNAMENT", Color3.fromRGB(255,215,0))
 
     local tourneyNames = {"World Cup", "Champions League", "Copa America", "Euro"}
     local tourneyRow = Instance.new("Frame", scroll)
-    tourneyRow.Size = UDim2.new(1, -24, 0, 30)
-    tourneyRow.Position = UDim2.new(0, 12, 0, 46)
+    tourneyRow.Size = UDim2.new(1, -24, 0, 30); tourneyRow.Position = UDim2.new(0, 12, 0, 148)
     tourneyRow.BackgroundTransparency = 1
     local tourneyBtns = {}
     for i, name in ipairs(tourneyNames) do
         local btn = Instance.new("TextButton", tourneyRow)
-        btn.Size = UDim2.new(0.24, -4, 1, 0)
-        btn.Position = UDim2.new((i-1) * 0.255, 0, 0, 0)
+        btn.Size = UDim2.new(0.24, -4, 1, 0); btn.Position = UDim2.new((i-1) * 0.255, 0, 0, 0)
         btn.BackgroundColor3 = (gameState.tournamentType == name) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-        btn.Text = name
-        btn.TextColor3 = Color3.new(1,1,1)
-        btn.TextScaled = true
-        btn.Font = Enum.Font.FredokaOne
-        btn.Parent = tourneyRow
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+        btn.Text = name; btn.TextColor3 = Color3.new(1,1,1)
+        btn.TextScaled = true; btn.Font = Enum.Font.FredokaOne
+        btn.Parent = tourneyRow; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
         btn.MouseButton1Click:Connect(function()
             gameState.tournamentType = name
             gameState.currentStageIndex = 1
@@ -2068,183 +2131,101 @@ local function createSettingsUI()
         tourneyBtns[i] = btn
     end
 
-    local stageLbl = Instance.new("TextLabel", scroll)
-    stageLbl.Size = UDim2.new(1, -24, 0, 14)
-    stageLbl.Position = UDim2.new(0, 12, 0, 82)
-    stageLbl.BackgroundTransparency = 1
-    stageLbl.Text = "Start From Stage:"
-    stageLbl.TextColor3 = Color3.fromRGB(200,200,200)
-    stageLbl.TextXAlignment = Enum.TextXAlignment.Left
-    stageLbl.Font = Enum.Font.FredokaOne
-    stageLbl.TextScaled = true
-
-    local stageBox = Instance.new("TextBox", scroll)
-    stageBox.Size = UDim2.new(0.48, -6, 0, 24)
-    stageBox.Position = UDim2.new(0, 12, 0, 98)
-    stageBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
-    stageBox.Text = "1"
-    stageBox.TextColor3 = Color3.new(1,1,1)
-    stageBox.TextScaled = true
-    stageBox.Font = Enum.Font.FredokaOne
-    Instance.new("UICorner", stageBox).CornerRadius = UDim.new(0, 8)
-
-    local matchBox = Instance.new("TextBox", scroll)
-    matchBox.Size = UDim2.new(0.48, -6, 0, 24)
-    matchBox.Position = UDim2.new(0.52, 0, 0, 98)
-    matchBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
-    matchBox.Text = "1"
-    matchBox.TextColor3 = Color3.new(1,1,1)
-    matchBox.TextScaled = true
-    matchBox.Font = Enum.Font.FredokaOne
-    Instance.new("UICorner", matchBox).CornerRadius = UDim.new(0, 8)
-
-    makeSectionHeader(scroll, 142, "TEAM NAMES", Color3.fromRGB(150,200,255))
-
-    local name1Lbl = Instance.new("TextLabel", scroll)
-    name1Lbl.Size = UDim2.new(1, -24, 0, 14)
-    name1Lbl.Position = UDim2.new(0, 12, 0, 166)
-    name1Lbl.BackgroundTransparency = 1
-    name1Lbl.Text = "Team Red Name:"
-    name1Lbl.TextColor3 = Color3.fromRGB(200,200,200)
-    name1Lbl.TextXAlignment = Enum.TextXAlignment.Left
-    name1Lbl.Font = Enum.Font.FredokaOne
-    name1Lbl.TextScaled = true
-
+    -- Team names
+    makeSectionHeader(scroll, 184, "TEAM NAMES", Color3.fromRGB(150,200,255))
     local teamNameBox = Instance.new("TextBox", scroll)
-    teamNameBox.Size = UDim2.new(1, -24, 0, 24)
-    teamNameBox.Position = UDim2.new(0, 12, 0, 182)
-    teamNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
-    teamNameBox.Text = gameState.teamRedName
-    teamNameBox.TextColor3 = Color3.new(1,1,1)
-    teamNameBox.TextScaled = true
+    teamNameBox.Size = UDim2.new(1, -24, 0, 24); teamNameBox.Position = UDim2.new(0, 12, 0, 210)
+    teamNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60); teamNameBox.Text = gameState.teamRedName
+    teamNameBox.TextColor3 = Color3.new(1,1,1); teamNameBox.TextScaled = true
     teamNameBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", teamNameBox).CornerRadius = UDim.new(0, 8)
-
-    local name2Lbl = Instance.new("TextLabel", scroll)
-    name2Lbl.Size = UDim2.new(1, -24, 0, 14)
-    name2Lbl.Position = UDim2.new(0, 12, 0, 212)
-    name2Lbl.BackgroundTransparency = 1
-    name2Lbl.Text = "Team Blue Name:"
-    name2Lbl.TextColor3 = Color3.fromRGB(200,200,200)
-    name2Lbl.TextXAlignment = Enum.TextXAlignment.Left
-    name2Lbl.Font = Enum.Font.FredokaOne
-    name2Lbl.TextScaled = true
-
     local oppNameBox = Instance.new("TextBox", scroll)
-    oppNameBox.Size = UDim2.new(1, -24, 0, 24)
-    oppNameBox.Position = UDim2.new(0, 12, 0, 228)
-    oppNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60)
-    oppNameBox.Text = gameState.teamBlueName
-    oppNameBox.TextColor3 = Color3.new(1,1,1)
-    oppNameBox.TextScaled = true
+    oppNameBox.Size = UDim2.new(1, -24, 0, 24); oppNameBox.Position = UDim2.new(0, 12, 0, 240)
+    oppNameBox.BackgroundColor3 = Color3.fromRGB(45,45,60); oppNameBox.Text = gameState.teamBlueName
+    oppNameBox.TextColor3 = Color3.new(1,1,1); oppNameBox.TextScaled = true
     oppNameBox.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", oppNameBox).CornerRadius = UDim.new(0, 8)
 
-    makeSectionHeader(scroll, 260, "RED TEAM DIFFICULTY", Color3.fromRGB(255,120,120))
-
+    -- Red difficulty
+    makeSectionHeader(scroll, 274, "RED TEAM DIFFICULTY", Color3.fromRGB(255,120,120))
     local redDiffBtns = {}
-    redDiffBtns.defense = makeDifficultyRow(scroll, 286, "Defense:", gameState.redDifficulty.defense, function(i)
-        gameState.redDifficulty.defense = i
-        refreshDiffStats()
+    redDiffBtns.defense = makeDifficultyRow(scroll, 300, "Defense:", gameState.redDifficulty.defense, function(i)
+        gameState.redDifficulty.defense = i; refreshDiffStats()
     end)
-    redDiffBtns.goalkeeper = makeDifficultyRow(scroll, 336, "Goalkeeper:", gameState.redDifficulty.goalkeeper, function(i)
-        gameState.redDifficulty.goalkeeper = i
-        refreshDiffStats()
+    redDiffBtns.goalkeeper = makeDifficultyRow(scroll, 350, "Goalkeeper:", gameState.redDifficulty.goalkeeper, function(i)
+        gameState.redDifficulty.goalkeeper = i; refreshDiffStats()
     end)
-    redDiffBtns.attack = makeDifficultyRow(scroll, 386, "Attack:", gameState.redDifficulty.attack, function(i)
-        gameState.redDifficulty.attack = i
-        refreshDiffStats()
+    redDiffBtns.attack = makeDifficultyRow(scroll, 400, "Attack:", gameState.redDifficulty.attack, function(i)
+        gameState.redDifficulty.attack = i; refreshDiffStats()
     end)
-    redDiffBtns.pass = makeDifficultyRow(scroll, 436, "Passing:", gameState.redDifficulty.pass, function(i)
-        gameState.redDifficulty.pass = i
-        refreshDiffStats()
+    redDiffBtns.pass = makeDifficultyRow(scroll, 450, "Passing:", gameState.redDifficulty.pass, function(i)
+        gameState.redDifficulty.pass = i; refreshDiffStats()
     end)
 
-    makeSectionHeader(scroll, 494, "BLUE TEAM DIFFICULTY", Color3.fromRGB(120,150,255))
-
+    -- Blue difficulty
+    makeSectionHeader(scroll, 508, "BLUE TEAM DIFFICULTY", Color3.fromRGB(120,150,255))
     local blueDiffBtns = {}
-    blueDiffBtns.defense = makeDifficultyRow(scroll, 520, "Defense:", gameState.blueDifficulty.defense, function(i)
-        gameState.blueDifficulty.defense = i
-        refreshDiffStats()
+    blueDiffBtns.defense = makeDifficultyRow(scroll, 534, "Defense:", gameState.blueDifficulty.defense, function(i)
+        gameState.blueDifficulty.defense = i; refreshDiffStats()
     end)
-    blueDiffBtns.goalkeeper = makeDifficultyRow(scroll, 570, "Goalkeeper:", gameState.blueDifficulty.goalkeeper, function(i)
-        gameState.blueDifficulty.goalkeeper = i
-        refreshDiffStats()
+    blueDiffBtns.goalkeeper = makeDifficultyRow(scroll, 584, "Goalkeeper:", gameState.blueDifficulty.goalkeeper, function(i)
+        gameState.blueDifficulty.goalkeeper = i; refreshDiffStats()
     end)
-    blueDiffBtns.attack = makeDifficultyRow(scroll, 620, "Attack:", gameState.blueDifficulty.attack, function(i)
-        gameState.blueDifficulty.attack = i
-        refreshDiffStats()
+    blueDiffBtns.attack = makeDifficultyRow(scroll, 634, "Attack:", gameState.blueDifficulty.attack, function(i)
+        gameState.blueDifficulty.attack = i; refreshDiffStats()
     end)
-    blueDiffBtns.pass = makeDifficultyRow(scroll, 670, "Passing:", gameState.blueDifficulty.pass, function(i)
-        gameState.blueDifficulty.pass = i
-        refreshDiffStats()
+    blueDiffBtns.pass = makeDifficultyRow(scroll, 684, "Passing:", gameState.blueDifficulty.pass, function(i)
+        gameState.blueDifficulty.pass = i; refreshDiffStats()
     end)
 
-    makeSectionHeader(scroll, 728, "RED SHIRT COLOR", Color3.fromRGB(255,120,120))
-
+    -- Red color
+    makeSectionHeader(scroll, 742, "RED SHIRT COLOR", Color3.fromRGB(255,120,120))
     local preview1 = Instance.new("Frame", scroll)
     preview1.AnchorPoint = Vector2.new(1, 0)
-    preview1.Size = UDim2.new(0, 100, 0, 24)
-    preview1.Position = UDim2.new(1, -12, 0, 750)
-    preview1.BackgroundColor3 = curRedColor
-    preview1.Parent = scroll
+    preview1.Size = UDim2.new(0, 100, 0, 24); preview1.Position = UDim2.new(1, -12, 0, 764)
+    preview1.BackgroundColor3 = curRedColor; preview1.Parent = scroll
     Instance.new("UICorner", preview1).CornerRadius = UDim.new(0, 6)
-
     local presetHues = {0, 0.6, 0.13, 0.35, 0.05, 0.75, 0, 0}
     local presetSats = {1, 1, 1, 1, 1, 1, 0, 0}
     local presetVals = {1, 1, 1, 1, 1, 1, 1, 0.08}
-
     local row1 = Instance.new("Frame", scroll)
-    row1.Size = UDim2.new(0.7, 0, 0, 24)
-    row1.Position = UDim2.new(0, 12, 0, 752)
+    row1.Size = UDim2.new(0.7, 0, 0, 24); row1.Position = UDim2.new(0, 12, 0, 766)
     row1.BackgroundTransparency = 1
     for i = 1, 8 do
         local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
         local btn = Instance.new("TextButton", row1)
-        btn.Size = UDim2.new(0.115, -2, 1, 0)
-        btn.Position = UDim2.new((i-1) * 0.125, 0, 0, 0)
-        btn.BackgroundColor3 = c
-        btn.Text = ""
-        btn.BorderSizePixel = 0
+        btn.Size = UDim2.new(0.115, -2, 1, 0); btn.Position = UDim2.new((i-1) * 0.125, 0, 0, 0)
+        btn.BackgroundColor3 = c; btn.Text = ""; btn.BorderSizePixel = 0
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     end
-
-    local setRedSat = makeSlider(scroll, 786, "Red Saturation:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v
+    local setRedSat = makeSlider(scroll, 800, "Red Saturation:", Color3.fromRGB(200,80,80), sRed, function(v) sRed = v
         preview1.BackgroundColor3 = Color3.fromHSV(hRed, sRed, vRed)
     end)
-    local setRedVal = makeSlider(scroll, 822, "Red Brightness:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v
+    local setRedVal = makeSlider(scroll, 836, "Red Brightness:", Color3.fromRGB(240,120,120), vRed, function(v) vRed = v
         preview1.BackgroundColor3 = Color3.fromHSV(hRed, sRed, vRed)
     end)
 
-    makeSectionHeader(scroll, 860, "BLUE SHIRT COLOR", Color3.fromRGB(120,150,255))
-
+    -- Blue color
+    makeSectionHeader(scroll, 874, "BLUE SHIRT COLOR", Color3.fromRGB(120,150,255))
     local preview2 = Instance.new("Frame", scroll)
     preview2.AnchorPoint = Vector2.new(1, 0)
-    preview2.Size = UDim2.new(0, 100, 0, 24)
-    preview2.Position = UDim2.new(1, -12, 0, 882)
-    preview2.BackgroundColor3 = curBlueColor
-    preview2.Parent = scroll
+    preview2.Size = UDim2.new(0, 100, 0, 24); preview2.Position = UDim2.new(1, -12, 0, 896)
+    preview2.BackgroundColor3 = curBlueColor; preview2.Parent = scroll
     Instance.new("UICorner", preview2).CornerRadius = UDim.new(0, 6)
-
     local row2 = Instance.new("Frame", scroll)
-    row2.Size = UDim2.new(0.7, 0, 0, 24)
-    row2.Position = UDim2.new(0, 12, 0, 884)
+    row2.Size = UDim2.new(0.7, 0, 0, 24); row2.Position = UDim2.new(0, 12, 0, 898)
     row2.BackgroundTransparency = 1
     for i = 1, 8 do
         local c = Color3.fromHSV(presetHues[i], presetSats[i], presetVals[i])
         local btn = Instance.new("TextButton", row2)
-        btn.Size = UDim2.new(0.115, -2, 1, 0)
-        btn.Position = UDim2.new((i-1) * 0.125, 0, 0, 0)
-        btn.BackgroundColor3 = c
-        btn.Text = ""
-        btn.BorderSizePixel = 0
+        btn.Size = UDim2.new(0.115, -2, 1, 0); btn.Position = UDim2.new((i-1) * 0.125, 0, 0, 0)
+        btn.BackgroundColor3 = c; btn.Text = ""; btn.BorderSizePixel = 0
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     end
-
-    local setBlueSat = makeSlider(scroll, 918, "Blue Saturation:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v
+    local setBlueSat = makeSlider(scroll, 932, "Blue Saturation:", Color3.fromRGB(80,80,200), sBlue, function(v) sBlue = v
         preview2.BackgroundColor3 = Color3.fromHSV(hBlue, sBlue, vBlue)
     end)
-    local setBlueVal = makeSlider(scroll, 954, "Blue Brightness:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v
+    local setBlueVal = makeSlider(scroll, 968, "Blue Brightness:", Color3.fromRGB(120,120,240), vBlue, function(v) vBlue = v
         preview2.BackgroundColor3 = Color3.fromHSV(hBlue, sBlue, vBlue)
     end)
 
@@ -2273,59 +2254,60 @@ local function createSettingsUI()
         end
     end
 
+    -- Score
+    makeSectionHeader(scroll, 1006, "SCORE (RED - BLUE)", Color3.fromRGB(255,255,100))
+    local scoreRedBox = Instance.new("TextBox", scroll)
+    scoreRedBox.Size = UDim2.new(0.48, -6, 0, 26); scoreRedBox.Position = UDim2.new(0, 12, 0, 1030)
+    scoreRedBox.BackgroundColor3 = Color3.fromRGB(60,40,40); scoreRedBox.Text = tostring(gameState.scoreRed)
+    scoreRedBox.TextColor3 = Color3.new(1,1,1); scoreRedBox.TextScaled = true
+    scoreRedBox.Font = Enum.Font.FredokaOne
+    Instance.new("UICorner", scoreRedBox).CornerRadius = UDim.new(0, 8)
+    local scoreBlueBox = Instance.new("TextBox", scroll)
+    scoreBlueBox.Size = UDim2.new(0.48, -6, 0, 26); scoreBlueBox.Position = UDim2.new(0.52, 0, 0, 1030)
+    scoreBlueBox.BackgroundColor3 = Color3.fromRGB(40,40,60); scoreBlueBox.Text = tostring(gameState.scoreBlue)
+    scoreBlueBox.TextColor3 = Color3.new(1,1,1); scoreBlueBox.TextScaled = true
+    scoreBlueBox.Font = Enum.Font.FredokaOne
+    Instance.new("UICorner", scoreBlueBox).CornerRadius = UDim.new(0, 8)
+
+    -- Apply / Close buttons
     local applyBtn = Instance.new("TextButton", buttonBar)
-    applyBtn.Size = UDim2.new(0.49, 0, 1, 0)
-    applyBtn.Position = UDim2.new(0, 0, 0, 0)
-    applyBtn.BackgroundColor3 = Color3.fromRGB(50,200,100)
-    applyBtn.Text = "APPLY"
-    applyBtn.TextColor3 = Color3.new(1,1,1)
-    applyBtn.TextScaled = true
+    applyBtn.Size = UDim2.new(0.49, 0, 1, 0); applyBtn.Position = UDim2.new(0, 0, 0, 0)
+    applyBtn.BackgroundColor3 = Color3.fromRGB(50,200,100); applyBtn.Text = "APPLY"
+    applyBtn.TextColor3 = Color3.new(1,1,1); applyBtn.TextScaled = true
     applyBtn.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", applyBtn).CornerRadius = UDim.new(0, 12)
-    local applyStroke = Instance.new("UIStroke", applyBtn)
-    applyStroke.Color = Color3.fromRGB(150,255,180)
-    applyStroke.Thickness = 3
-
     applyBtn.MouseButton1Click:Connect(function()
         if teamNameBox.Text ~= "" then gameState.teamRedName = string.upper(teamNameBox.Text) end
         if oppNameBox.Text ~= "" then gameState.teamBlueName = string.upper(oppNameBox.Text) end
-        local sr = tonumber(scoreRedBox.Text)
-        local sb = tonumber(scoreBlueBox.Text)
+        local sr = tonumber(scoreRedBox.Text); local sb = tonumber(scoreBlueBox.Text)
         if sr then gameState.scoreRed = math.max(0, math.floor(sr)) end
         if sb then gameState.scoreBlue = math.max(0, math.floor(sb)) end
-        local si = tonumber(stageBox.Text)
-        local mi = tonumber(matchBox.Text)
-        if si then gameState.currentStageIndex = math.max(1, math.floor(si)) end
-        if mi then gameState.currentMatchInStage = math.max(1, math.floor(mi)) end
         gameState.teamRedColor = Color3.fromHSV(hRed, sRed, vRed)
         gameState.teamBlueColor = Color3.fromHSV(hBlue, sBlue, vBlue)
         applyTeamColors()
         updateTournamentDisplay()
+        -- Update special buttons in game UI
+        if gameState.physicsShotLabel then
+            gameState.physicsShotLabel.Visible = gameState.physicsShotEnabled
+        end
+        if gameState.superSkillLabel then
+            gameState.superSkillLabel.Visible = gameState.superSkillEnabled
+        end
         panel.Visible = false
         gameState.settingsOpen = false
     end)
 
     local closeBtn = Instance.new("TextButton", buttonBar)
-    closeBtn.Size = UDim2.new(0.49, 0, 1, 0)
-    closeBtn.Position = UDim2.new(0.51, 0, 0, 0)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50)
-    closeBtn.Text = "CLOSE"
-    closeBtn.TextColor3 = Color3.new(1,1,1)
-    closeBtn.TextScaled = true
+    closeBtn.Size = UDim2.new(0.49, 0, 1, 0); closeBtn.Position = UDim2.new(0.51, 0, 0, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(200,50,50); closeBtn.Text = "CLOSE"
+    closeBtn.TextColor3 = Color3.new(1,1,1); closeBtn.TextScaled = true
     closeBtn.Font = Enum.Font.FredokaOne
     Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 12)
-    local closeStroke = Instance.new("UIStroke", closeBtn)
-    closeStroke.Color = Color3.fromRGB(255,150,150)
-    closeStroke.Thickness = 3
-
     closeBtn.MouseButton1Click:Connect(function()
-        panel.Visible = false
-        gameState.settingsOpen = false
+        panel.Visible = false; gameState.settingsOpen = false
     end)
-
     xCloseBtn.MouseButton1Click:Connect(function()
-        panel.Visible = false
-        gameState.settingsOpen = false
+        panel.Visible = false; gameState.settingsOpen = false
     end)
 
     gearBtn.MouseButton1Click:Connect(function()
@@ -2334,8 +2316,6 @@ local function createSettingsUI()
         if gameState.settingsOpen then
             teamNameBox.Text = gameState.teamRedName
             oppNameBox.Text = gameState.teamBlueName
-            stageBox.Text = tostring(gameState.currentStageIndex)
-            matchBox.Text = tostring(gameState.currentMatchInStage)
             hRed, sRed, vRed = Color3.toHSV(gameState.teamRedColor)
             hBlue, sBlue, vBlue = Color3.toHSV(gameState.teamBlueColor)
             preview1.BackgroundColor3 = Color3.fromHSV(hRed, sRed, vRed)
@@ -2344,6 +2324,21 @@ local function createSettingsUI()
             setBlueSat(sBlue); setBlueVal(vBlue)
             scoreRedBox.Text = tostring(gameState.scoreRed)
             scoreBlueBox.Text = tostring(gameState.scoreBlue)
+            -- Sync special toggles
+            if gameState.physicsShotEnabled then
+                physicsToggle.Text = "PHYSICS SHOT: ON"
+                physicsToggle.BackgroundColor3 = Color3.fromRGB(80,200,100)
+            else
+                physicsToggle.Text = "PHYSICS SHOT: OFF"
+                physicsToggle.BackgroundColor3 = Color3.fromRGB(150,30,200)
+            end
+            if gameState.superSkillEnabled then
+                superToggle.Text = "SUPER SKILL: ON"
+                superToggle.BackgroundColor3 = Color3.fromRGB(80,200,100)
+            else
+                superToggle.Text = "SUPER SKILL: OFF"
+                superToggle.BackgroundColor3 = Color3.fromRGB(200,100,20)
+            end
             for j, b in ipairs(tourneyBtns) do
                 b.BackgroundColor3 = (tourneyNames[j] == gameState.tournamentType) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
             end
@@ -2363,6 +2358,9 @@ local function createSettingsUI()
     end)
 end
 
+-- ============================================================
+-- GAME UI (with new Physics Shot and Super Skill buttons)
+-- ============================================================
 local function createGameUI()
     if gameState.ui then gameState.ui:Destroy() end
     local gui = Instance.new("ScreenGui")
@@ -2370,95 +2368,60 @@ local function createGameUI()
     gameState.ui = gui
 
     local board = Instance.new("Frame", gui)
-    board.Name = "Board"
-    board.Size = UDim2.new(0, 240, 0, 88)
-    board.Position = UDim2.new(0, 10, 0, 10)
-    board.BackgroundColor3 = Color3.fromRGB(15,15,20)
-    board.BackgroundTransparency = 0.2
+    board.Size = UDim2.new(0, 240, 0, 88); board.Position = UDim2.new(0, 10, 0, 10)
+    board.BackgroundColor3 = Color3.fromRGB(15,15,20); board.BackgroundTransparency = 0.2
     board.BorderSizePixel = 0
     Instance.new("UICorner", board).CornerRadius = UDim.new(0, 10)
-    local bStroke = Instance.new("UIStroke", board)
-    bStroke.Color = Color3.fromRGB(255,200,100)
-    bStroke.Thickness = 2
+    local bStroke = Instance.new("UIStroke", board); bStroke.Color = Color3.fromRGB(255,200,100); bStroke.Thickness = 2
 
     local tourneyLbl = Instance.new("TextLabel", board)
-    tourneyLbl.Size = UDim2.new(1, -12, 0, 16)
-    tourneyLbl.Position = UDim2.new(0, 6, 0, 4)
-    tourneyLbl.BackgroundTransparency = 1
-    tourneyLbl.Text = gameState.tournamentType
-    tourneyLbl.TextColor3 = Color3.fromRGB(255,215,0)
-    tourneyLbl.Font = Enum.Font.FredokaOne
-    tourneyLbl.TextSize = 13
-    tourneyLbl.TextXAlignment = Enum.TextXAlignment.Left
+    tourneyLbl.Size = UDim2.new(1, -12, 0, 16); tourneyLbl.Position = UDim2.new(0, 6, 0, 4)
+    tourneyLbl.BackgroundTransparency = 1; tourneyLbl.Text = gameState.tournamentType
+    tourneyLbl.TextColor3 = Color3.fromRGB(255,215,0); tourneyLbl.Font = Enum.Font.FredokaOne
+    tourneyLbl.TextSize = 13; tourneyLbl.TextXAlignment = Enum.TextXAlignment.Left
     gameState.tournamentLbl = tourneyLbl
 
     local stageLbl = Instance.new("TextLabel", board)
-    stageLbl.Size = UDim2.new(1, -12, 0, 14)
-    stageLbl.Position = UDim2.new(0, 6, 0, 22)
-    stageLbl.BackgroundTransparency = 1
-    stageLbl.Text = "GROUP STAGE"
-    stageLbl.TextColor3 = Color3.fromRGB(180,220,255)
-    stageLbl.Font = Enum.Font.FredokaOne
-    stageLbl.TextSize = 12
-    stageLbl.TextXAlignment = Enum.TextXAlignment.Left
+    stageLbl.Size = UDim2.new(1, -12, 0, 14); stageLbl.Position = UDim2.new(0, 6, 0, 22)
+    stageLbl.BackgroundTransparency = 1; stageLbl.Text = "GROUP STAGE"
+    stageLbl.TextColor3 = Color3.fromRGB(180,220,255); stageLbl.Font = Enum.Font.FredokaOne
+    stageLbl.TextSize = 12; stageLbl.TextXAlignment = Enum.TextXAlignment.Left
     gameState.stageLbl = stageLbl
 
     local matchLbl = Instance.new("TextLabel", board)
-    matchLbl.Size = UDim2.new(1, -12, 0, 14)
-    matchLbl.Position = UDim2.new(0, 6, 0, 38)
-    matchLbl.BackgroundTransparency = 1
-    matchLbl.Text = "MATCH 1/5"
-    matchLbl.TextColor3 = Color3.fromRGB(200,200,200)
-    matchLbl.Font = Enum.Font.FredokaOne
-    matchLbl.TextSize = 11
-    matchLbl.TextXAlignment = Enum.TextXAlignment.Left
+    matchLbl.Size = UDim2.new(1, -12, 0, 14); matchLbl.Position = UDim2.new(0, 6, 0, 38)
+    matchLbl.BackgroundTransparency = 1; matchLbl.Text = "MATCH 1/5"
+    matchLbl.TextColor3 = Color3.fromRGB(200,200,200); matchLbl.Font = Enum.Font.FredokaOne
+    matchLbl.TextSize = 11; matchLbl.TextXAlignment = Enum.TextXAlignment.Left
     gameState.matchLbl = matchLbl
 
     local scoreLbl = Instance.new("TextLabel", board)
-    scoreLbl.Size = UDim2.new(1, -12, 0, 18)
-    scoreLbl.Position = UDim2.new(0, 6, 0, 54)
-    scoreLbl.BackgroundTransparency = 1
-    scoreLbl.Text = "RED 0 - 0 BLUE"
-    scoreLbl.TextColor3 = Color3.new(1,1,1)
-    scoreLbl.Font = Enum.Font.FredokaOne
-    scoreLbl.TextSize = 14
-    scoreLbl.TextXAlignment = Enum.TextXAlignment.Left
+    scoreLbl.Size = UDim2.new(1, -12, 0, 18); scoreLbl.Position = UDim2.new(0, 6, 0, 54)
+    scoreLbl.BackgroundTransparency = 1; scoreLbl.Text = "RED 0 - 0 BLUE"
+    scoreLbl.TextColor3 = Color3.new(1,1,1); scoreLbl.Font = Enum.Font.FredokaOne
+    scoreLbl.TextSize = 14; scoreLbl.TextXAlignment = Enum.TextXAlignment.Left
     gameState.scoreLbl = scoreLbl
 
     local timeLbl = Instance.new("TextLabel", board)
-    timeLbl.Size = UDim2.new(1, -12, 0, 14)
-    timeLbl.Position = UDim2.new(0, 6, 0, 72)
-    timeLbl.BackgroundTransparency = 1
-    timeLbl.Text = "H1 | 3:00"
-    timeLbl.TextColor3 = Color3.fromRGB(255,255,100)
-    timeLbl.Font = Enum.Font.FredokaOne
-    timeLbl.TextSize = 11
-    timeLbl.TextXAlignment = Enum.TextXAlignment.Left
+    timeLbl.Size = UDim2.new(1, -12, 0, 14); timeLbl.Position = UDim2.new(0, 6, 0, 72)
+    timeLbl.BackgroundTransparency = 1; timeLbl.Text = "H1 | 3:00"
+    timeLbl.TextColor3 = Color3.fromRGB(255,255,100); timeLbl.Font = Enum.Font.FredokaOne
+    timeLbl.TextSize = 11; timeLbl.TextXAlignment = Enum.TextXAlignment.Left
 
     local goalLabel = Instance.new("TextLabel", gui)
-    goalLabel.Size = UDim2.new(0, 600, 0, 150)
-    goalLabel.Position = UDim2.new(0.5, -300, 0.4, -75)
-    goalLabel.BackgroundTransparency = 1
-    goalLabel.Text = ""
-    goalLabel.TextColor3 = Color3.fromRGB(255,255,0)
-    goalLabel.TextScaled = true
-    goalLabel.Font = Enum.Font.FredokaOne
-    goalLabel.TextStrokeTransparency = 0.3
-    goalLabel.TextStrokeColor3 = Color3.new(0,0,0)
-    goalLabel.Visible = false
+    goalLabel.Size = UDim2.new(0, 600, 0, 150); goalLabel.Position = UDim2.new(0.5, -300, 0.4, -75)
+    goalLabel.BackgroundTransparency = 1; goalLabel.Text = ""
+    goalLabel.TextColor3 = Color3.fromRGB(255,255,0); goalLabel.TextScaled = true
+    goalLabel.Font = Enum.Font.FredokaOne; goalLabel.TextStrokeTransparency = 0.3
+    goalLabel.TextStrokeColor3 = Color3.new(0,0,0); goalLabel.Visible = false
     gameState.goalTextLabel = goalLabel
 
     local bigLabel = Instance.new("TextLabel", gui)
-    bigLabel.Size = UDim2.new(0, 700, 0, 200)
-    bigLabel.Position = UDim2.new(0.5, -350, 0.4, -100)
-    bigLabel.BackgroundTransparency = 1
-    bigLabel.Text = ""
-    bigLabel.TextColor3 = Color3.new(1,1,1)
-    bigLabel.TextScaled = true
-    bigLabel.Font = Enum.Font.FredokaOne
-    bigLabel.TextStrokeTransparency = 0.3
-    bigLabel.TextStrokeColor3 = Color3.new(0,0,0)
-    bigLabel.Visible = false
+    bigLabel.Size = UDim2.new(0, 700, 0, 200); bigLabel.Position = UDim2.new(0.5, -350, 0.4, -100)
+    bigLabel.BackgroundTransparency = 1; bigLabel.Text = ""
+    bigLabel.TextColor3 = Color3.new(1,1,1); bigLabel.TextScaled = true
+    bigLabel.Font = Enum.Font.FredokaOne; bigLabel.TextStrokeTransparency = 0.3
+    bigLabel.TextStrokeColor3 = Color3.new(0,0,0); bigLabel.Visible = false
     gameState.bigTextLabel = bigLabel
 
     task.spawn(function()
@@ -2478,6 +2441,7 @@ local function createGameUI()
         end
     end)
 
+    -- Standard control buttons
     local function makeBtn(name, text, color, pos, size)
         local b = Instance.new("TextButton", gui)
         b.Name = name; b.Text = text
@@ -2493,11 +2457,18 @@ local function createGameUI()
     local lobBtn = makeBtn("LobBtn", "LOB", Color3.fromRGB(255,215,0), UDim2.new(0.8,-50,0.8,-112))
     local knuckleBtn = makeBtn("KnuckleBtn", "KNUCKLE\n(Hold)", Color3.fromRGB(255,100,0), UDim2.new(0.8,-50,0.8,-158))
     local dribbleBtn = makeBtn("DribbleBtn", "DRIBBLE", Color3.fromRGB(0,150,255), UDim2.new(0.8,-50,0.8,-204))
-    local skillBtn = makeBtn("SkillBtn", "SKILL", Color3.fromRGB(180,0,220), UDim2.new(0.8,-50,0.8,-250))
     local switchTeamBtn = makeBtn("SwitchTeamBtn", "SWITCH", Color3.fromRGB(200,100,200), UDim2.new(0.2,-50,0.8,-20))
-    local sprintBtn = makeBtn("SprintBtn", "SPRINT 40", Color3.fromRGB(60,60,60), UDim2.new(0.2,-50,0.8,-66))
+    local sprintBtn = makeBtn("SprintBtn", "SPRINT", Color3.fromRGB(60,60,60), UDim2.new(0.2,-50,0.8,-66))
 
-    gameState.gameButtons = {shootBtn, passBtn, lobBtn, knuckleBtn, dribbleBtn, skillBtn, switchTeamBtn, sprintBtn}
+    -- NEW: Physics shot button (top left area, above switch team)
+    local physicsBtn = makeBtn("PhysicsBtn", "⚡\nPHYSICS SHOT", Color3.fromRGB(150,30,200), UDim2.new(0.2,-50,0.8,-158), UDim2.new(0, 100, 0, 42))
+    physicsBtn.Visible = false
+    gameState.physicsShotLabel = physicsBtn
+
+    -- NEW: Super skill button
+    local superBtn = makeBtn("SuperBtn", "🌀\nSUPER SKILL", Color3.fromRGB(200,100,20), UDim2.new(0.2,-50,0.8,-112), UDim2.new(0, 100, 0, 42))
+    superBtn.Visible = false
+    gameState.superSkillLabel = superBtn
 
     local function getNearBall()
         local char = gameState.playerChar
@@ -2607,11 +2578,9 @@ local function createGameUI()
         doDribble()
     end)
 
-    skillBtn.MouseButton1Click:Connect(doPlayerSkill)
-
     lobBtn.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating then return end
-        local near, hrp = getNearBall()
+        local near = getNearBall()
         if near then
             stopDribble()
             gameState.lastTouchTeam = gameState.playerTeam
@@ -2627,7 +2596,7 @@ local function createGameUI()
 
     passBtn.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating then return end
-        local near, hrp = getNearBall()
+        local near = getNearBall()
         if near then
             stopDribble()
             gameState.lastTouchTeam = gameState.playerTeam
@@ -2664,9 +2633,21 @@ local function createGameUI()
                 else
                     hum.WalkSpeed = NORMAL_WALKSPEED
                     sprintBtn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-                    sprintBtn.Text = "SPRINT 40"
+                    sprintBtn.Text = "SPRINT"
                 end
             end
+        end
+    end)
+
+    -- NEW: Physics shot & Super skill button events
+    physicsBtn.MouseButton1Click:Connect(function()
+        if gameState.physicsShotEnabled then
+            physicsDefyingShot()
+        end
+    end)
+    superBtn.MouseButton1Click:Connect(function()
+        if gameState.superSkillEnabled then
+            activateSuperSkill()
         end
     end)
 end
@@ -2683,7 +2664,6 @@ local function autoStart()
     gameState.playerChar = char
     task.wait(1)
     updatePlayerAppearance()
-
     player.CharacterAdded:Connect(function(nc)
         gameState.playerChar = nc
         gameState.sprinting = false
@@ -2691,9 +2671,7 @@ local function autoStart()
         task.wait(0.5)
         updatePlayerAppearance()
     end)
-
     refreshDiffStats()
-
     createStadium()
     createBall()
     createAIPlayer("Red", "Goalkeeper", 1)
@@ -2704,14 +2682,12 @@ local function autoStart()
     for i = 1, 4 do createAIPlayer("Blue", "Defender", i) end
     for i = 1, 4 do createAIPlayer("Blue", "Midfielder", i) end
     for i = 1, 2 do createAIPlayer("Blue", "Striker", i) end
-
     resetPositions("Red")
     gameState.gameActive = true
     createGameUI()
     createSettingsUI()
     startTimer()
     updateTournamentDisplay()
-
     RunService.Heartbeat:Connect(function(dt)
         if (gameState.paused or gameState.restartCountdown > 0) and not gameState.inPenaltyShootout then
             if gameState.ball and not gameState.ball.Anchored then
@@ -2734,8 +2710,12 @@ local function autoStart()
             checkInterception()
         end
     end)
-
-    print("=== World Cup 2026 - Single Group Stage Edition ===")
+    print("=== World Cup 2026 | Advanced Edition ===")
+    print("- Corner kicks with headers/clearances")
+    print("- Throw-ins with lob/ground pass")
+    print("- AI opponent avoidance (dribble sideways / pass)")
+    print("- Physics Defying Shot (settings toggle)")
+    print("- Super Skill (settings toggle)")
 end
 
 autoStart()
