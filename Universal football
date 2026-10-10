@@ -287,16 +287,17 @@ local function createStadium()
         cp("Net", Vector3.new(GOAL_WIDTH, GOAL_HEIGHT, 5), gp+Vector3.new(0, GOAL_HEIGHT/2, netZ), Color3.fromRGB(220,220,220), Enum.Material.SmoothPlastic, 0.6, false)
     end
     goal(-PITCH_LENGTH/2); goal(PITCH_LENGTH/2)
-    cp("InvisWallL", Vector3.new(2, 100, PITCH_LENGTH + 40), MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 5, 50, 0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("InvisWallR", Vector3.new(2, 100, PITCH_LENGTH + 40), MAP_POS + Vector3.new(PITCH_WIDTH/2 + 5, 50, 0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    -- THICK WALLS (30 studs)
+    cp("InvisWallL", Vector3.new(30, 120, PITCH_LENGTH + 60), MAP_POS + Vector3.new(-PITCH_WIDTH/2 - 15, 60, 0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("InvisWallR", Vector3.new(30, 120, PITCH_LENGTH + 60), MAP_POS + Vector3.new(PITCH_WIDTH/2 + 15, 60, 0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
     local sideWallWidth = (PITCH_WIDTH - GOAL_WIDTH) / 2
-    cp("InvisWallFrontL", Vector3.new(sideWallWidth, 100, 2), MAP_POS + Vector3.new(-(GOAL_WIDTH/2 + sideWallWidth/2), 50, -PITCH_LENGTH/2 - 5), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("InvisWallFrontR", Vector3.new(sideWallWidth, 100, 2), MAP_POS + Vector3.new((GOAL_WIDTH/2 + sideWallWidth/2), 50, -PITCH_LENGTH/2 - 5), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("InvisWallBackL", Vector3.new(sideWallWidth, 100, 2), MAP_POS + Vector3.new(-(GOAL_WIDTH/2 + sideWallWidth/2), 50, PITCH_LENGTH/2 + 5), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("InvisWallBackR", Vector3.new(sideWallWidth, 100, 2), MAP_POS + Vector3.new((GOAL_WIDTH/2 + sideWallWidth/2), 50, PITCH_LENGTH/2 + 5), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("BehindNetFront", Vector3.new(GOAL_WIDTH + 5, 100, 2), MAP_POS + Vector3.new(0, 50, -PITCH_LENGTH/2 - 15), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("BehindNetBack", Vector3.new(GOAL_WIDTH + 5, 100, 2), MAP_POS + Vector3.new(0, 50, PITCH_LENGTH/2 + 15), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
-    cp("InvisCeiling", Vector3.new(PITCH_WIDTH + 40, 2, PITCH_LENGTH + 40), MAP_POS + Vector3.new(0, 60, 0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("InvisWallFrontL", Vector3.new(sideWallWidth + 30, 120, 30), MAP_POS + Vector3.new(-(GOAL_WIDTH/2 + sideWallWidth/2), 60, -PITCH_LENGTH/2 - 15), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("InvisWallFrontR", Vector3.new(sideWallWidth + 30, 120, 30), MAP_POS + Vector3.new((GOAL_WIDTH/2 + sideWallWidth/2), 60, -PITCH_LENGTH/2 - 15), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("InvisWallBackL", Vector3.new(sideWallWidth + 30, 120, 30), MAP_POS + Vector3.new(-(GOAL_WIDTH/2 + sideWallWidth/2), 60, PITCH_LENGTH/2 + 15), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("InvisWallBackR", Vector3.new(sideWallWidth + 30, 120, 30), MAP_POS + Vector3.new((GOAL_WIDTH/2 + sideWallWidth/2), 60, PITCH_LENGTH/2 + 15), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("BehindNetFront", Vector3.new(GOAL_WIDTH + 10, 120, 20), MAP_POS + Vector3.new(0, 60, -PITCH_LENGTH/2 - 30), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("BehindNetBack", Vector3.new(GOAL_WIDTH + 10, 120, 20), MAP_POS + Vector3.new(0, 60, PITCH_LENGTH/2 + 30), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
+    cp("InvisCeiling", Vector3.new(PITCH_WIDTH + 100, 2, PITCH_LENGTH + 100), MAP_POS + Vector3.new(0, 80, 0), Color3.new(0,0,0), Enum.Material.SmoothPlastic, 1, true)
     local trackColor = Color3.fromRGB(180,60,60)
     cp("TrackN", Vector3.new(PITCH_WIDTH+100, 3, 20), MAP_POS+Vector3.new(0,-1, -PITCH_LENGTH/2-30), trackColor, Enum.Material.Slate)
     cp("TrackS", Vector3.new(PITCH_WIDTH+100, 3, 20), MAP_POS+Vector3.new(0,-1, PITCH_LENGTH/2+30), trackColor, Enum.Material.Slate)
@@ -343,6 +344,9 @@ local function createStadium()
 end
 
 local function createBall()
+    if gameState.ball and gameState.ball.Parent then
+        gameState.ball:Destroy()
+    end
     local ball = Instance.new("Part")
     ball.Name = "WC2026Ball"; ball.Shape = Enum.PartType.Ball
     ball.Size = Vector3.new(4,4,4); ball.Position = MAP_POS+Vector3.new(0,5,0)
@@ -494,7 +498,7 @@ local function physicsDefyingShot()
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
-    if not hrp or not ball then return end
+    if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position - ball.Position).Magnitude > 25 then return end
     local attackGoalZ = (gameState.playerTeam == "Red") and (MAP_POS.Z + PITCH_LENGTH/2) or (MAP_POS.Z - PITCH_LENGTH/2)
     local targetX = MAP_POS.X + (math.random() - 0.5) * (GOAL_WIDTH - 15)
@@ -549,7 +553,7 @@ local function activateSuperSkill()
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
-    if not hrp or not ball then return end
+    if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position - ball.Position).Magnitude > 15 then return end
     gameState.superSkillActive = true
     gameState.playerDribbling = false
@@ -580,7 +584,7 @@ end
 
 local function aiAvoidOpponent(bot)
     local ball = gameState.ball
-    if not ball or not bot.PrimaryPart then return false end
+    if not ball or not ball.Parent or not bot.PrimaryPart then return false end
     local botPos = bot.PrimaryPart.Position
     local team = bot.Team.Value
     local oppList = (team == "Red") and gameState.blueTeam or gameState.redTeam
@@ -624,7 +628,7 @@ end
 
 local function useSkill(bot, team)
     local ball = gameState.ball
-    if not ball or not bot.PrimaryPart then return false end
+    if not ball or not ball.Parent or not bot.PrimaryPart then return false end
     local botPos = bot.PrimaryPart.Position
     local forward = (team == "Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
     ball.AssemblyLinearVelocity = Vector3.new(forward.X*45, 68, forward.Z*45)
@@ -637,7 +641,7 @@ end
 
 local function aiDribble(bot)
     local ball = gameState.ball
-    if not ball or not bot.PrimaryPart then return false end
+    if not ball or not ball.Parent or not bot.PrimaryPart then return false end
     local botId = bot:GetDebugId()
     local botPos = bot.PrimaryPart.Position
     local distToBall = (botPos-ball.Position).Magnitude
@@ -685,6 +689,7 @@ end
 
 local function aiShootBall(bot)
     local ball = gameState.ball
+    if not ball or not ball.Parent then return end
     local team = bot.Team.Value
     local diff = getDiff(team)
     local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
@@ -709,6 +714,7 @@ end
 
 function findBestPassTarget(bot)
     local ball = gameState.ball
+    if not ball or not ball.Parent then return nil end
     local team = bot.Team.Value
     local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local teammates = (team == "Red") and gameState.redTeam or gameState.blueTeam
@@ -751,6 +757,7 @@ local function handleBallTouch(bot)
     if gameState.gkHolding then return end
     if gameState.playerSkillActive and bot.Role.Value ~= "Goalkeeper" then return end
     local ball = gameState.ball
+    if not ball or not ball.Parent then return end
     local team = bot.Team.Value
     local diff = getDiff(team)
     local attackGoalZ = (team == "Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
@@ -822,7 +829,7 @@ end
 
 local function updateGoalkeeperAI(gk, dt)
     local ball = gameState.ball
-    if not ball or not gk.PrimaryPart then return end
+    if not ball or not ball.Parent or not gk.PrimaryPart then return end
     local gkId = gk:GetDebugId()
     local team = gk.Team.Value
     local diff = getDiff(team)
@@ -923,6 +930,7 @@ end
 
 local function updateOutfieldAI(bot, allBots, closestBot, dt)
     local ball = gameState.ball
+    if not ball or not ball.Parent then return end
     local team = bot.Team.Value
     local role = bot.Role.Value
     local diff = getDiff(team)
@@ -1084,7 +1092,7 @@ end
 
 local function checkInterception()
     local ball = gameState.ball
-    if not ball or gameState.gkHolding then return end
+    if not ball or not ball.Parent or gameState.gkHolding then return end
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown > 0 then return end
     if gameState.playerSkillActive or gameState.superSkillActive then return end
     local speed = ball.AssemblyLinearVelocity.Magnitude
@@ -1127,7 +1135,7 @@ local function updatePlayerDribble(dt)
     if not char then gameState.playerDribbling = false return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
-    if not hrp or not ball then gameState.playerDribbling = false return end
+    if not hrp or not ball or not ball.Parent then gameState.playerDribbling = false return end
     if (hrp.Position-ball.Position).Magnitude > 20 then gameState.playerDribbling = false return end
     local feetPos = hrp.Position + hrp.CFrame.LookVector*4
     ball.CFrame = CFrame.new(feetPos.X, feetPos.Y-1.5, feetPos.Z)
@@ -1142,7 +1150,7 @@ local function doDribble()
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local ball = gameState.ball
-    if not hrp or not ball or (hrp.Position-ball.Position).Magnitude > 20 then return end
+    if not hrp or not ball or not ball.Parent or (hrp.Position-ball.Position).Magnitude > 20 then return end
     if gameState.playerSkillActive then gameState.playerSkillActive = false end
     gameState.playerDribbling = true
     gameState.lastTouchTeam = gameState.playerTeam
@@ -1171,6 +1179,9 @@ local function createFireworks(position)
 end
 
 local function resetPositions(concedingTeam)
+    if not gameState.ball or not gameState.ball.Parent then
+        createBall()
+    end
     if gameState.ball then gameState.ball.Anchored = false end
     gameState.playerDribbling = false
     gameState.gkHolding = false
@@ -1294,6 +1305,7 @@ local function runPenaltyShootout()
     gameState.inPenaltyShootout = true
     hideGoalText()
     gameState.playerDribbling = false
+    if not gameState.ball or not gameState.ball.Parent then createBall() end
     local redScore, blueScore = 0, 0
     local maxRounds = 5
     local goalZFor = {Red = MAP_POS.Z + PITCH_LENGTH/2, Blue = MAP_POS.Z - PITCH_LENGTH/2}
@@ -1322,6 +1334,7 @@ local function runPenaltyShootout()
         end
     end
     local function takeShot(team, round)
+        if not gameState.ball or not gameState.ball.Parent then createBall() end
         local shooter = getShooter(team)
         if not shooter then return false end
         local usedList = (team == "Red") and redUsed or blueUsed
@@ -1340,6 +1353,7 @@ local function runPenaltyShootout()
             gameState.ball.CFrame = CFrame.new(ballPos)
             gameState.ball.AssemblyLinearVelocity = Vector3.zero
             gameState.ball.AssemblyAngularVelocity = Vector3.zero
+            gameState.ball.CanCollide = true
         end
         local approachZ = spotZ - sign * 8
         local approachPos = Vector3.new(MAP_POS.X, TORSO_Y, approachZ)
@@ -1451,7 +1465,7 @@ local function runPenaltyShootout()
     gameState.passCooldowns = {}
     gameState.playerDribbling = false
     gameState.aiDribbleState = {}
-    if gameState.ball then gameState.ball.Anchored = false end
+    gameState.stoppageTimeActive = false
     gameState.paused = false
     resetPositions("Red")
     task.delay(0.3, function()
@@ -1501,6 +1515,7 @@ local function endMatch()
     gameState.passCooldowns = {}
     gameState.playerDribbling = false
     gameState.aiDribbleState = {}
+    gameState.stoppageTimeActive = false
     gameState.paused = false
     if gameState.ball then gameState.ball.Anchored = false end
     resetPositions("Red")
@@ -1584,6 +1599,7 @@ local function startTimer()
                         gameState.currentHalf = gameState.currentHalf + 1
                         gameState.timeLeft = HALF_TIME
                         gameState.playerDribbling = false
+                        gameState.stoppageTimeActive = false
                         resetPositions("Red")
                         gameState.paused = false
                         gameState.gameActive = true
@@ -1598,6 +1614,7 @@ local function startTimer()
                             gameState.isExtraTime = true
                             gameState.timeLeft = EXTRA_TIME
                             gameState.playerDribbling = false
+                            gameState.stoppageTimeActive = false
                             resetPositions("Red")
                             gameState.paused = false
                             gameState.gameActive = true
@@ -1823,7 +1840,6 @@ local function createSettingsUI()
         tourneyBtns[i] = btn
     end
 
-    -- STAGE CUSTOMIZATION
     makeSectionHeader(scroll, 240, "STAGE CUSTOMIZATION", Color3.fromRGB(150,255,150))
     local stageLbl = Instance.new("TextLabel", scroll)
     stageLbl.Size = UDim2.new(1, -24, 0, 14); stageLbl.Position = UDim2.new(0, 12, 0, 266)
@@ -2136,7 +2152,7 @@ local function createGameUI()
         local char = gameState.playerChar
         if not char then return false end
         local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp or not gameState.ball then return false end
+        if not hrp or not gameState.ball or not gameState.ball.Parent then return false end
         return (hrp.Position-gameState.ball.Position).Magnitude < 20, hrp
     end
     local function stopDribble() gameState.playerDribbling = false end
@@ -2242,7 +2258,7 @@ local function createGameUI()
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         local ball = gameState.ball
-        if not hrp or not ball or (hrp.Position-ball.Position).Magnitude > 20 then return end
+        if not hrp or not ball or not ball.Parent or (hrp.Position-ball.Position).Magnitude > 20 then return end
         gameState.playerSkillActive = true
         gameState.playerDribbling = false
         local forward = hrp.CFrame.LookVector
@@ -2355,6 +2371,26 @@ local function autoStart()
     startTimer()
     updateTournamentDisplay()
     RunService.Heartbeat:Connect(function(dt)
+        -- Ball rescue: if ball is gone or out of bounds, respawn it
+        if gameState.ball then
+            if not gameState.ball.Parent then
+                createBall()
+            else
+                local bp = gameState.ball.Position
+                local outOfBounds = (bp.Y < MAP_POS.Y - 30)
+                    or (math.abs(bp.X - MAP_POS.X) > PITCH_WIDTH/2 + 30)
+                    or (math.abs(bp.Z - MAP_POS.Z) > PITCH_LENGTH/2 + 30)
+                if outOfBounds then
+                    gameState.ball.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 5, 0))
+                    gameState.ball.AssemblyLinearVelocity = Vector3.zero
+                    gameState.ball.AssemblyAngularVelocity = Vector3.zero
+                    gameState.ball.CanCollide = true
+                    gameState.ball.Anchored = false
+                end
+            end
+        else
+            createBall()
+        end
         if (gameState.paused or gameState.restartCountdown > 0) and not gameState.inPenaltyShootout then
             if gameState.ball and not gameState.ball.Anchored then
                 gameState.ball.Anchored = true
