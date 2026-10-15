@@ -2113,4 +2113,3 @@ local function autoStart()
 end
 
 autoStart()
-Sửa lại code này, khi bấm skip match ở trong cài đặt thì khi hết 15s mà hiệp hai rồi nha thì game sẽ đến 30s nghỉ nhưng ko các con npc ko ăn mừng, ko chuyển sang giờ nghỉ và cứ đơ vậy mãi mãi, vs lại khi đang dắt có thể bấm nút Physics shooot bóng vẫn bay đi, code hoàn chỉnh 
