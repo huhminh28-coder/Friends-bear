@@ -1,4 +1,4 @@
--- World Cup 2026 | Advanced Edition | English
+-- World Cup 2026 | Advanced Edition | English (FULL FIXED)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -168,7 +168,7 @@ end
 local function hideGoalText() if gameState.goalTextLabel then gameState.goalTextLabel.Visible=false end end
 
 -- ============================================================
--- GOAL CELEBRATION - entire team (incl GK) runs to scorer
+-- GOAL CELEBRATION
 -- ============================================================
 local function startGoalCelebration(scorer, scoringTeam)
     if gameState.goalCelebrationActive then return end
@@ -185,38 +185,33 @@ local function startGoalCelebration(scorer, scoringTeam)
         scorerPos = MAP_POS
     end
 
-    -- Everyone except scorer runs toward scorer
     local runners = {}
     for _, bot in ipairs(teamList) do
         if bot.PrimaryPart and bot ~= scorer then table.insert(runners, bot) end
     end
 
     local startTime = tick()
-    local duration = 5 -- longer celebration
+    local duration = 5
     local runConn
     runConn = RunService.Heartbeat:Connect(function()
         if tick() - startTime > duration then if runConn then runConn:Disconnect() end; return end
         for idx, bot in ipairs(runners) do
             if bot.PrimaryPart then
                 local cur = bot.PrimaryPart.Position
-                -- If GK, do a little jump in place then join
                 if bot.Role.Value == "Goalkeeper" and (tick()-startTime) < 1.2 then
                     local jump = math.abs(math.sin((tick()-startTime)*10))*3
-                    moveCharacter(bot, Vector3.new(cur.X, TORSO_Y+jump, cur.Z), scorerPos)
+                    pcall(moveCharacter, bot, Vector3.new(cur.X, TORSO_Y+jump, cur.Z), scorerPos)
                 else
                     local dir = scorerPos - cur
                     local horiz = Vector3.new(dir.X,0,dir.Z)
                     if horiz.Magnitude > 2 then
                         horiz = horiz.Unit
-                        -- spread out to avoid stacking
-                        local angleOffset = (idx / #runners) * math.pi * 2
-                        local circleOffset = Vector3.new(math.cos(angleOffset), 0, math.sin(angleOffset)) * 2
                         local newPos = cur + horiz * 22 * 0.033
-                        moveCharacter(bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), scorerPos)
+                        pcall(moveCharacter, bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), scorerPos)
                     else
                         local jump = math.abs(math.sin((tick()-startTime)*12 + idx))*2
                         local offset = CFrame.Angles(0, (idx/#runners)*math.pi*2, 0) * Vector3.new(2.5, 0, 0)
-                        moveCharacter(bot, Vector3.new(cur.X + offset.X, TORSO_Y+jump, cur.Z + offset.Z), scorerPos)
+                        pcall(moveCharacter, bot, Vector3.new(cur.X + offset.X, TORSO_Y+jump, cur.Z + offset.Z), scorerPos)
                     end
                 end
             end
@@ -285,7 +280,7 @@ local function buildTrophy(tournamentType)
 end
 
 -- ============================================================
--- FIREWORK (loud, visible, explosion)
+-- FIREWORK
 -- ============================================================
 local function launchFirework(position)
     local rocket = Instance.new("Part")
@@ -309,15 +304,14 @@ local function launchFirework(position)
     local rocketLight = Instance.new("PointLight", rocket)
     rocketLight.Brightness = 5; rocketLight.Range = 20; rocketLight.Color = color
 
-    playFWLaunch()
+    pcall(playFWLaunch)
 
     local apex = position + Vector3.new(0, 80 + math.random(30), 0)
     TweenService:Create(rocket, TweenInfo.new(2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = apex}):Play()
 
     task.delay(2, function()
         if rocket then rocket:Destroy() end
-        playFWBoom()
-        -- Big central flash
+        pcall(playFWBoom)
         local flash = Instance.new("Part")
         flash.Shape = Enum.PartType.Ball
         flash.Size = Vector3.new(4,4,4)
@@ -330,7 +324,6 @@ local function launchFirework(position)
         TweenService:Create(flash, TweenInfo.new(0.5), {Size = Vector3.new(0.1,0.1,0.1), Transparency = 1}):Play()
         task.delay(0.6, function() if flash then flash:Destroy() end end)
 
-        -- Explosion sparks
         for i = 1, 60 do
             task.spawn(function()
                 local spark = Instance.new("Part")
@@ -353,7 +346,7 @@ local function launchFirework(position)
 end
 
 -- ============================================================
--- TROPHY CEREMONY - SLOW, EPIC, WITH GK, WITH FIREWORKS
+-- TROPHY CEREMONY
 -- ============================================================
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
@@ -362,7 +355,6 @@ local function startTrophyCeremony(winningTeam)
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
     local playerIsWinner = (gameState.playerTeam == winningTeam)
 
-    -- Build podium
     if gameState.podiumModel then gameState.podiumModel:Destroy() end
     local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
     gameState.podiumModel = podium
@@ -381,26 +373,22 @@ local function startTrophyCeremony(winningTeam)
     carpet.Color=Color3.fromRGB(180,30,30); carpet.Material=Enum.Material.Fabric
     carpet.Anchored=true; carpet.Parent=podium
 
-    -- Build trophy floating above
     if gameState.trophyModel then gameState.trophyModel:Destroy() end
     local trophy = buildTrophy(gameState.tournamentType)
     trophy:PivotTo(CFrame.new(podiumCenter + Vector3.new(0, 40, 0)))
     trophy.Parent = workspace
     gameState.trophyModel = trophy
 
-    -- STEP 1: Move winning players (INCLUDING GK) to podium positions over 3s
     local nonGKWinners = {}
     for _, bot in ipairs(winners) do
         if bot.PrimaryPart then table.insert(nonGKWinners, bot) end
     end
 
-    -- Position assignments on podium
     local targetPositions = {}
     local sideIdx = 0
     for i, bot in ipairs(nonGKWinners) do
         local pos
         if i == 1 then
-            -- Center
             pos = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
         elseif i == 2 then
             pos = podiumCenter + Vector3.new(-12, TORSO_Y - MAP_POS.Y + 4, 0)
@@ -419,7 +407,6 @@ local function startTrophyCeremony(winningTeam)
         if hrp then targetPositions["__player__"] = podiumCenter + Vector3.new(5, TORSO_Y - MAP_POS.Y + 6, 0) end
     end
 
-    -- Walk winners to podium over 3 seconds
     local walkStart = tick()
     local walkDuration = 3
     local walkConn
@@ -433,9 +420,9 @@ local function startTrophyCeremony(winningTeam)
                 if horiz.Magnitude > 1.5 then
                     horiz = horiz.Unit
                     local newPos = cur + horiz * 20 * 0.033
-                    moveCharacter(bot, Vector3.new(newPos.X, cur.Y, newPos.Z), target)
+                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), target)
                 else
-                    moveCharacter(bot, Vector3.new(target.X, cur.Y, target.Z), target + Vector3.new(0,0,5))
+                    pcall(moveCharacter, bot, Vector3.new(target.X, cur.Y, target.Z), target + Vector3.new(0,0,5))
                 end
             end
         end
@@ -456,10 +443,9 @@ local function startTrophyCeremony(winningTeam)
     task.wait(walkDuration + 1)
     if walkConn then walkConn:Disconnect() end
 
-    -- Snap winners to final podium positions
     for bot, target in pairs(targetPositions) do
         if bot ~= "__player__" and bot.PrimaryPart then
-            moveCharacter(bot, target, target + Vector3.new(0,0,5))
+            pcall(moveCharacter, bot, target, target + Vector3.new(0,0,5))
         end
     end
     if playerIsWinner and gameState.playerChar then
@@ -470,9 +456,8 @@ local function startTrophyCeremony(winningTeam)
         end
     end
 
-    task.wait(1.5) -- dramatic pause
+    task.wait(1.5)
 
-    -- STEP 2: Move losing team into a line opposite
     local lineZ = podiumCenter.Z + 35
     local lineSpacing = 6
     local lineStartX = -((#losers - 1) * lineSpacing) / 2
@@ -495,9 +480,9 @@ local function startTrophyCeremony(winningTeam)
                 if horiz.Magnitude > 1.5 then
                     horiz = horiz.Unit
                     local newPos = cur + horiz * 20 * 0.033
-                    moveCharacter(bot, Vector3.new(newPos.X, cur.Y, newPos.Z), podiumCenter)
+                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), podiumCenter)
                 else
-                    moveCharacter(bot, Vector3.new(target.X, cur.Y, target.Z), podiumCenter)
+                    pcall(moveCharacter, bot, Vector3.new(target.X, cur.Y, target.Z), podiumCenter)
                 end
             end
         end
@@ -505,12 +490,11 @@ local function startTrophyCeremony(winningTeam)
     task.wait(lossWalkDuration + 0.5)
     if lossConn then lossConn:Disconnect() end
     for bot, target in pairs(loserTargets) do
-        if bot.PrimaryPart then moveCharacter(bot, target, podiumCenter) end
+        if bot.PrimaryPart then pcall(moveCharacter, bot, target, podiumCenter) end
     end
 
     task.wait(1)
 
-    -- STEP 3: Trophy descends dramatically over 4s
     local trophyHandPos = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6 + 4, 0)
     local startPos = trophy:GetPivot().Position
     local descendStart = tick()
@@ -529,8 +513,6 @@ local function startTrophyCeremony(winningTeam)
 
     task.wait(0.5)
 
-    -- STEP 4: Trophy rises with sparkles and players cheer, fireworks over 8 seconds
-    -- Winner players (non-center) put hands up
     local cheerStart = tick()
     local cheerDuration = 8
     local cheerConn
@@ -541,7 +523,7 @@ local function startTrophyCeremony(winningTeam)
                 local basePos = targetPositions[bot]
                 if basePos then
                     local jump = math.abs(math.sin((tick()-cheerStart)*6 + i))*3
-                    moveCharacter(bot, Vector3.new(basePos.X, basePos.Y + jump, basePos.Z), podiumCenter)
+                    pcall(moveCharacter, bot, Vector3.new(basePos.X, basePos.Y + jump, basePos.Z), podiumCenter)
                 end
             end
         end
@@ -557,7 +539,6 @@ local function startTrophyCeremony(winningTeam)
         end
     end)
 
-    -- Trophy rises slowly over the cheer duration
     local riseFrom = trophyHandPos
     local riseTo = trophyHandPos + Vector3.new(0, 12, 0)
     local riseStart = tick()
@@ -571,7 +552,6 @@ local function startTrophyCeremony(winningTeam)
         end
     end)
 
-    -- Launch 16 fireworks over 8 seconds
     for i = 1, 16 do
         task.spawn(function()
             local angle = math.random() * math.pi * 2
@@ -585,7 +565,6 @@ local function startTrophyCeremony(winningTeam)
     task.wait(cheerDuration - 8 + 2)
     if cheerConn then cheerConn:Disconnect() end
 
-    -- STEP 5: Winners run to hug losers over 4 seconds
     task.wait(1)
     local hugDuration = 4
     local hugStart = tick()
@@ -603,12 +582,11 @@ local function startTrophyCeremony(winningTeam)
                     if horiz.Magnitude > 1.5 then
                         horiz = horiz.Unit
                         local newPos = cur + horiz * 18 * 0.033
-                        moveCharacter(bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), target)
+                        pcall(moveCharacter, bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), target)
                     end
                 end
             end
         end
-        -- Player hug if winner
         if playerIsWinner and gameState.playerChar then
             local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
             if hrp then
@@ -629,7 +607,6 @@ local function startTrophyCeremony(winningTeam)
     if hugConn then hugConn:Disconnect() end
     gameState.trophyActive = false
 
-    -- Cleanup
     task.wait(2)
     if gameState.podiumModel then gameState.podiumModel:Destroy(); gameState.podiumModel = nil end
     if gameState.trophyModel then gameState.trophyModel:Destroy(); gameState.trophyModel = nil end
@@ -833,12 +810,18 @@ local function applyGroundPass(ball,targetPos,powerBase)
     ball.AssemblyLinearVelocity=hd*math.clamp(d*1.15+(powerBase or 0),80,220)+Vector3.new(0,12,0)
 end
 
+-- ⭐ FIX: Physics Shot tắt dắt bóng trước khi sút
 local function physicsDefyingShot()
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     local char=gameState.playerChar; if not char then return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position-ball.Position).Magnitude>25 then return end
+    
+    gameState.playerDribbling = false
+    gameState.superSkillActive = false
+    gameState.playerSkillActive = false
+    
     local agz=(gameState.playerTeam=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local tx=MAP_POS.X+(math.random()-0.5)*(GOAL_WIDTH-15)
     local ty=MAP_POS.Y+math.random(8,GOAL_HEIGHT-5)
@@ -864,13 +847,14 @@ local function physicsDefyingShot()
         task.spawn(function() local eT=tick()+2.5
             while tick()<eT and gk.PrimaryPart do
                 local bp=gameState.ball and gameState.ball.Position or gk.PrimaryPart.Position
-                moveCharacter(gk,gk.PrimaryPart.Position,Vector3.new(bp.X,gk.PrimaryPart.Position.Y,bp.Z))
+                pcall(moveCharacter, gk, gk.PrimaryPart.Position, Vector3.new(bp.X,gk.PrimaryPart.Position.Y,bp.Z))
                 task.wait(0.05)
             end
         end)
     end end
 end
 
+-- ⭐ FIX: Super skill tắt dắt bóng
 local function activateSuperSkill()
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     if gameState.superSkillActive then return end
@@ -878,7 +862,10 @@ local function activateSuperSkill()
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position-ball.Position).Magnitude>15 then return end
-    gameState.superSkillActive=true; gameState.playerDribbling=false
+    
+    gameState.playerDribbling = false
+    
+    gameState.superSkillActive=true
     gameState.lastTouchTeam=gameState.playerTeam
     local st=tick(); local dur=0.5
     ball.AssemblyLinearVelocity=Vector3.zero; ball.AssemblyAngularVelocity=Vector3.zero
@@ -1091,10 +1078,10 @@ local function updateGoalkeeperAI(gk,dt)
     if dtb>4 and dir.Magnitude>0.3 then
         local np=gp+dir.Unit*speed*dt
         np=Vector3.new(math.clamp(np.X,minX,maxX),TORSO_Y+jh,math.clamp(np.Z,bmz,bMz))
-        moveCharacter(gk,np,Vector3.new(bp.X,np.Y,bp.Z))
+        pcall(moveCharacter, gk, np, Vector3.new(bp.X,np.Y,bp.Z))
     elseif dtb<=4 then
         local ny=gp.Y+((TORSO_Y+jh)-gp.Y)*0.15
-        moveCharacter(gk,Vector3.new(gp.X,ny,gp.Z),Vector3.new(bp.X,ny,bp.Z))
+        pcall(moveCharacter, gk, Vector3.new(gp.X,ny,gp.Z), Vector3.new(bp.X,ny,bp.Z))
     end
     local cr=8*diff.gkCatchMul
     if bp.Y>MAP_POS.Y+12 then cr=11*diff.gkCatchMul end
@@ -1138,12 +1125,12 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     if gameState.playerSkillActive or gameState.superSkillActive then
         local t=getHomePos(bot,false); local d=t-bp
-        if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; moveCharacter(bot,Vector3.new(np.X,TORSO_Y,np.Z),Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
+        if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
         return
     end
     if gameState.gkHolding then
         local t=getHomePos(bot,false); local d=t-bp
-        if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; moveCharacter(bot,Vector3.new(np.X,TORSO_Y,np.Z),Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
+        if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
         return
     end
     local pd=gameState.playerDribbling and (gameState.playerTeam==team)
@@ -1156,7 +1143,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
             elseif role=="Midfielder" then local mi=bot:GetAttribute("FormationIndex") or 1; target=Vector3.new(px+((mi<=2) and -90 or 90),TORSO_Y,pz+ad*80+((mi%2==0) and 30 or -30))
             else local di=bot:GetAttribute("FormationIndex") or 1; target=Vector3.new(px+((di<=2) and -70 or 70),TORSO_Y,pz-ad*100) end
             target=Vector3.new(math.clamp(target.X,MAP_POS.X-PITCH_WIDTH/2+10,MAP_POS.X+PITCH_WIDTH/2-10),TORSO_Y,math.clamp(target.Z,MAP_POS.Z-PITCH_LENGTH/2+5,MAP_POS.Z+PITCH_LENGTH/2-5))
-            local d=target-bp; if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; moveCharacter(bot,Vector3.new(np.X,TORSO_Y,np.Z),Vector3.new(px,np.Y,pz)) end
+            local d=target-bp; if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(px,np.Y,pz)) end
             return
         end
     end
@@ -1187,7 +1174,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         end
     end
     local d=target-bp
-    if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; moveCharacter(bot,Vector3.new(np.X,TORSO_Y,np.Z),Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) end
+    if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) end
 end
 
 local function updateAILogic(dt)
@@ -1220,7 +1207,7 @@ local function updateAILogic(dt)
                     local diff=getDiff(bot.Team.Value)
                     local np=bot.PrimaryPart.Position+d.Unit*AI_SPEED*diff.speedMul*dt
                     local ld=Vector3.new(d.X,0,d.Z); if ld.Magnitude<0.1 then ld=Vector3.new(0,0,1) end
-                    moveCharacter(bot,Vector3.new(np.X,TORSO_Y,np.Z),np+ld.Unit)
+                    pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), np+ld.Unit)
                 end
             else updateOutfieldAI(bot,ab,cb,dt) end
         end
@@ -1252,13 +1239,26 @@ local function checkInterception()
     end end
 end
 
+-- ⭐ FIX: updatePlayerDribble tự tắt khi bóng bay nhanh hoặc xa
 local function updatePlayerDribble(dt)
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive then gameState.playerDribbling=false; return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive then 
+        gameState.playerDribbling=false; return 
+    end
     if not gameState.playerDribbling then return end
     local char=gameState.playerChar; if not char then gameState.playerDribbling=false return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then gameState.playerDribbling=false return end
-    if (hrp.Position-ball.Position).Magnitude>20 then gameState.playerDribbling=false return end
+    
+    local dist = (hrp.Position-ball.Position).Magnitude
+    if dist > 20 then 
+        gameState.playerDribbling=false 
+        return 
+    end
+    if ball.AssemblyLinearVelocity.Magnitude > 40 then
+        gameState.playerDribbling=false
+        return
+    end
+    
     local fp=hrp.Position+hrp.CFrame.LookVector*4
     ball.CFrame=CFrame.new(fp.X,fp.Y-1.5,fp.Z)
     ball.AssemblyLinearVelocity=Vector3.zero; ball.AssemblyAngularVelocity=Vector3.zero
@@ -1293,8 +1293,8 @@ local function resetPositions(concedingTeam)
     gameState.playerDribbling=false; gameState.gkHolding=false; gameState.gkHoldingTeam=nil
     gameState.playerSkillActive=false; gameState.superSkillActive=false; gameState.aiSkillActive={}
     if gameState.ball then gameState.ball.CanCollide=true end
-    for _,bot in ipairs(gameState.redTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); moveCharacter(bot,p,p+Vector3.new(0,0,1)) end end
-    for _,bot in ipairs(gameState.blueTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); moveCharacter(bot,p,p+Vector3.new(0,0,-1)) end end
+    for _,bot in ipairs(gameState.redTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); pcall(moveCharacter, bot, p, p+Vector3.new(0,0,1)) end end
+    for _,bot in ipairs(gameState.blueTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); pcall(moveCharacter, bot, p, p+Vector3.new(0,0,-1)) end end
     if gameState.ball then
         gameState.ball.CFrame=CFrame.new(MAP_POS+Vector3.new(0,5,0))
         gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
@@ -1312,7 +1312,7 @@ local function resetPositions(concedingTeam)
             local d=(concedingTeam=="Red") and 1 or -1
             local off=(bot:GetAttribute("FormationIndex")==1) and Vector3.new(-5,0,5*d) or Vector3.new(5,0,5*d)
             local pos=MAP_POS+Vector3.new(off.X,TORSO_Y-MAP_POS.Y,off.Z)
-            moveCharacter(bot,pos,pos+Vector3.new(0,0,d))
+            pcall(moveCharacter, bot, pos, pos+Vector3.new(0,0,d))
         end end
     end
 end
@@ -1422,7 +1422,7 @@ local function runPenaltyShootout()
         local gz=gzF[team]; local sign=(gz>MAP_POS.Z) and 1 or -1; local sz=gz-sign*PENALTY_DIST
         local ot=(team=="Red") and "Blue" or "Red"
         local gk=fgk(ot)
-        if gk and gk.PrimaryPart then moveCharacter(gk,Vector3.new(MAP_POS.X,TORSO_Y,gz-sign*6),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z)) end
+        if gk and gk.PrimaryPart then pcall(moveCharacter, gk, Vector3.new(MAP_POS.X,TORSO_Y,gz-sign*6), Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z)) end
         local bp=Vector3.new(MAP_POS.X,MAP_POS.Y+3,sz)
         if gameState.ball then
             gameState.ball.Anchored=true; gameState.ball.CFrame=CFrame.new(bp)
@@ -1432,7 +1432,7 @@ local function runPenaltyShootout()
         if sh.isPlayer then
             local hrp=sh.char:FindFirstChild("HumanoidRootPart")
             if hrp then hrp.CFrame=CFrame.new(ap,Vector3.new(MAP_POS.X,ap.Y,gz)); hrp.AssemblyLinearVelocity=Vector3.zero end
-        elseif sh.bot.PrimaryPart then moveCharacter(sh.bot,ap,Vector3.new(MAP_POS.X,ap.Y,gz)) end
+        elseif sh.bot.PrimaryPart then pcall(moveCharacter, sh.bot, ap, Vector3.new(MAP_POS.X,ap.Y,gz)) end
         task.wait(0.8)
         local sd
         if sh.isPlayer then
@@ -1451,7 +1451,7 @@ local function runPenaltyShootout()
             task.spawn(function() local st=tick()
                 while tick()-st<0.7 do if gk.PrimaryPart then
                     local cu=gk.PrimaryPart.Position; local nx=cu.X+(tx-cu.X)*0.15
-                    moveCharacter(gk,Vector3.new(nx,TORSO_Y,gs.Z),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z))
+                    pcall(moveCharacter, gk, Vector3.new(nx,TORSO_Y,gs.Z), Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z))
                 end task.wait(0.03) end
             end)
         end
@@ -1476,7 +1476,7 @@ local function runPenaltyShootout()
             if hrp then hrp.CFrame=CFrame.new(MAP_POS+Vector3.new(0,5,0)) end
         elseif sh.bot.PrimaryPart then
             local a=math.random()*math.pi*2; local p=MAP_POS+Vector3.new(math.cos(a)*25,TORSO_Y-MAP_POS.Y,math.sin(a)*25)
-            moveCharacter(sh.bot,p,Vector3.new(MAP_POS.X,p.Y,MAP_POS.Z))
+            pcall(moveCharacter, sh.bot, p, Vector3.new(MAP_POS.X,p.Y,MAP_POS.Z))
         end
         return scored
     end
@@ -1498,7 +1498,8 @@ local function runPenaltyShootout()
     gameState.inPenaltyShootout=false
     gameState.scoreRed=rs; gameState.scoreBlue=bs
     local winner=(rs>bs) and "Red" or "Blue"
-    startCelebration(winner)
+    local ok, err = pcall(startCelebration, winner)
+    if not ok then warn("[Penalty] startCelebration lỗi: "..tostring(err)) end
     task.wait(12)
     clearPenaltyUI()
     gameState.paused=true; gameState.gameActive=false
@@ -1521,61 +1522,146 @@ local function runPenaltyShootout()
     advanceTournament()
 end
 
-local function endMatch()
-    gameState.paused=true; gameState.gameActive=false
-    if gameState.ball then gameState.ball.Anchored=true end
-    playFinalWhistle()
-    local winner=nil
-    if gameState.scoreRed>gameState.scoreBlue then winner="Red"
-    elseif gameState.scoreBlue>gameState.scoreRed then winner="Blue" end
-    local wasFinal=isFinalStage()
-    if winner then
-        task.wait(2)
-        if gameState.ball then gameState.ball.Anchored=false end
-        if wasFinal then startTrophyCeremony(winner)
-        else startCelebration(winner); task.wait(12) end
+-- ============================================================
+-- START CELEBRATION (không dùng task.delay treo)
+-- ============================================================
+local function startCelebration(winningTeam)
+    gameState.celebrating = true
+    pcall(playFinalWhistle)
+    task.wait(2.5)
+    
+    if gameState.celebrationConn then
+        pcall(function() gameState.celebrationConn:Disconnect() end)
     end
-    gameState.restartCountdown=FULL_BREAK
-    while gameState.restartCountdown>0 do task.wait(1); gameState.restartCountdown=gameState.restartCountdown-1 end
-    gameState.currentHalf=1; gameState.timeLeft=HALF_TIME
-    gameState.scoreRed=0; gameState.scoreBlue=0; gameState.isExtraTime=false
-    gameState.lastTouchTeam=nil; gameState.goalScored=false
-    gameState.gkHoldCooldowns={}; gameState.passCooldowns={}
-    gameState.playerDribbling=false; gameState.aiDribbleState={}
-    gameState.stoppageTimeActive=false; gameState.paused=false
-    if gameState.ball then gameState.ball.Anchored=false end
-    resetPositions("Red")
-    task.delay(0.3,function()
-        local pc=gameState.playerChar
-        if pc then
-            local hrp=pc:FindFirstChild("HumanoidRootPart"); local hum=pc:FindFirstChildOfClass("Humanoid")
-            if hrp then local zo=(gameState.playerTeam=="Red") and -150 or 150; hrp.CFrame=CFrame.new(MAP_POS+Vector3.new(0,15,zo)); hrp.AssemblyLinearVelocity=Vector3.zero end
-            if workspace.CurrentCamera and hum then workspace.CurrentCamera.CameraType=Enum.CameraType.Custom; workspace.CurrentCamera.CameraSubject=hum end
+    
+    local cp = MAP_POS + Vector3.new(0, 5, 0)
+    local w = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
+    local tp = {}
+    for i, bot in ipairs(w) do
+        local a = (i / #w) * math.pi * 2
+        tp[bot] = Vector3.new(cp.X + math.cos(a)*6, TORSO_Y, cp.Z + math.sin(a)*6)
+    end
+    
+    local cst = tick()
+    gameState.celebrationConn = RunService.Heartbeat:Connect(function()
+        local el = tick() - cst
+        if el > 10 or not gameState.celebrating then
+            if gameState.celebrationConn then
+                pcall(function() gameState.celebrationConn:Disconnect() end)
+            end
+            return
+        end
+        for bot, target in pairs(tp) do
+            if bot.PrimaryPart then
+                local cu = bot.PrimaryPart.Position
+                local d = target - cu
+                local dst = Vector3.new(d.X, 0, d.Z).Magnitude
+                if dst > 2 then
+                    local np = cu + Vector3.new(d.X, 0, d.Z).Unit * 25 * 0.03
+                    pcall(moveCharacter, bot, np, Vector3.new(cp.X, np.Y, cp.Z))
+                else
+                    local jo = math.abs(math.sin(el*5)) * 4
+                    pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y+jo, target.Z), Vector3.new(cp.X, TORSO_Y+jo, cp.Z))
+                end
+            end
         end
     end)
-    gameState.gameActive=true
-    advanceTournament()
+    
+    task.spawn(function()
+        local t0 = tick()
+        while tick() - t0 < 10 do task.wait(0.5) end
+        gameState.celebrating = false
+        if gameState.celebrationConn then
+            pcall(function() gameState.celebrationConn:Disconnect() end)
+            gameState.celebrationConn = nil
+        end
+    end)
 end
 
-local function startCelebration(winningTeam)
-    gameState.celebrating=true; playFinalWhistle(); task.wait(2.5)
-    local cp=MAP_POS+Vector3.new(0,5,0)
-    local w=(winningTeam=="Red") and gameState.redTeam or gameState.blueTeam
-    local tp={}
-    for i,bot in ipairs(w) do local a=(i/#w)*math.pi*2; tp[bot]=Vector3.new(cp.X+math.cos(a)*6,TORSO_Y,cp.Z+math.sin(a)*6) end
-    local cst=tick()
-    if gameState.celebrationConn then gameState.celebrationConn:Disconnect() end
-    gameState.celebrationConn=RunService.Heartbeat:Connect(function()
-        local el=tick()-cst
-        if el>10 or not gameState.celebrating then if gameState.celebrationConn then gameState.celebrationConn:Disconnect() end; return end
-        for bot,target in pairs(tp) do if bot.PrimaryPart then
-            local cu=bot.PrimaryPart.Position; local d=target-cu
-            local dst=Vector3.new(d.X,0,d.Z).Magnitude
-            if dst>2 then local np=cu+Vector3.new(d.X,0,d.Z).Unit*25*0.03; moveCharacter(bot,np,Vector3.new(cp.X,np.Y,cp.Z))
-            else local jo=math.abs(math.sin(el*5))*4; moveCharacter(bot,Vector3.new(target.X,TORSO_Y+jo,target.Z),Vector3.new(cp.X,TORSO_Y+jo,cp.Z)) end
-        end end
+-- ============================================================
+-- END MATCH (bọc pcall + reset toàn bộ state)
+-- ============================================================
+local function endMatch()
+    gameState.paused = true
+    gameState.gameActive = false
+    if gameState.ball then gameState.ball.Anchored = true end
+    
+    pcall(playFinalWhistle)
+    
+    local winner = nil
+    if gameState.scoreRed > gameState.scoreBlue then winner = "Red"
+    elseif gameState.scoreBlue > gameState.scoreRed then winner = "Blue" end
+    
+    local wasFinal = isFinalStage()
+    
+    if winner then
+        task.wait(2)
+        if gameState.ball then gameState.ball.Anchored = false end
+        if wasFinal then
+            local ok, err = pcall(startTrophyCeremony, winner)
+            if not ok then warn("[endMatch] TrophyCeremony lỗi: "..tostring(err)) end
+        else
+            local ok, err = pcall(startCelebration, winner)
+            if not ok then warn("[endMatch] Celebration lỗi: "..tostring(err)) end
+            task.wait(12)
+        end
+    end
+    
+    gameState.restartCountdown = FULL_BREAK
+    while gameState.restartCountdown > 0 do
+        task.wait(1)
+        gameState.restartCountdown = gameState.restartCountdown - 1
+    end
+    
+    gameState.currentHalf = 1
+    gameState.timeLeft = HALF_TIME
+    gameState.scoreRed = 0
+    gameState.scoreBlue = 0
+    gameState.isExtraTime = false
+    gameState.lastTouchTeam = nil
+    gameState.goalScored = false
+    gameState.gkHoldCooldowns = {}
+    gameState.passCooldowns = {}
+    gameState.playerDribbling = false
+    gameState.aiDribbleState = {}
+    gameState.stoppageTimeActive = false
+    gameState.paused = false
+    gameState.celebrating = false
+    gameState.trophyActive = false
+    gameState.goalCelebrationActive = false
+    gameState.gkHolding = false
+    gameState.gkHoldingTeam = nil
+    gameState.playerSkillActive = false
+    gameState.superSkillActive = false
+    
+    if gameState.celebrationConn then
+        pcall(function() gameState.celebrationConn:Disconnect() end)
+        gameState.celebrationConn = nil
+    end
+    
+    if gameState.ball then gameState.ball.Anchored = false end
+    resetPositions("Red")
+    
+    task.delay(0.3, function()
+        local pc = gameState.playerChar
+        if pc then
+            local hrp = pc:FindFirstChild("HumanoidRootPart")
+            local hum = pc:FindFirstChildOfClass("Humanoid")
+            if hrp then
+                local zo = (gameState.playerTeam == "Red") and -150 or 150
+                hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 15, zo))
+                hrp.AssemblyLinearVelocity = Vector3.zero
+            end
+            if workspace.CurrentCamera and hum then
+                workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                workspace.CurrentCamera.CameraSubject = hum
+            end
+        end
     end)
-    task.delay(10,function() gameState.celebrating=false; if gameState.celebrationConn then gameState.celebrationConn:Disconnect() end end)
+    
+    gameState.gameActive = true
+    advanceTournament()
+    print("[endMatch] Đã kết thúc trận đấu và reset thành công!")
 end
 
 local function onGoalScored(scoringTeam)
@@ -1612,6 +1698,9 @@ local function checkRules()
     end
 end
 
+-- ============================================================
+-- START TIMER (pcall + cứu hộ)
+-- ============================================================
 local function startTimer()
     task.spawn(function()
         while true do
@@ -1619,29 +1708,75 @@ local function startTimer()
             if gameState.gameActive and not gameState.paused and not gameState.gkHolding
                and not gameState.goalScored and not gameState.inPenaltyShootout and not gameState.celebrating
                and not gameState.goalCelebrationActive and not gameState.trophyActive then
-                gameState.timeLeft=gameState.timeLeft-1
-                if gameState.timeLeft<=0 then
+                gameState.timeLeft = gameState.timeLeft - 1
+                
+                if gameState.timeLeft <= 0 then
                     if gameState.isExtraTime then
                         playFinalWhistle()
-                        if gameState.scoreRed==gameState.scoreBlue then task.wait(3); task.spawn(runPenaltyShootout)
-                        else task.spawn(function() endMatch() end) end
-                    elseif gameState.currentHalf<gameState.maxHalves then
-                        gameState.paused=true; gameState.gameActive=false; playWhistle(); task.wait(3)
-                        gameState.restartCountdown=HALF_BREAK
-                        while gameState.restartCountdown>0 do task.wait(1); gameState.restartCountdown=gameState.restartCountdown-1 end
-                        gameState.currentHalf=gameState.currentHalf+1; gameState.timeLeft=HALF_TIME
-                        gameState.playerDribbling=false; gameState.stoppageTimeActive=false
-                        resetPositions("Red"); gameState.paused=false; gameState.gameActive=true
+                        if gameState.scoreRed == gameState.scoreBlue then
+                            task.wait(3)
+                            local ok, err = pcall(runPenaltyShootout)
+                            if not ok then warn("[Timer] PenaltyShootout lỗi: "..tostring(err)) end
+                        else
+                            local ok, err = pcall(endMatch)
+                            if not ok then warn("[Timer] endMatch lỗi: "..tostring(err)) end
+                        end
+                    elseif gameState.currentHalf < gameState.maxHalves then
+                        gameState.paused = true
+                        gameState.gameActive = false
+                        playWhistle()
+                        task.wait(3)
+                        gameState.restartCountdown = HALF_BREAK
+                        while gameState.restartCountdown > 0 do
+                            task.wait(1)
+                            gameState.restartCountdown = gameState.restartCountdown - 1
+                        end
+                        gameState.currentHalf = gameState.currentHalf + 1
+                        gameState.timeLeft = HALF_TIME
+                        gameState.playerDribbling = false
+                        gameState.stoppageTimeActive = false
+                        resetPositions("Red")
+                        gameState.paused = false
+                        gameState.gameActive = true
                     else
-                        gameState.paused=true; gameState.gameActive=false
-                        if gameState.scoreRed==gameState.scoreBlue then
-                            playWhistle(); task.wait(3)
-                            gameState.restartCountdown=HALF_BREAK
-                            while gameState.restartCountdown>0 do task.wait(1); gameState.restartCountdown=gameState.restartCountdown-1 end
-                            gameState.isExtraTime=true; gameState.timeLeft=EXTRA_TIME
-                            gameState.playerDribbling=false; gameState.stoppageTimeActive=false
-                            resetPositions("Red"); gameState.paused=false; gameState.gameActive=true
-                        else task.spawn(function() endMatch() end) end
+                        gameState.paused = true
+                        gameState.gameActive = false
+                        if gameState.scoreRed == gameState.scoreBlue then
+                            playWhistle()
+                            task.wait(3)
+                            gameState.restartCountdown = HALF_BREAK
+                            while gameState.restartCountdown > 0 do
+                                task.wait(1)
+                                gameState.restartCountdown = gameState.restartCountdown - 1
+                            end
+                            gameState.isExtraTime = true
+                            gameState.timeLeft = EXTRA_TIME
+                            gameState.playerDribbling = false
+                            gameState.stoppageTimeActive = false
+                            resetPositions("Red")
+                            gameState.paused = false
+                            gameState.gameActive = true
+                        else
+                            local ok, err = pcall(endMatch)
+                            if not ok then
+                                warn("[Timer] endMatch bị lỗi: "..tostring(err))
+                                gameState.paused = false
+                                gameState.gameActive = true
+                                gameState.currentHalf = 1
+                                gameState.timeLeft = HALF_TIME
+                                gameState.scoreRed = 0
+                                gameState.scoreBlue = 0
+                                gameState.isExtraTime = false
+                                gameState.stoppageTimeActive = false
+                                gameState.celebrating = false
+                                gameState.trophyActive = false
+                                gameState.restartCountdown = 0
+                                gameState.goalScored = false
+                                gameState.inPenaltyShootout = false
+                                gameState.goalCelebrationActive = false
+                                resetPositions("Red")
+                            end
+                        end
                     end
                 end
             end
@@ -1651,7 +1786,10 @@ end
 
 local function skipMatch()
     if not gameState.gameActive or gameState.inPenaltyShootout or gameState.celebrating then return end
-    gameState.timeLeft=STOPPAGE_TIME; gameState.stoppageTimeActive=true
+    if gameState.paused or gameState.restartCountdown > 0 then return end
+    gameState.timeLeft = STOPPAGE_TIME
+    gameState.stoppageTimeActive = true
+    print("[Skip Match] Đã kích hoạt, còn 15 giây...")
 end
 
 local function createSettingsUI()
@@ -2056,8 +2194,18 @@ local function createGameUI()
             end
         end
     end)
-    phb.MouseButton1Click:Connect(function() if gameState.physicsShotEnabled then physicsDefyingShot() end end)
-    spb.MouseButton1Click:Connect(function() if gameState.superSkillEnabled then activateSuperSkill() end end)
+    phb.MouseButton1Click:Connect(function()
+        if gameState.physicsShotEnabled then
+            gameState.playerDribbling = false
+            physicsDefyingShot()
+        end
+    end)
+    spb.MouseButton1Click:Connect(function()
+        if gameState.superSkillEnabled then
+            gameState.playerDribbling = false
+            activateSuperSkill()
+        end
+    end)
 end
 
 function canPlayerTouchBall()
