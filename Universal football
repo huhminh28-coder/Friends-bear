@@ -1,4 +1,4 @@
--- World Cup 2026 | Advanced Edition | English (FULL FIXED)
+-- World Cup 2026 | Advanced Edition | English (FINAL)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -71,6 +71,7 @@ local gameState = {
     stoppageTimeActive=false, penaltyUI=nil, penaltyBallsRed={}, penaltyBallsBlue={},
     lastScorer=nil, lastScorerTeam=nil,
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
+    leafShotActive=false,
 }
 
 local function buildCombinedDiff(team)
@@ -810,18 +811,17 @@ local function applyGroundPass(ball,targetPos,powerBase)
     ball.AssemblyLinearVelocity=hd*math.clamp(d*1.15+(powerBase or 0),80,220)+Vector3.new(0,12,0)
 end
 
--- ⭐ FIX: Physics Shot tắt dắt bóng trước khi sút
 local function physicsDefyingShot()
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     local char=gameState.playerChar; if not char then return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position-ball.Position).Magnitude>25 then return end
-    
+
     gameState.playerDribbling = false
     gameState.superSkillActive = false
     gameState.playerSkillActive = false
-    
+
     local agz=(gameState.playerTeam=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local tx=MAP_POS.X+(math.random()-0.5)*(GOAL_WIDTH-15)
     local ty=MAP_POS.Y+math.random(8,GOAL_HEIGHT-5)
@@ -854,7 +854,6 @@ local function physicsDefyingShot()
     end end
 end
 
--- ⭐ FIX: Super skill tắt dắt bóng
 local function activateSuperSkill()
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     if gameState.superSkillActive then return end
@@ -862,9 +861,9 @@ local function activateSuperSkill()
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position-ball.Position).Magnitude>15 then return end
-    
+
     gameState.playerDribbling = false
-    
+
     gameState.superSkillActive=true
     gameState.lastTouchTeam=gameState.playerTeam
     local st=tick(); local dur=0.5
@@ -883,6 +882,78 @@ local function activateSuperSkill()
             ball.AssemblyLinearVelocity=hrp.CFrame.LookVector*25+Vector3.new(0,12,0)
         end
         gameState.superSkillActive=false
+    end)
+end
+
+-- ============================================================
+-- LEAF SHOT: ball goes straight up then drops into goal (60% score)
+-- ============================================================
+local function leafShot()
+    if gameState.inPenaltyShootout or gameState.celebrating then return end
+    if gameState.leafShotActive then return end
+    local char = gameState.playerChar; if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart"); local ball = gameState.ball
+    if not hrp or not ball or not ball.Parent then return end
+    if (hrp.Position - ball.Position).Magnitude > 25 then return end
+
+    gameState.playerDribbling = false
+    gameState.playerSkillActive = false
+    gameState.superSkillActive = false
+
+    local team = gameState.playerTeam
+    local agz = (team == "Red") and (MAP_POS.Z + PITCH_LENGTH/2) or (MAP_POS.Z - PITCH_LENGTH/2)
+
+    -- 60% chance to score
+    local willScore = math.random() < 0.60
+    local tx
+    if willScore then
+        tx = MAP_POS.X + (math.random() - 0.5) * (GOAL_WIDTH - 20)
+    else
+        local missDir = (math.random() < 0.5) and 1 or -1
+        tx = MAP_POS.X + missDir * (GOAL_WIDTH/2 + 5 + math.random() * 20)
+    end
+
+    gameState.lastTouchTeam = team
+    gameState.lastScorer = "player"
+    gameState.lastScorerTeam = team
+    gameState.leafShotActive = true
+
+    playBallKick(ball.Position, 0.55)
+
+    -- Phase 1: launch ball straight up
+    ball.AssemblyLinearVelocity = Vector3.new(0, 450, 0)
+    ball.AssemblyAngularVelocity = Vector3.new(math.random(-30,30), math.random(-30,30), math.random(-30,30))
+
+    task.spawn(function()
+        -- Wait until ball reaches apex (velocity Y close to 0)
+        local t0 = tick()
+        while tick() - t0 < 5 do
+            task.wait(0.05)
+            if not ball or not ball.Parent then gameState.leafShotActive = false; return end
+            if ball.AssemblyLinearVelocity.Y < 25 then break end
+        end
+        if not ball or not ball.Parent then gameState.leafShotActive = false; return end
+
+        -- Phase 2: set horizontal velocity so ball falls into goal
+        local currentPos = ball.Position
+        local dropHeight = currentPos.Y - (MAP_POS.Y + 3)
+        if dropHeight < 10 then dropHeight = 10 end
+        local g = workspace.Gravity
+        local fallTime = math.sqrt(2 * dropHeight / g)
+        if fallTime < 0.5 then fallTime = 0.5 end
+
+        local targetPos = Vector3.new(tx, MAP_POS.Y + 3, agz)
+        local hvel = Vector3.new(
+            (targetPos.X - currentPos.X) / fallTime,
+            0,
+            (targetPos.Z - currentPos.Z) / fallTime
+        )
+
+        ball.AssemblyLinearVelocity = hvel + Vector3.new(0, -30, 0)
+
+        -- Auto-reset leafShotActive after ball lands
+        task.wait(fallTime + 2)
+        gameState.leafShotActive = false
     end)
 end
 
@@ -965,6 +1036,9 @@ local function aiShootBall(bot)
     end
 end
 
+-- ============================================================
+-- PASS TARGET: includes player as candidate
+-- ============================================================
 function findBestPassTarget(bot)
     local ball=gameState.ball; if not ball or not ball.Parent then return nil end
     local team=bot.Team.Value
@@ -972,21 +1046,59 @@ function findBestPassTarget(bot)
     local tl=(team=="Red") and gameState.redTeam or gameState.blueTeam
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local best,bs,pt=nil,-math.huge,"Short"
-    for _,tm in ipairs(tl) do if tm~=bot and tm.PrimaryPart and tm.Role.Value~="Goalkeeper" then
-        local tp=tm.PrimaryPart.Position; local dtb=(tp-ball.Position).Magnitude
-        if dtb>15 and dtb<350 then
-            local score=-math.abs(tp.Z-agz)*0.5; local no=math.huge
-            for _,opp in ipairs(ol) do if opp.PrimaryPart then local d=(opp.PrimaryPart.Position-tp).Magnitude; if d<no then no=d end end end
-            if no<25 then score=score-200 elseif no>60 then score=score+100 end
-            local bdg=math.abs(ball.Position.Z-agz); local it=false
-            if math.abs(tp.Z-agz)<bdg-30 and no>40 then score=score+150; it=true end
-            if score>bs then
-                bs=score; best=tm
-                if it then pt="ThroughBall" elseif dtb<80 then pt="Short" elseif dtb<180 then pt="Medium" else pt="LobPass" end
+    local candidates = {}
+    
+    -- Add teammates
+    for _,tm in ipairs(tl) do
+        if tm~=bot and tm.PrimaryPart and tm.Role.Value~="Goalkeeper" then
+            table.insert(candidates, {part=tm.PrimaryPart, bot=tm, isPlayer=false})
+        end
+    end
+    
+    -- Add player if on same team
+    local pc = gameState.playerChar
+    if pc and gameState.playerTeam == team then
+        local phrp = pc:FindFirstChild("HumanoidRootPart")
+        if phrp then
+            table.insert(candidates, {part=phrp, bot=nil, isPlayer=true})
+        end
+    end
+    
+    for _,c in ipairs(candidates) do
+        local tp = c.part.Position
+        local dtb = (tp - ball.Position).Magnitude
+        if dtb > 15 and dtb < 350 then
+            local score = -math.abs(tp.Z - agz) * 0.5
+            local no = math.huge
+            for _,opp in ipairs(ol) do
+                if opp.PrimaryPart then
+                    local d = (opp.PrimaryPart.Position - tp).Magnitude
+                    if d < no then no = d end
+                end
+            end
+            if no < 25 then score = score - 200
+            elseif no > 60 then score = score + 100 end
+            -- Slight preference for the player
+            if c.isPlayer then score = score + 40 end
+            
+            local bdg = math.abs(ball.Position.Z - agz)
+            local it = false
+            if math.abs(tp.Z - agz) < bdg - 30 and no > 40 then score = score + 150; it = true end
+            if score > bs then
+                bs = score
+                if c.isPlayer then
+                    best = "PLAYER"
+                else
+                    best = c.bot
+                end
+                if it then pt = "ThroughBall"
+                elseif dtb < 80 then pt = "Short"
+                elseif dtb < 180 then pt = "Medium"
+                else pt = "LobPass" end
             end
         end
-    end end
-    return best,pt
+    end
+    return best, pt
 end
 
 local function handleBallTouch(bot)
@@ -1005,29 +1117,45 @@ local function handleBallTouch(bot)
     gameState.lastTouchTeam=team; gameState.lastScorer=bot; gameState.lastScorerTeam=team
     playBallTouchSound()
     local t,pt=findBestPassTarget(bot); local pm=diff.passMul
-    if t and t.PrimaryPart then
-        local tp=t.PrimaryPart.Position
-        if pt=="ThroughBall" then local td=Vector3.new(0,0,(team=="Red") and 1 or -1); applyGroundPass(ball,tp+td*40,20*pm)
-        elseif pt=="Short" then applyGroundPass(ball,tp,0)
-        elseif pt=="Medium" then applyGroundPass(ball,tp,20*pm)
-        else applyLobPass(ball,tp,20*pm) end
-        gameState.passCooldowns[bid]=tick()+1.5
-    else
-        local d=(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-ball.Position).Unit
-        ball.AssemblyLinearVelocity=d*100*pm; gameState.passCooldowns[bid]=tick()+0.8
+    if t then
+        local tp
+        if t == "PLAYER" then
+            local pc = gameState.playerChar
+            local phrp = pc and pc:FindFirstChild("HumanoidRootPart")
+            if phrp then tp = phrp.Position end
+        elseif t.PrimaryPart then
+            tp = t.PrimaryPart.Position
+        end
+        if tp then
+            if pt=="ThroughBall" then local td=Vector3.new(0,0,(team=="Red") and 1 or -1); applyGroundPass(ball,tp+td*40,20*pm)
+            elseif pt=="Short" then applyGroundPass(ball,tp,0)
+            elseif pt=="Medium" then applyGroundPass(ball,tp,20*pm)
+            else applyLobPass(ball,tp,20*pm) end
+            gameState.passCooldowns[bid]=tick()+1.5
+            return
+        end
     end
+    local d=(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-ball.Position).Unit
+    ball.AssemblyLinearVelocity=d*100*pm; gameState.passCooldowns[bid]=tick()+0.8
 end
 
 local function goalkeeperPassBall(gk,ball,team)
     local cands={}; local tm=(team=="Red") and gameState.redTeam or gameState.blueTeam
     for _,t in ipairs(tm) do if t~=gk and t.PrimaryPart then table.insert(cands,{part=t.PrimaryPart,isPlayer=false}) end end
     local pc=gameState.playerChar
-    if pc and gameState.playerTeam==team then local hrp=pc:FindFirstChild("HumanoidRootPart"); if hrp then table.insert(cands,{part=hrp,isPlayer=true}) end end
+    if pc and gameState.playerTeam==team then 
+        local hrp=pc:FindFirstChild("HumanoidRootPart"); 
+        if hrp then table.insert(cands,{part=hrp,isPlayer=true}) end 
+    end
     local bt,bs=nil,-math.huge; local bp=ball.Position
     local ogz=(team=="Red") and (MAP_POS.Z-PITCH_LENGTH/2) or (MAP_POS.Z+PITCH_LENGTH/2)
-    for _,c in ipairs(cands) do if c.part then local d=(c.part.Position-bp).Magnitude
-        if d>15 and d<400 then local s=-math.abs(c.part.Position.Z-ogz)*0.5; if c.isPlayer then s=s+30 end
-            if s>bs then bs=s; bt=c end end
+    for _,c in ipairs(cands) do if c.part then 
+        local d=(c.part.Position-bp).Magnitude
+        if d>15 and d<400 then 
+            local s=-math.abs(c.part.Position.Z-ogz)*0.5; 
+            if c.isPlayer then s=s+50 end
+            if s>bs then bs=s; bt=c end 
+        end
     end end
     if bt then
         local tp=bt.part.Position
@@ -1239,16 +1367,33 @@ local function checkInterception()
     end end
 end
 
--- ⭐ FIX: updatePlayerDribble tự tắt khi bóng bay nhanh hoặc xa
+-- ============================================================
+-- AUTO-ATTACH: ball sticks to player when it's near & slow
+-- ============================================================
 local function updatePlayerDribble(dt)
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive then 
         gameState.playerDribbling=false; return 
     end
+    
+    -- ⭐ FIX: Auto-attach ball when it comes close and is slow
+    if not gameState.playerDribbling and gameState.ball and gameState.ball.Parent and gameState.playerChar then
+        local chr = gameState.playerChar
+        local hrp = chr:FindFirstChild("HumanoidRootPart")
+        if hrp and not gameState.gkHolding and not gameState.playerSkillActive and not gameState.leafShotActive then
+            local dist = (hrp.Position - gameState.ball.Position).Magnitude
+            local speed = gameState.ball.AssemblyLinearVelocity.Magnitude
+            if dist < 6 and speed < 25 and gameState.lastTouchTeam == gameState.playerTeam then
+                gameState.playerDribbling = true
+                playBallTouchSound()
+            end
+        end
+    end
+    
     if not gameState.playerDribbling then return end
     local char=gameState.playerChar; if not char then gameState.playerDribbling=false return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then gameState.playerDribbling=false return end
-    
+
     local dist = (hrp.Position-ball.Position).Magnitude
     if dist > 20 then 
         gameState.playerDribbling=false 
@@ -1258,7 +1403,7 @@ local function updatePlayerDribble(dt)
         gameState.playerDribbling=false
         return
     end
-    
+
     local fp=hrp.Position+hrp.CFrame.LookVector*4
     ball.CFrame=CFrame.new(fp.X,fp.Y-1.5,fp.Z)
     ball.AssemblyLinearVelocity=Vector3.zero; ball.AssemblyAngularVelocity=Vector3.zero
@@ -1292,6 +1437,7 @@ local function resetPositions(concedingTeam)
     if gameState.ball then gameState.ball.Anchored=false end
     gameState.playerDribbling=false; gameState.gkHolding=false; gameState.gkHoldingTeam=nil
     gameState.playerSkillActive=false; gameState.superSkillActive=false; gameState.aiSkillActive={}
+    gameState.leafShotActive=false
     if gameState.ball then gameState.ball.CanCollide=true end
     for _,bot in ipairs(gameState.redTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); pcall(moveCharacter, bot, p, p+Vector3.new(0,0,1)) end end
     for _,bot in ipairs(gameState.blueTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); pcall(moveCharacter, bot, p, p+Vector3.new(0,0,-1)) end end
@@ -1499,7 +1645,7 @@ local function runPenaltyShootout()
     gameState.scoreRed=rs; gameState.scoreBlue=bs
     local winner=(rs>bs) and "Red" or "Blue"
     local ok, err = pcall(startCelebration, winner)
-    if not ok then warn("[Penalty] startCelebration lỗi: "..tostring(err)) end
+    if not ok then warn("[Penalty] startCelebration error: "..tostring(err)) end
     task.wait(12)
     clearPenaltyUI()
     gameState.paused=true; gameState.gameActive=false
@@ -1522,18 +1668,15 @@ local function runPenaltyShootout()
     advanceTournament()
 end
 
--- ============================================================
--- START CELEBRATION (không dùng task.delay treo)
--- ============================================================
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
     task.wait(2.5)
-    
+
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
     end
-    
+
     local cp = MAP_POS + Vector3.new(0, 5, 0)
     local w = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local tp = {}
@@ -1541,7 +1684,7 @@ local function startCelebration(winningTeam)
         local a = (i / #w) * math.pi * 2
         tp[bot] = Vector3.new(cp.X + math.cos(a)*6, TORSO_Y, cp.Z + math.sin(a)*6)
     end
-    
+
     local cst = tick()
     gameState.celebrationConn = RunService.Heartbeat:Connect(function()
         local el = tick() - cst
@@ -1566,7 +1709,7 @@ local function startCelebration(winningTeam)
             end
         end
     end)
-    
+
     task.spawn(function()
         local t0 = tick()
         while tick() - t0 < 10 do task.wait(0.5) end
@@ -1578,41 +1721,38 @@ local function startCelebration(winningTeam)
     end)
 end
 
--- ============================================================
--- END MATCH (bọc pcall + reset toàn bộ state)
--- ============================================================
 local function endMatch()
     gameState.paused = true
     gameState.gameActive = false
     if gameState.ball then gameState.ball.Anchored = true end
-    
+
     pcall(playFinalWhistle)
-    
+
     local winner = nil
     if gameState.scoreRed > gameState.scoreBlue then winner = "Red"
     elseif gameState.scoreBlue > gameState.scoreRed then winner = "Blue" end
-    
+
     local wasFinal = isFinalStage()
-    
+
     if winner then
         task.wait(2)
         if gameState.ball then gameState.ball.Anchored = false end
         if wasFinal then
             local ok, err = pcall(startTrophyCeremony, winner)
-            if not ok then warn("[endMatch] TrophyCeremony lỗi: "..tostring(err)) end
+            if not ok then warn("[endMatch] TrophyCeremony error: "..tostring(err)) end
         else
             local ok, err = pcall(startCelebration, winner)
-            if not ok then warn("[endMatch] Celebration lỗi: "..tostring(err)) end
+            if not ok then warn("[endMatch] Celebration error: "..tostring(err)) end
             task.wait(12)
         end
     end
-    
+
     gameState.restartCountdown = FULL_BREAK
     while gameState.restartCountdown > 0 do
         task.wait(1)
         gameState.restartCountdown = gameState.restartCountdown - 1
     end
-    
+
     gameState.currentHalf = 1
     gameState.timeLeft = HALF_TIME
     gameState.scoreRed = 0
@@ -1633,15 +1773,16 @@ local function endMatch()
     gameState.gkHoldingTeam = nil
     gameState.playerSkillActive = false
     gameState.superSkillActive = false
-    
+    gameState.leafShotActive = false
+
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
         gameState.celebrationConn = nil
     end
-    
+
     if gameState.ball then gameState.ball.Anchored = false end
     resetPositions("Red")
-    
+
     task.delay(0.3, function()
         local pc = gameState.playerChar
         if pc then
@@ -1658,10 +1799,10 @@ local function endMatch()
             end
         end
     end)
-    
+
     gameState.gameActive = true
     advanceTournament()
-    print("[endMatch] Đã kết thúc trận đấu và reset thành công!")
+    print("[endMatch] Match ended and reset successfully!")
 end
 
 local function onGoalScored(scoringTeam)
@@ -1698,9 +1839,6 @@ local function checkRules()
     end
 end
 
--- ============================================================
--- START TIMER (pcall + cứu hộ)
--- ============================================================
 local function startTimer()
     task.spawn(function()
         while true do
@@ -1709,17 +1847,17 @@ local function startTimer()
                and not gameState.goalScored and not gameState.inPenaltyShootout and not gameState.celebrating
                and not gameState.goalCelebrationActive and not gameState.trophyActive then
                 gameState.timeLeft = gameState.timeLeft - 1
-                
+
                 if gameState.timeLeft <= 0 then
                     if gameState.isExtraTime then
                         playFinalWhistle()
                         if gameState.scoreRed == gameState.scoreBlue then
                             task.wait(3)
                             local ok, err = pcall(runPenaltyShootout)
-                            if not ok then warn("[Timer] PenaltyShootout lỗi: "..tostring(err)) end
+                            if not ok then warn("[Timer] PenaltyShootout error: "..tostring(err)) end
                         else
                             local ok, err = pcall(endMatch)
-                            if not ok then warn("[Timer] endMatch lỗi: "..tostring(err)) end
+                            if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                         end
                     elseif gameState.currentHalf < gameState.maxHalves then
                         gameState.paused = true
@@ -1759,7 +1897,7 @@ local function startTimer()
                         else
                             local ok, err = pcall(endMatch)
                             if not ok then
-                                warn("[Timer] endMatch bị lỗi: "..tostring(err))
+                                warn("[Timer] endMatch error: "..tostring(err))
                                 gameState.paused = false
                                 gameState.gameActive = true
                                 gameState.currentHalf = 1
@@ -1789,7 +1927,7 @@ local function skipMatch()
     if gameState.paused or gameState.restartCountdown > 0 then return end
     gameState.timeLeft = STOPPAGE_TIME
     gameState.stoppageTimeActive = true
-    print("[Skip Match] Đã kích hoạt, còn 15 giây...")
+    print("[Skip Match] Activated, 15 seconds remaining...")
 end
 
 local function createSettingsUI()
@@ -1855,12 +1993,12 @@ local function createSettingsUI()
         end
         return bt
     end
-    msh(sc,6,"⏩ MATCH CONTROLS",Color3.fromRGB(255,255,100))
+    msh(sc,6,"MATCH CONTROLS",Color3.fromRGB(255,255,100))
     local skb=Instance.new("TextButton",sc); skb.Size=UDim2.new(1,-24,0,44); skb.Position=UDim2.new(0,12,0,32)
-    skb.BackgroundColor3=Color3.fromRGB(255,180,30); skb.Text="⏩ SKIP MATCH"; skb.TextColor3=Color3.fromRGB(30,20,0); skb.TextScaled=true; skb.Font=Enum.Font.FredokaOne
+    skb.BackgroundColor3=Color3.fromRGB(255,180,30); skb.Text="SKIP MATCH"; skb.TextColor3=Color3.fromRGB(30,20,0); skb.TextScaled=true; skb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",skb).CornerRadius=UDim.new(0,10)
     skb.MouseButton1Click:Connect(function() skipMatch(); panel.Visible=false; gameState.settingsOpen=false end)
-    msh(sc,92,"⚡ SPECIAL ABILITIES ⚡",Color3.fromRGB(255,100,255))
+    msh(sc,92,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
     local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,116); tr2.BackgroundTransparency=1
     local pt=Instance.new("TextButton",tr2); pt.Size=UDim2.new(0.49,-2,1,0); pt.Position=UDim2.new(0,0,0,0)
     pt.BackgroundColor3=Color3.fromRGB(150,30,200); pt.Text="PHYSICS: OFF"; pt.TextColor3=Color3.new(1,1,1); pt.TextScaled=true; pt.Font=Enum.Font.FredokaOne
@@ -2059,10 +2197,12 @@ local function createGameUI()
     local knb=mkB("KnuckleBtn","KNUCKLE\n(Hold)",Color3.fromRGB(255,100,0),UDim2.new(0.8,-50,0.8,-158))
     local drb=mkB("DribbleBtn","DRIBBLE",Color3.fromRGB(0,150,255),UDim2.new(0.8,-50,0.8,-204))
     local skb=mkB("SkillBtn","SKILL",Color3.fromRGB(180,0,220),UDim2.new(0.8,-50,0.8,-250))
-    local phb=mkB("PhysicsBtn","⚡\nPHYSICS",Color3.fromRGB(150,30,200),UDim2.new(0.8,-50,0.8,-296),UDim2.new(0,100,0,42))
+    local phb=mkB("PhysicsBtn","PHYSICS",Color3.fromRGB(150,30,200),UDim2.new(0.8,-50,0.8,-296),UDim2.new(0,100,0,42))
     phb.Visible=false; gameState.physicsShotLabel=phb
-    local spb=mkB("SuperBtn","🌀\nSUPER",Color3.fromRGB(200,100,20),UDim2.new(0.8,-50,0.8,-342),UDim2.new(0,100,0,42))
+    local spb=mkB("SuperBtn","SUPER",Color3.fromRGB(200,100,20),UDim2.new(0.8,-50,0.8,-342),UDim2.new(0,100,0,42))
     spb.Visible=false; gameState.superSkillLabel=spb
+    -- LEAF SHOT button on the left column
+    local lsb=mkB("LeafShotBtn","LEAF\nSHOT",Color3.fromRGB(60,180,60),UDim2.new(0.2,-50,0.8,-112),UDim2.new(0,100,0,42))
     local swb=mkB("SwitchTeamBtn","SWITCH",Color3.fromRGB(200,100,200),UDim2.new(0.2,-50,0.8,-20))
     local srb=mkB("SprintBtn","SPRINT",Color3.fromRGB(60,60,60),UDim2.new(0.2,-50,0.8,-66))
     local function gnb() local c=gameState.playerChar; if not c then return false end
@@ -2177,6 +2317,11 @@ local function createGameUI()
         if n then sdb(); gameState.lastTouchTeam=gameState.playerTeam; playBallTouchSound()
             local cl=fnt(); if cl and cl.PrimaryPart then applyGroundPass(gameState.ball,cl.PrimaryPart.Position,20) end end
     end)
+    lsb.MouseButton1Click:Connect(function()
+        if gameState.leafShotActive then return end
+        gameState.playerDribbling = false
+        leafShot()
+    end)
     swb.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating then return end
         gameState.playerTeam=(gameState.playerTeam=="Red") and "Blue" or "Red"
@@ -2238,7 +2383,7 @@ local function autoStart()
             else
                 local bp=gameState.ball.Position
                 local oob=(bp.Y<MAP_POS.Y-30) or (math.abs(bp.X-MAP_POS.X)>PITCH_WIDTH/2+30) or (math.abs(bp.Z-MAP_POS.Z)>PITCH_LENGTH/2+30)
-                if oob then
+                if oob and not gameState.leafShotActive then
                     gameState.ball.CFrame=CFrame.new(MAP_POS+Vector3.new(0,5,0))
                     gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
                     gameState.ball.CanCollide=true; gameState.ball.Anchored=false
