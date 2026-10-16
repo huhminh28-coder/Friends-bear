@@ -1,4 +1,4 @@
--- World Cup 2026 | Advanced Edition | English (FINAL)
+-- World Cup 2026 | Advanced Edition | English (FINAL + ACHIEVEMENTS)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -71,7 +71,55 @@ local gameState = {
     stoppageTimeActive=false, penaltyUI=nil, penaltyBallsRed={}, penaltyBallsBlue={},
     lastScorer=nil, lastScorerTeam=nil,
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
+    playerGoalCount=0, playerGoalLabel=nil,
 }
+
+-- ============================================================
+-- PLAYER ACHIEVEMENTS
+-- ============================================================
+local function getPlayerAchievement(count)
+    if count == 1 then return "" end
+    if count == 2 then return "BRACE" end
+    if count == 3 then return "HAT-TRICK" end
+    if count == 4 then return "POKER" end
+    if count == 5 then return "RE-POKER" end
+    if count == 6 then return "DOUBLE HAT-TRICK" end
+    if count == 7 then return "HAUL-HAT-TRICK" end
+    if count == 8 then return "SNOWBALL" end
+    if count >= 9 then return "TRIPLE HAT-TRICK [MAX]" end
+    return ""
+end
+
+local function updatePlayerAchievement(scoringTeam)
+    if scoringTeam ~= gameState.playerTeam then return end
+    if gameState.lastScorer ~= "player" then return end
+    gameState.playerGoalCount = gameState.playerGoalCount + 1
+    local ach = getPlayerAchievement(gameState.playerGoalCount)
+    if ach == "" then return end
+    local lbl = gameState.playerGoalLabel
+    if not lbl then return end
+    lbl.Text = "⭐ " .. ach .. " ⭐"
+    lbl.Visible = true
+    task.spawn(function()
+        for i = 1, 8 do
+            if not lbl or not lbl.Parent then break end
+            lbl.TextColor3 = Color3.fromRGB(255, 255, 0)
+            task.wait(0.15)
+            if not lbl or not lbl.Parent then break end
+            lbl.TextColor3 = Color3.fromRGB(255, 80, 0)
+            task.wait(0.15)
+        end
+        if lbl and lbl.Parent then lbl.TextColor3 = Color3.fromRGB(255, 215, 0) end
+    end)
+end
+
+local function resetPlayerAchievement()
+    gameState.playerGoalCount = 0
+    if gameState.playerGoalLabel then
+        gameState.playerGoalLabel.Visible = false
+        gameState.playerGoalLabel.Text = ""
+    end
+end
 
 local function buildCombinedDiff(team)
     local d = (team=="Red") and gameState.redDifficulty or gameState.blueDifficulty
@@ -776,6 +824,8 @@ local function physicsDefyingShot()
     gameState.playerDribbling = false
     gameState.superSkillActive = false
     gameState.playerSkillActive = false
+    gameState.lastScorer="player"
+    gameState.lastScorerTeam=gameState.playerTeam
     local agz=(gameState.playerTeam=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local tx=MAP_POS.X+(math.random()-0.5)*(GOAL_WIDTH-15)
     local ty=MAP_POS.Y+math.random(8,GOAL_HEIGHT-5)
@@ -816,6 +866,8 @@ local function activateSuperSkill()
     if not hrp or not ball or not ball.Parent then return end
     if (hrp.Position-ball.Position).Magnitude>15 then return end
     gameState.playerDribbling = false
+    gameState.lastScorer="player"
+    gameState.lastScorerTeam=gameState.playerTeam
     gameState.superSkillActive=true
     gameState.lastTouchTeam=gameState.playerTeam
     local st=tick(); local dur=0.5
@@ -1233,16 +1285,12 @@ local function checkInterception()
     end end
 end
 
--- ============================================================
--- ⭐ FIXED: doDribble — snap bóng vào chân ngay khi bấm
--- ============================================================
 local function doDribble()
     if gameState.inPenaltyShootout or gameState.celebrating then return end
     local char=gameState.playerChar; if not char then return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent or (hrp.Position-ball.Position).Magnitude>20 then return end
     if gameState.playerSkillActive then gameState.playerSkillActive=false end
-    -- Snap bóng vào chân + zero vận tốc ngay
     local fp = hrp.Position + hrp.CFrame.LookVector * 4
     ball.CFrame = CFrame.new(fp.X, fp.Y - 1.5, fp.Z)
     ball.AssemblyLinearVelocity = Vector3.zero
@@ -1255,9 +1303,6 @@ local function doDribble()
     playBallTouchSound()
 end
 
--- ============================================================
--- ⭐ FIXED: updatePlayerDribble — bỏ velocity check
--- ============================================================
 local function updatePlayerDribble(dt)
     if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive then 
         gameState.playerDribbling=false; return 
@@ -1266,7 +1311,6 @@ local function updatePlayerDribble(dt)
     local char=gameState.playerChar; if not char then gameState.playerDribbling=false return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then gameState.playerDribbling=false return end
-    -- Chỉ tắt khi bóng quá xa (20 studs)
     if (hrp.Position-ball.Position).Magnitude > 20 then 
         gameState.playerDribbling=false 
         return 
@@ -1511,6 +1555,7 @@ local function runPenaltyShootout()
     gameState.gkHoldCooldowns={}; gameState.passCooldowns={}
     gameState.playerDribbling=false; gameState.aiDribbleState={}
     gameState.stoppageTimeActive=false; gameState.paused=false
+    resetPlayerAchievement()
     resetPositions("Red")
     task.delay(0.3,function()
         local pc=gameState.playerChar
@@ -1623,6 +1668,7 @@ local function endMatch()
         pcall(function() gameState.celebrationConn:Disconnect() end)
         gameState.celebrationConn = nil
     end
+    resetPlayerAchievement()
     if gameState.ball then gameState.ball.Anchored = false end
     resetPositions("Red")
     task.delay(0.3, function()
@@ -1650,6 +1696,8 @@ local function onGoalScored(scoringTeam)
     if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating then return end
     gameState.goalScored=true; playNetSound()
     if scoringTeam=="Red" then gameState.scoreRed=gameState.scoreRed+1 else gameState.scoreBlue=gameState.scoreBlue+1 end
+    -- ⭐ Cập nhật achievement cho player
+    updatePlayerAchievement(scoringTeam)
     showGoalText()
     local gz=(scoringTeam=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     createFireworks(Vector3.new(MAP_POS.X,MAP_POS.Y+30,gz))
@@ -2006,6 +2054,14 @@ local function createGameUI()
     local tml=Instance.new("TextLabel",brd); tml.Size=UDim2.new(1,-12,0,14); tml.Position=UDim2.new(0,6,0,72)
     tml.BackgroundTransparency=1; tml.Text="H1 | 3:00"; tml.TextColor3=Color3.fromRGB(255,255,100)
     tml.Font=Enum.Font.FredokaOne; tml.TextSize=11; tml.TextXAlignment=Enum.TextXAlignment.Left
+    -- ⭐ Player Achievement Label (dưới bảng tỉ số)
+    local pgl=Instance.new("TextLabel",gui); pgl.Size=UDim2.new(0,240,0,22); pgl.Position=UDim2.new(0,10,0,102)
+    pgl.BackgroundColor3=Color3.fromRGB(20,20,30); pgl.BackgroundTransparency=0.15; pgl.BorderSizePixel=0
+    Instance.new("UICorner",pgl).CornerRadius=UDim.new(0,8)
+    local pglS=Instance.new("UIStroke",pgl); pglS.Color=Color3.fromRGB(255,180,0); pglS.Thickness=1.5
+    pgl.Text=""; pgl.TextColor3=Color3.fromRGB(255,215,0); pgl.Font=Enum.Font.FredokaOne; pgl.TextSize=14
+    pgl.TextXAlignment=Enum.TextXAlignment.Center; pgl.Visible=false
+    gameState.playerGoalLabel=pgl
     local gl=Instance.new("TextLabel",gui); gl.Size=UDim2.new(0,600,0,150); gl.Position=UDim2.new(0.5,-300,0.4,-75)
     gl.BackgroundTransparency=1; gl.Text=""; gl.TextColor3=Color3.fromRGB(255,255,0); gl.TextScaled=true
     gl.Font=Enum.Font.FredokaOne; gl.TextStrokeTransparency=0.3; gl.TextStrokeColor3=Color3.new(0,0,0); gl.Visible=false
