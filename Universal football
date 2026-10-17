@@ -73,7 +73,6 @@ local gameState = {
     lastScorer=nil, lastScorerTeam=nil,
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
     playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil,
-    -- ⭐ BIẾN MỚI
     playerPosition="Striker", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
 }
 
@@ -248,7 +247,6 @@ local function showGoalText()
 end
 local function hideGoalText() if gameState.goalTextLabel then gameState.goalTextLabel.Visible=false end end
 
--- ⭐ HÀM XỬ LÝ DỰ BỊ
 local function toggleBenchMode()
     if gameState.inPenaltyShootout and gameState.isOnBench then return end -- Không vào sân khi luân lưu
     
@@ -887,6 +885,44 @@ local function applyGroundPass(ball,targetPos,powerBase)
     local dir=targetPos-ball.Position; local hd=Vector3.new(dir.X,0,dir.Z); local d=hd.Magnitude
     if d<1 then return end; hd=hd.Unit
     ball.AssemblyLinearVelocity=hd*math.clamp(d*1.15+(powerBase or 0),80,220)+Vector3.new(0,12,0)
+end
+
+-- ⭐ HÀM TÌM ĐỒNG ĐỘI THEO HƯỚNG NHÌN
+local function findDirectionalPassTarget()
+    local ball = gameState.ball
+    if not ball or not ball.Parent then return nil end
+    local char = gameState.playerChar
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    
+    local cam = workspace.CurrentCamera
+    local lookDir = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
+    local horizLook = Vector3.new(lookDir.X, 0, lookDir.Z).Unit
+    
+    local teamList = (gameState.playerTeam == "Red") and gameState.redTeam or gameState.blueTeam
+    local bestTarget = nil
+    local bestScore = -math.huge
+    
+    for _, bot in ipairs(teamList) do
+        if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then
+            local toBot = bot.PrimaryPart.Position - hrp.Position
+            local horizToBot = Vector3.new(toBot.X, 0, toBot.Z)
+            local dist = horizToBot.Magnitude
+            if dist > 5 and dist < 250 then
+                local dirToBot = horizToBot.Unit
+                local dot = horizLook:Dot(dirToBot)
+                if dot > 0.5 then -- Nằm trong khoảng 60 độ hướng nhìn
+                    local score = dot * 100 - dist * 0.1
+                    if score > bestScore then
+                        bestScore = score
+                        bestTarget = bot
+                    end
+                end
+            end
+        end
+    end
+    return bestTarget
 end
 
 local function physicsDefyingShot()
@@ -1986,7 +2022,6 @@ local function createSettingsUI()
     Instance.new("UICorner",skb).CornerRadius=UDim.new(0,10)
     skb.MouseButton1Click:Connect(function() skipMatch(); panel.Visible=false; gameState.settingsOpen=false end)
     
-    -- ⭐ BENCH BUTTON
     local benchBtn=Instance.new("TextButton",sc); benchBtn.Size=UDim2.new(1,-24,0,44); benchBtn.Position=UDim2.new(0,12,0,84)
     benchBtn.BackgroundColor3=Color3.fromRGB(80,80,80); benchBtn.Text=gameState.isOnBench and "ENTER PITCH" or "GO TO BENCH"
     benchBtn.TextColor3=Color3.new(1,1,1); benchBtn.TextScaled=true; benchBtn.Font=Enum.Font.FredokaOne
@@ -1994,7 +2029,6 @@ local function createSettingsUI()
     benchBtn.MouseButton1Click:Connect(function() toggleBenchMode(); panel.Visible=false; gameState.settingsOpen=false end)
     gameState.benchBtn = benchBtn
 
-    -- ⭐ POSITION SELECTION
     msh(sc,144,"PLAYER POSITION",Color3.fromRGB(100,255,200))
     local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,170); posFrame.BackgroundTransparency=1
     local posList = {"Striker", "Midfielder", "Defender"}
@@ -2219,8 +2253,8 @@ local function createGameUI()
         Instance.new("UICorner",b).CornerRadius=UDim.new(0,10); return b
     end
     local shb=mkB("ShootBtn","SHOOT\n(Hold)",Color3.fromRGB(255,50,50),UDim2.new(0.8,-50,0.8,-20))
-    local psb=mkB("PassBtn","FAST PASS",Color3.fromRGB(50,200,50),UDim2.new(0.8,-50,0.8,-66))
-    local lbb=mkB("LobBtn","LOB",Color3.fromRGB(255,215,0),UDim2.new(0.8,-50,0.8,-112))
+    local psb=mkB("PassBtn","PASS\n(Hold)",Color3.fromRGB(50,200,50),UDim2.new(0.8,-50,0.8,-66))
+    local lbb=mkB("LobBtn","CLEAR\nBALL",Color3.fromRGB(255,215,0),UDim2.new(0.8,-50,0.8,-112))
     local knb=mkB("KnuckleBtn","KNUCKLE\n(Hold)",Color3.fromRGB(255,100,0),UDim2.new(0.8,-50,0.8,-158))
     local drb=mkB("DribbleBtn","DRIBBLE",Color3.fromRGB(0,150,255),UDim2.new(0.8,-50,0.8,-204))
     local skb=mkB("SkillBtn","SKILL",Color3.fromRGB(180,0,220),UDim2.new(0.8,-50,0.8,-250))
@@ -2249,6 +2283,8 @@ local function createGameUI()
         end end
         return cl
     end
+
+    -- ⭐ SỬA NÚT SHOOT
     shb.MouseButton1Down:Connect(function()
         if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench then return end
         local n=gnb(); if not n then return end
@@ -2308,6 +2344,68 @@ local function createGameUI()
         end
         gameState.shootChargePower=0; gameState.chargingBall=nil
     end)
+
+    -- ⭐ SỬA NÚT FAST PASS (Hướng nhìn + Chuyền bổng)
+    local passCharging = false
+    local passChargePower = 0
+    psb.MouseButton1Down:Connect(function()
+        if gameState.isOnBench or gameState.inPenaltyShootout or gameState.celebrating then return end
+        local n=gnb(); if not n then return end
+        sdb()
+        passCharging = true
+        passChargePower = 0
+        psb.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+        task.spawn(function()
+            while passCharging do
+                passChargePower = math.min(passChargePower + 0.05, 1)
+                task.wait(0.05)
+            end
+        end)
+    end)
+    psb.MouseButton1Up:Connect(function()
+        if not passCharging then return end
+        passCharging = false
+        psb.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        
+        local n=gnb()
+        if n then
+            gameState.lastTouchTeam = gameState.playerTeam
+            playBallTouchSound()
+            
+            local target = findDirectionalPassTarget()
+            local power = 20 + passChargePower * 40
+            
+            if target and target.PrimaryPart then
+                applyLobPass(gameState.ball, target.PrimaryPart.Position, power)
+            else
+                local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+                local cam = workspace.CurrentCamera
+                local lookDir = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
+                local horiz = Vector3.new(lookDir.X, 0, lookDir.Z).Unit
+                gameState.ball.AssemblyLinearVelocity = horiz * (60 + passChargePower * 40) + Vector3.new(0, 40 + passChargePower * 30, 0)
+            end
+        end
+    end)
+
+    -- ⭐ SỬA NÚT LOB THÀNH CLEAR BALL (Phá banh)
+    lbb.MouseButton1Click:Connect(function()
+        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
+        local n=gnb()
+        if n then
+            sdb()
+            gameState.lastTouchTeam = gameState.playerTeam
+            playBallTouchSound()
+            
+            local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+            local cam = workspace.CurrentCamera
+            local lookDir = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
+            local horiz = Vector3.new(lookDir.X, 0, lookDir.Z).Unit
+            
+            gameState.ball.AssemblyLinearVelocity = horiz * 150 + Vector3.new(0, 120, 0)
+            gameState.ball.AssemblyAngularVelocity = Vector3.new(math.random(-50,50), math.random(-50,50), math.random(-50,50))
+        end
+    end)
+
     knb.MouseButton1Down:Connect(function()
         if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench then return end
         local n=gnb(); if not n then return end
@@ -2355,22 +2453,6 @@ local function createGameUI()
         gameState.lastTouchTeam=gameState.playerTeam; gameState.lastScorer="player"; gameState.lastScorerTeam=gameState.playerTeam
         playBallKick(b.Position,0.85)
         task.delay(2.5,function() gameState.playerSkillActive=false end)
-    end)
-    lbb.MouseButton1Click:Connect(function()
-        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
-        local n=gnb()
-        if n then sdb(); gameState.lastTouchTeam=gameState.playerTeam; playBallTouchSound()
-            local cl=fnt()
-            if cl and cl.PrimaryPart then applyLobPass(gameState.ball,cl.PrimaryPart.Position,20)
-            else local gz=(gameState.playerTeam=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
-                applyLobPass(gameState.ball,Vector3.new(MAP_POS.X+math.random(-20,20),MAP_POS.Y+10,gz),0) end
-        end
-    end)
-    psb.MouseButton1Click:Connect(function()
-        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
-        local n=gnb()
-        if n then sdb(); gameState.lastTouchTeam=gameState.playerTeam; playBallTouchSound()
-            local cl=fnt(); if cl and cl.PrimaryPart then applyGroundPass(gameState.ball,cl.PrimaryPart.Position,20) end end
     end)
     swb.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
