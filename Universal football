@@ -134,16 +134,12 @@ local function showSuddenDeath()
             lbl.TextColor3 = Color3.fromRGB(255, 255, 0)
             task.wait(0.2)
         end
-        if lbl and lbl.Parent then
-            lbl.TextColor3 = Color3.fromRGB(255, 80, 80)
-        end
+        if lbl and lbl.Parent then lbl.TextColor3 = Color3.fromRGB(255, 80, 80) end
     end)
 end
 
 local function hideSuddenDeath()
-    if gameState.suddenDeathLabel then
-        gameState.suddenDeathLabel.Visible = false
-    end
+    if gameState.suddenDeathLabel then gameState.suddenDeathLabel.Visible = false end
 end
 
 local function buildCombinedDiff(team)
@@ -1560,7 +1556,6 @@ local function runPenaltyShootout()
         if rs>bs+(mr-r) then break end
         if bs>rs+(mr-r) then break end
     end
-    -- ⭐ SUDDEN DEATH
     if rs == bs then
         showSuddenDeath()
         task.wait(3)
@@ -1577,7 +1572,6 @@ local function runPenaltyShootout()
     gameState.scoreRed=rs; gameState.scoreBlue=bs
     local winner=(rs>bs) and "Red" or "Blue"
     local wasFinal = isFinalStage()
-    -- ⭐ FIX: nếu là chung kết thì trao cúp, không thì ăn mừng bình thường
     if wasFinal then
         startTrophyCeremony(winner)
     else
@@ -1585,8 +1579,19 @@ local function runPenaltyShootout()
         if not ok then warn("[Penalty] startCelebration error: "..tostring(err)) end
         task.wait(12)
     end
+    
+    -- ⭐ NGHỈ 30s SAU KHI TRAO CÚP / ĂN MỪNG
+    gameState.paused = true
+    gameState.gameActive = false
+    if gameState.ball then gameState.ball.Anchored = true end
+    gameState.restartCountdown = FULL_BREAK
+    while gameState.restartCountdown > 0 do
+        task.wait(1)
+        gameState.restartCountdown = gameState.restartCountdown - 1
+    end
+    if gameState.ball then gameState.ball.Anchored = false end
+    
     clearPenaltyUI()
-    gameState.paused=true; gameState.gameActive=false
     gameState.currentHalf=1; gameState.timeLeft=HALF_TIME
     gameState.scoreRed=0; gameState.scoreBlue=0; gameState.isExtraTime=false
     gameState.lastTouchTeam=nil; gameState.goalScored=false
@@ -2098,7 +2103,6 @@ local function createGameUI()
     pgl.Text=""; pgl.TextColor3=Color3.fromRGB(255,215,0); pgl.Font=Enum.Font.FredokaOne; pgl.TextSize=14
     pgl.TextXAlignment=Enum.TextXAlignment.Center; pgl.Visible=false
     gameState.playerGoalLabel=pgl
-    -- ⭐ SUDDEN DEATH label ở giữa trên màn hình
     local sdl=Instance.new("TextLabel",gui); sdl.Size=UDim2.new(0,500,0,80); sdl.Position=UDim2.new(0.5,-250,0.25,-40)
     sdl.BackgroundTransparency=1; sdl.Text=""; sdl.TextColor3=Color3.fromRGB(255,80,80)
     sdl.Font=Enum.Font.FredokaOne; sdl.TextScaled=true
