@@ -1,4 +1,4 @@
--- World Cup 2026 | Advanced Edition | English (MULTI-TOURNAMENT & LEGS FIXED UI)
+-- World Cup 2026 | Advanced Edition | English (SINGLE LEG & POSITION PROBABILITY)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -18,7 +18,7 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 local NORMAL_WALKSPEED = 16
-local SPRINT_WALKSPEED = 70
+local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
 local NET_SOUND = "rbxassetid://5568887127"
@@ -41,17 +41,16 @@ local DIFFICULTY_PER_CATEGORY = {
 
 local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
-    ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
-    ["Europa League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
-    ["Nations League"]={stages={"GROUP STAGE","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,1}},
-    ["Bundesliga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
-    ["La Liga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
-    ["Serie A"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
+    ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Europa League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Nations League"]={stages={"GROUP STAGE","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1}},
+    ["Bundesliga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["La Liga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Serie A"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
 }
 
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
-    aggRed=0, aggBlue=0, currentLeg=1,
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2, isExtraTime=false,
     restartCountdown=0, gameActive=false, paused=false,
     lastTouchTeam=nil, restartCooldown=false, ui=nil,
@@ -169,45 +168,20 @@ local function isFinalStage()
     local t = TOURNAMENTS[gameState.tournamentType]; if not t then return false end
     return gameState.currentStageIndex >= #t.stages
 end
-local function isGroupStage()
-    local s = getCurrentStage()
-    return s == "GROUP STAGE"
-end
 
 local function updateTournamentDisplay()
     if not gameState.tournamentLbl then return end
     local s,tm = getCurrentStage()
     gameState.tournamentLbl.Text = gameState.tournamentType
     gameState.stageLbl.Text = s
-    local legText = ""
-    if tm > 1 and not isGroupStage() then
-        legText = " (Leg "..gameState.currentLeg..")"
-    end
-    gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm..legText
-    
-    local aggTxt = ""
-    if not isGroupStage() and tm > 1 then
-        aggTxt = " | Agg: "..gameState.aggRed.."-"..gameState.aggBlue
-    end
-    gameState.scoreLbl.Text = gameState.teamRedName.." "..gameState.scoreRed.." - "..gameState.scoreBlue.." "..gameState.teamBlueName..aggTxt
+    gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm
+    gameState.scoreLbl.Text = gameState.teamRedName.." "..gameState.scoreRed.." - "..gameState.scoreBlue.." "..gameState.teamBlueName
 end
 
 local function advanceTournament()
     local t = TOURNAMENTS[gameState.tournamentType]; if not t then return end
-    local totalMatches = t.matchesPerStage[gameState.currentStageIndex] or 1
-    local s = getCurrentStage()
-    
-    if totalMatches == 2 and gameState.currentLeg == 1 then
-        gameState.currentLeg = 2
-        updateTournamentDisplay()
-        return
-    end
-    
-    gameState.currentLeg = 1
-    gameState.aggRed = 0
-    gameState.aggBlue = 0
-    
     gameState.currentMatchInStage = gameState.currentMatchInStage + 1
+    local totalMatches = t.matchesPerStage[gameState.currentStageIndex] or 1
     if gameState.currentMatchInStage > totalMatches then
         gameState.currentStageIndex = gameState.currentStageIndex + 1
         gameState.currentMatchInStage = 1
@@ -1153,7 +1127,20 @@ function findBestPassTarget(bot)
             end
             if no < 25 then score = score - 200
             elseif no > 60 then score = score + 100 end
-            if c.isPlayer then score = score + 40 end
+            
+            if c.isPlayer then
+                local chance = 50
+                if gameState.playerPosition == "Defender" then chance = 30
+                elseif gameState.playerPosition == "Midfielder" then chance = 50
+                elseif gameState.playerPosition == "Striker" then chance = 80 end
+                
+                if math.random(1,100) <= chance then
+                    score = score + 500
+                else
+                    score = score - 500
+                end
+            end
+
             local bdg = math.abs(ball.Position.Z - agz)
             local it = false
             if math.abs(tp.Z - agz) < bdg - 30 and no > 40 then score = score + 150; it = true end
@@ -1222,7 +1209,14 @@ local function goalkeeperPassBall(gk,ball,team)
         local d=(c.part.Position-bp).Magnitude
         if d>15 and d<400 then
             local s=-math.abs(c.part.Position.Z-ogz)*0.5;
-            if c.isPlayer then s=s+50 end
+            if c.isPlayer then 
+                local chance = 50
+                if gameState.playerPosition == "Defender" then chance = 30
+                elseif gameState.playerPosition == "Midfielder" then chance = 50
+                elseif gameState.playerPosition == "Striker" then chance = 80 end
+                
+                if math.random(1,100) <= chance then s=s+50 else s=s-100 end
+            end
             if s>bs then bs=s; bt=c end
         end
     end end
@@ -1905,6 +1899,7 @@ local function checkRules()
     end
 end
 
+-- ⭐ HÀM STARTTIMER ĐÃ ĐƯỢC SỬA LẠI ĐỂ CHIA HIỆP
 local function startTimer()
     task.spawn(function()
         while true do
@@ -1912,137 +1907,44 @@ local function startTimer()
             if gameState.gameActive and not gameState.paused and not gameState.gkHolding
                and not gameState.goalScored and not gameState.inPenaltyShootout and not gameState.celebrating
                and not gameState.goalCelebrationActive and not gameState.trophyActive then
+                
                 gameState.timeLeft = gameState.timeLeft - 1
+                
                 if gameState.timeLeft <= 0 then
-                    local stageName = getCurrentStage()
-                    local isGroup = (stageName == "GROUP STAGE")
+                    playFinalWhistle()
+                    gameState.paused = true
+                    gameState.gameActive = false
+                    gameState.playerDribbling = false
                     
-                    if isGroup then
-                        playFinalWhistle()
-                        gameState.paused = true
-                        gameState.gameActive = false
-                        gameState.aggRed = gameState.aggRed + gameState.scoreRed
-                        gameState.aggBlue = gameState.aggBlue + gameState.scoreBlue
-                        
-                        task.wait(2)
-                        gameState.restartCountdown = FULL_BREAK
+                    -- HẾT HIỆP 1
+                    if gameState.currentHalf == 1 then
+                        task.wait(3)
+                        gameState.restartCountdown = HALF_BREAK
                         while gameState.restartCountdown > 0 do
                             task.wait(1)
                             gameState.restartCountdown = gameState.restartCountdown - 1
                         end
-                        
-                        gameState.currentHalf = 1
+                        gameState.currentHalf = 2
                         gameState.timeLeft = HALF_TIME
-                        gameState.scoreRed = 0
-                        gameState.scoreBlue = 0
-                        gameState.isExtraTime = false
-                        gameState.lastTouchTeam = nil
-                        gameState.goalScored = false
-                        gameState.gkHoldCooldowns = {}
-                        gameState.passCooldowns = {}
-                        gameState.playerDribbling = false
-                        gameState.aiDribbleState = {}
                         gameState.stoppageTimeActive = false
-                        gameState.paused = false
-                        gameState.celebrating = false
-                        
-                        resetPlayerAchievement()
-                        if gameState.ball then gameState.ball.Anchored = false end
                         resetPositions("Red")
+                        gameState.paused = false
                         gameState.gameActive = true
-                        advanceTournament()
                         
+                    -- HẾT HIỆP 2 HOẶC HẾT HIỆP PHỤ
                     else
-                        if gameState.scoreRed ~= gameState.scoreBlue then
-                            local aggR = gameState.aggRed + gameState.scoreRed
-                            local aggB = gameState.aggBlue + gameState.scoreBlue
-                            
-                            if aggR ~= aggB then
-                                playFinalWhistle()
-                                gameState.paused = true
-                                gameState.gameActive = false
-                                
-                                task.wait(2)
-                                gameState.restartCountdown = FULL_BREAK
-                                while gameState.restartCountdown > 0 do
-                                    task.wait(1)
-                                    gameState.restartCountdown = gameState.restartCountdown - 1
-                                end
-                                
-                                gameState.currentHalf = 1
-                                gameState.timeLeft = HALF_TIME
-                                gameState.scoreRed = 0
-                                gameState.scoreBlue = 0
-                                gameState.isExtraTime = false
-                                gameState.lastTouchTeam = nil
-                                gameState.goalScored = false
-                                gameState.gkHoldCooldowns = {}
-                                gameState.passCooldowns = {}
-                                gameState.playerDribbling = false
-                                gameState.aiDribbleState = {}
-                                gameState.stoppageTimeActive = false
-                                gameState.paused = false
-                                gameState.celebrating = false
-                                
-                                resetPlayerAchievement()
-                                if gameState.ball then gameState.ball.Anchored = false end
-                                resetPositions("Red")
-                                gameState.gameActive = true
-                                advanceTournament()
-                            else
-                                gameState.paused = true
-                                gameState.gameActive = false
-                                playWhistle()
-                                task.wait(3)
-                                gameState.restartCountdown = HALF_BREAK
-                                while gameState.restartCountdown > 0 do
-                                    task.wait(1)
-                                    gameState.restartCountdown = gameState.restartCountdown - 1
-                                end
-                                gameState.isExtraTime = true
-                                gameState.timeLeft = EXTRA_TIME
-                                gameState.playerDribbling = false
-                                gameState.stoppageTimeActive = false
-                                resetPositions("Red")
-                                gameState.paused = false
-                                gameState.gameActive = true
-                            end
+                        local isGroup = (getCurrentStage() == "GROUP STAGE")
+                        
+                        if isGroup then
+                            -- Vòng bảng: Kết thúc trận
+                            task.spawn(function() 
+                                local ok, err = pcall(endMatch)
+                                if not ok then warn(err) end
+                            end)
                         else
-                            if gameState.currentLeg == 1 then
-                                playFinalWhistle()
-                                gameState.paused = true
-                                gameState.gameActive = false
-                                gameState.aggRed = gameState.aggRed + gameState.scoreRed
-                                gameState.aggBlue = gameState.aggBlue + gameState.scoreBlue
-                                task.wait(2)
-                                gameState.restartCountdown = FULL_BREAK
-                                while gameState.restartCountdown > 0 do
-                                    task.wait(1)
-                                    gameState.restartCountdown = gameState.restartCountdown - 1
-                                end
-                                gameState.currentHalf = 1
-                                gameState.timeLeft = HALF_TIME
-                                gameState.scoreRed = 0
-                                gameState.scoreBlue = 0
-                                gameState.isExtraTime = false
-                                gameState.lastTouchTeam = nil
-                                gameState.goalScored = false
-                                gameState.gkHoldCooldowns = {}
-                                gameState.passCooldowns = {}
-                                gameState.playerDribbling = false
-                                gameState.aiDribbleState = {}
-                                gameState.stoppageTimeActive = false
-                                gameState.paused = false
-                                gameState.celebrating = false
-                                resetPlayerAchievement()
-                                if gameState.ball then gameState.ball.Anchored = false end
-                                resetPositions("Red")
-                                gameState.gameActive = true
-                                advanceTournament()
-                            else
-                                gameState.paused = true
-                                gameState.gameActive = false
-                                playWhistle()
+                            -- Knockout: Kiểm tra hòa
+                            if gameState.scoreRed == gameState.scoreBlue and not gameState.isExtraTime then
+                                -- Hòa -> Vào hiệp phụ
                                 task.wait(3)
                                 gameState.restartCountdown = HALF_BREAK
                                 while gameState.restartCountdown > 0 do
@@ -2050,12 +1952,18 @@ local function startTimer()
                                     gameState.restartCountdown = gameState.restartCountdown - 1
                                 end
                                 gameState.isExtraTime = true
+                                gameState.currentHalf = 3
                                 gameState.timeLeft = EXTRA_TIME
-                                gameState.playerDribbling = false
                                 gameState.stoppageTimeActive = false
                                 resetPositions("Red")
                                 gameState.paused = false
                                 gameState.gameActive = true
+                            else
+                                -- Có tỉ số hoặc đã hết hiệp phụ -> Kết thúc
+                                task.spawn(function()
+                                    local ok, err = pcall(endMatch)
+                                    if not ok then warn(err) end
+                                end)
                             end
                         end
                     end
@@ -2096,7 +2004,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,1700)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,1600)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2212,7 +2120,6 @@ local function createSettingsUI()
         Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
         b.MouseButton1Click:Connect(function()
             gameState.tournamentType=name; gameState.currentStageIndex=1; gameState.currentMatchInStage=1
-            gameState.currentLeg = 1; gameState.aggRed = 0; gameState.aggBlue = 0
             for j,bb2 in ipairs(tbt) do bb2.BackgroundColor3=(tn[j]==name) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end
             updateTournamentDisplay()
         end)
