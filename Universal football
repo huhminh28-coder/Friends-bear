@@ -1,4 +1,4 @@
--- World Cup 2026 | Advanced Edition | English (BENCH & POSITION UPDATE)
+-- World Cup 2026 | Advanced Edition | English (MULTI-TOURNAMENT & LEGS)
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -7,7 +7,6 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
 local MAP_POS = Vector3.new(0, 1000, 0)
--- ⭐ SÂN TO HƠN
 local PITCH_WIDTH = 500
 local PITCH_LENGTH = 700
 local GOAL_WIDTH = 90
@@ -19,7 +18,7 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 local NORMAL_WALKSPEED = 16
-local SPRINT_WALKSPEED = 60
+local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
 local NET_SOUND = "rbxassetid://5568887127"
@@ -40,15 +39,20 @@ local DIFFICULTY_PER_CATEGORY = {
     pass = {[1]={passMul=0.6},[2]={passMul=1.0},[3]={passMul=1.4}},
 }
 
+-- ⭐ CẬP NHẬT GIẢI ĐẤU VÀ SỐ TRẬN (2 LƯỢT)
 local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
-    ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
-    ["Copa America"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
-    ["Euro"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
+    ["Europa League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
+    ["Nations League"]={stages={"GROUP STAGE","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,1}},
+    ["Bundesliga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
+    ["La Liga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
+    ["Serie A"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,2,2,2,1}},
 }
 
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
+    aggRed=0, aggBlue=0, currentLeg=1, -- Tỉ số tổng & Lượt đấu
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2, isExtraTime=false,
     restartCountdown=0, gameActive=false, paused=false,
     lastTouchTeam=nil, restartCooldown=false, ui=nil,
@@ -166,18 +170,46 @@ local function isFinalStage()
     local t = TOURNAMENTS[gameState.tournamentType]; if not t then return false end
     return gameState.currentStageIndex >= #t.stages
 end
+local function isGroupStage()
+    local s = getCurrentStage()
+    return s == "GROUP STAGE"
+end
+
 local function updateTournamentDisplay()
     if not gameState.tournamentLbl then return end
     local s,tm = getCurrentStage()
     gameState.tournamentLbl.Text = gameState.tournamentType
     gameState.stageLbl.Text = s
-    gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm
-    gameState.scoreLbl.Text = gameState.teamRedName.." "..gameState.scoreRed.." - "..gameState.scoreBlue.." "..gameState.teamBlueName
+    local legText = ""
+    if tm > 1 and not isGroupStage() then
+        legText = " (Leg "..gameState.currentLeg..")"
+    end
+    gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm..legText
+    
+    local aggTxt = ""
+    if not isGroupStage() and tm > 1 then
+        aggTxt = " | Agg: "..gameState.aggRed.."-"..gameState.aggBlue
+    end
+    gameState.scoreLbl.Text = gameState.teamRedName.." "..gameState.scoreRed.." - "..gameState.scoreBlue.." "..gameState.teamBlueName..aggTxt
 end
+
 local function advanceTournament()
     local t = TOURNAMENTS[gameState.tournamentType]; if not t then return end
-    gameState.currentMatchInStage = gameState.currentMatchInStage + 1
     local totalMatches = t.matchesPerStage[gameState.currentStageIndex] or 1
+    local s = getCurrentStage()
+    
+    -- Logic Lượt đi - Lượt về
+    if totalMatches == 2 and gameState.currentLeg == 1 then
+        gameState.currentLeg = 2
+        updateTournamentDisplay()
+        return
+    end
+    
+    gameState.currentLeg = 1
+    gameState.aggRed = 0
+    gameState.aggBlue = 0
+    
+    gameState.currentMatchInStage = gameState.currentMatchInStage + 1
     if gameState.currentMatchInStage > totalMatches then
         gameState.currentStageIndex = gameState.currentStageIndex + 1
         gameState.currentMatchInStage = 1
@@ -185,6 +217,7 @@ local function advanceTournament()
     end
     updateTournamentDisplay()
 end
+
 local function playSoundOnce(id, volume, duration)
     local s = Instance.new("Sound"); s.SoundId = id; s.Volume = volume; s.Parent = workspace
     pcall(function() s:Play() end)
@@ -199,7 +232,6 @@ local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 local function updatePlayerAppearance()
     local char = gameState.playerChar; if not char then return end
     if gameState.isOnBench then
-        -- Mặc áo đen khi dự bị
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and (part.Name == "Torso" or part.Name:find("Arm")) then part.Color = Color3.fromRGB(20, 20, 20) end
         end
@@ -248,18 +280,14 @@ end
 local function hideGoalText() if gameState.goalTextLabel then gameState.goalTextLabel.Visible=false end end
 
 local function toggleBenchMode()
-    if gameState.inPenaltyShootout and gameState.isOnBench then return end -- Không vào sân khi luân lưu
-    
+    if gameState.inPenaltyShootout and gameState.isOnBench then return end
     gameState.isOnBench = not gameState.isOnBench
     local chr = gameState.playerChar
     if not chr then return end
     
     if gameState.isOnBench then
-        -- Lên khán đài
         local hrp = chr:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            hrp.CFrame = CFrame.new(MAP_POS.X, MAP_POS.Y + 70, MAP_POS.Z - (PITCH_LENGTH/2) - 120)
-        end
+        if hrp then hrp.CFrame = CFrame.new(MAP_POS.X, MAP_POS.Y + 70, MAP_POS.Z - (PITCH_LENGTH/2) - 120) end
         updatePlayerAppearance()
         for _, btn in ipairs(gameState.actionButtons) do btn.Visible = false end
         if gameState.switchTeamBtn then gameState.switchTeamBtn.Visible = false end
@@ -267,7 +295,6 @@ local function toggleBenchMode()
         gameState.benchBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         gameState.playerDribbling = false
     else
-        -- Vào sân
         local hrp = chr:FindFirstChild("HumanoidRootPart")
         if hrp then
             local ad = (gameState.playerTeam=="Red") and 1 or -1
@@ -336,56 +363,79 @@ local function startGoalCelebration(scorer, scoringTeam)
     gameState.goalCelebrationActive = false
 end
 
+-- ⭐ CẬP NHẬT MÔ HÌNH CÚP MỚI
 local function buildTrophy(tournamentType)
     local model = Instance.new("Model"); model.Name = "Trophy"
     local pc, sc, shape
     if tournamentType == "World Cup" then pc=Color3.fromRGB(255,200,60); sc=Color3.fromRGB(180,140,30); shape="WC"
     elseif tournamentType == "Champions League" then pc=Color3.fromRGB(215,220,230); sc=Color3.fromRGB(150,155,165); shape="CL"
-    elseif tournamentType == "Euro" then pc=Color3.fromRGB(235,235,240); sc=Color3.fromRGB(160,160,170); shape="EU"
-    elseif tournamentType == "Copa America" then pc=Color3.fromRGB(255,210,80); sc=Color3.fromRGB(180,140,30); shape="CA"
+    elseif tournamentType == "Europa League" then pc=Color3.fromRGB(230,230,230); sc=Color3.fromRGB(200,100,20); shape="EL"
+    elseif tournamentType == "Nations League" then pc=Color3.fromRGB(240,240,240); sc=Color3.fromRGB(50,50,50); shape="NL"
+    elseif tournamentType == "Bundesliga" then pc=Color3.fromRGB(220,220,220); sc=Color3.fromRGB(150,150,150); shape="BL"
+    elseif tournamentType == "La Liga" then pc=Color3.fromRGB(240,240,240); sc=Color3.fromRGB(180,180,180); shape="LL"
+    elseif tournamentType == "Serie A" then pc=Color3.fromRGB(20,50,150); sc=Color3.fromRGB(255,215,0); shape="SA"
     else pc=Color3.fromRGB(255,215,0); sc=Color3.fromRGB(180,140,30); shape="GEN" end
-    local function mk(name, size, cframe, color, material)
+    
+    local function mk(name, size, cframe, color, material, shapeType)
         local p = Instance.new("Part"); p.Name=name; p.Size=size; p.CFrame=cframe
         p.Color=color; p.Material=material or Enum.Material.Neon
+        if shapeType then p.Shape = shapeType end
         p.Anchored=true; p.CanCollide=false; p.Parent=model; return p
     end
-    mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
-    mk("Stem", Vector3.new(0.8,1.5,0.8), CFrame.new(0,1.25,0), pc, Enum.Material.Metal)
-    if shape=="WC" then
-        local g = Instance.new("Part", model); g.Name="Globe"; g.Shape=Enum.PartType.Ball
-        g.Size=Vector3.new(1.6,1.6,1.6); g.Color=pc; g.Material=Enum.Material.Neon
-        g.Anchored=true; g.CanCollide=false; g.CFrame=CFrame.new(0,3,0)
-        for _, x in ipairs({-0.4,0.4}) do mk("Figure", Vector3.new(0.3,1.5,0.3), CFrame.new(x,1.9,0)*CFrame.Angles(0,0,math.rad(x*50)), pc, Enum.Material.Metal) end
-    elseif shape=="CL" then
-        local cup = mk("Cup", Vector3.new(2,2.5,2), CFrame.new(0,3,0), pc, Enum.Material.Metal); cup.Shape=Enum.PartType.Ball
+
+    if shape=="NL" then
+        -- Nations League Cup (Silver with neon rings)
+        mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
+        mk("Stem", Vector3.new(0.8,1.5,0.8), CFrame.new(0,1.25,0), pc, Enum.Material.Metal)
+        mk("Cup", Vector3.new(2.5,3,2.5), CFrame.new(0,3.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        mk("Ring1", Vector3.new(2.8,0.1,2.8), CFrame.new(0,2.5,0), Color3.fromRGB(0,255,255), Enum.Material.Neon, Enum.PartType.Cylinder)
+        mk("Ring2", Vector3.new(2.8,0.1,2.8), CFrame.new(0,3.5,0), Color3.fromRGB(255,0,255), Enum.Material.Neon, Enum.PartType.Cylinder)
+        mk("Ring3", Vector3.new(2.8,0.1,2.8), CFrame.new(0,4.5,0), Color3.fromRGB(255,255,0), Enum.Material.Neon, Enum.PartType.Cylinder)
+    elseif shape=="BL" then
+        -- Bundesliga Shield (Plate)
+        mk("Base", Vector3.new(4,0.5,4), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
+        mk("Stem", Vector3.new(1,1,1), CFrame.new(0,0.8,0), pc, Enum.Material.Metal)
+        local plate = mk("Plate", Vector3.new(6,6,0.5), CFrame.new(0,4,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        plate.CFrame = CFrame.new(0,4,0) * CFrame.Angles(0,0,math.rad(90))
+        mk("Logo", Vector3.new(4,4,0.6), CFrame.new(0,4,0) * CFrame.Angles(0,0,math.rad(90)), Color3.fromRGB(200,0,0), Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+    elseif shape=="LL" then
+        -- La Liga Cup (Silver, wide base, big handles)
+        mk("Base", Vector3.new(4,1,4), CFrame.new(0,0.5,0), Color3.fromRGB(30,30,30), Enum.Material.Marble)
+        mk("Stem", Vector3.new(1,2,1), CFrame.new(0,2,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        mk("Cup", Vector3.new(2.5,2.5,2.5), CFrame.new(0,4.25,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
         for _, side in ipairs({-1,1}) do
-            local h = mk("Handle", Vector3.new(0.4,2,2.5), CFrame.new(side*1.3,3,0), pc, Enum.Material.Metal)
-            h.Shape=Enum.PartType.Cylinder; h.CFrame=CFrame.new(side*1.3,3,0)*CFrame.Angles(0,0,math.rad(90))
+            local h = mk("Handle", Vector3.new(0.3,3,1.5), CFrame.new(side*1.8,4.25,0), pc, Enum.Material.Metal)
+            h.CFrame = CFrame.new(side*1.8,4.25,0) * CFrame.Angles(0,0,math.rad(90))
         end
-    elseif shape=="EU" then
-        local cup = mk("Cup", Vector3.new(1.8,1.8,1.8), CFrame.new(0,2.8,0), pc, Enum.Material.Metal); cup.Shape=Enum.PartType.Ball
-        mk("Rim", Vector3.new(1.5,0.2,1.5), CFrame.new(0,3.7,0), pc, Enum.Material.Metal).Shape=Enum.PartType.Cylinder
-        for _, side in ipairs({-1,1}) do
-            local h = mk("Handle", Vector3.new(0.25,1,1.5), CFrame.new(side*1,2.8,0), pc, Enum.Material.Metal)
-            h.Shape=Enum.PartType.Cylinder; h.CFrame=CFrame.new(side*1,2.8,0)*CFrame.Angles(0,0,math.rad(90))
-        end
-    elseif shape=="CA" then
-        local cup = mk("Cup", Vector3.new(1.8,2,1.8), CFrame.new(0,2.8,0), pc, Enum.Material.Metal); cup.Shape=Enum.PartType.Ball
-        mk("Lid", Vector3.new(0.6,0.8,0.6), CFrame.new(0,4.2,0), pc, Enum.Material.Metal).Shape=Enum.PartType.Ball
-        for _, side in ipairs({-1,1}) do
-            local h = mk("Handle", Vector3.new(0.25,1.2,1.5), CFrame.new(side*1,2.8,0), pc, Enum.Material.Metal)
-            h.Shape=Enum.PartType.Cylinder; h.CFrame=CFrame.new(side*1,2.8,0)*CFrame.Angles(0,0,math.rad(90))
+    elseif shape=="SA" then
+        -- Serie A Scudetto (Shield)
+        mk("Base", Vector3.new(3,1,3), CFrame.new(0,0.5,0), sc, Enum.Material.Metal)
+        mk("Stem", Vector3.new(0.8,1,0.8), CFrame.new(0,1.5,0), sc, Enum.Material.Metal)
+        local shield = mk("Shield", Vector3.new(3,4,0.5), CFrame.new(0,3.5,0), pc, Enum.Material.SmoothPlastic)
+        mk("ShieldBorder", Vector3.new(3.2,4.2,0.4), CFrame.new(0,3.5,0.1), sc, Enum.Material.Metal)
+        mk("ShieldCenter", Vector3.new(1,2,0.6), CFrame.new(0,3.5,0), Color3.fromRGB(255,255,255), Enum.Material.SmoothPlastic)
+    else
+        -- Default fallback for WC, CL, EL
+        mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
+        mk("Stem", Vector3.new(0.8,1.5,0.8), CFrame.new(0,1.25,0), pc, Enum.Material.Metal)
+        if shape=="WC" then
+            mk("Globe", Vector3.new(1.6,1.6,1.6), CFrame.new(0,3,0), pc, Enum.Material.Neon, Enum.PartType.Ball)
+        elseif shape=="CL" then
+            mk("Cup", Vector3.new(2,2.5,2), CFrame.new(0,3,0), pc, Enum.Material.Metal, Enum.PartType.Ball)
+        elseif shape=="EL" then
+            mk("Cup", Vector3.new(2,2,2), CFrame.new(0,2.8,0), pc, Enum.Material.Metal, Enum.PartType.Ball)
         end
     end
-    local light = Instance.new("PointLight", model:FindFirstChild("Stem"))
+    
+    local light = Instance.new("PointLight", model:FindFirstChildWhichIsA("BasePart"))
     light.Brightness=6; light.Range=20; light.Color=pc
-    local att = Instance.new("Attachment", model:FindFirstChild("Stem"))
+    local att = Instance.new("Attachment", model:FindFirstChildWhichIsA("BasePart"))
     local pe = Instance.new("ParticleEmitter", att)
     pe.Texture="rbxassetid://296874871"; pe.Color=ColorSequence.new(pc)
     pe.Rate=40; pe.Lifetime=NumberRange.new(1,2)
     pe.Speed=NumberRange.new(3,6); pe.SpreadAngle=Vector2.new(180,180)
     pe.Size=NumberSequence.new(0.6); pe.LightEmission=1
-    model.PrimaryPart = model:FindFirstChild("Stem")
+    model.PrimaryPart = model:FindFirstChild("Stem") or model:FindFirstChildWhichIsA("BasePart")
     return model
 end
 
@@ -887,7 +937,6 @@ local function applyGroundPass(ball,targetPos,powerBase)
     ball.AssemblyLinearVelocity=hd*math.clamp(d*1.15+(powerBase or 0),80,220)+Vector3.new(0,12,0)
 end
 
--- ⭐ HÀM TÌM ĐỒNG ĐỘI THEO HƯỚNG NHÌN
 local function findDirectionalPassTarget()
     local ball = gameState.ball
     if not ball or not ball.Parent then return nil end
@@ -912,7 +961,7 @@ local function findDirectionalPassTarget()
             if dist > 5 and dist < 250 then
                 local dirToBot = horizToBot.Unit
                 local dot = horizLook:Dot(dirToBot)
-                if dot > 0.5 then -- Nằm trong khoảng 60 độ hướng nhìn
+                if dot > 0.5 then
                     local score = dot * 100 - dist * 0.1
                     if score > bestScore then
                         bestScore = score
@@ -1829,6 +1878,7 @@ local function endMatch()
     advanceTournament()
 end
 
+-- ⭐ CẬP NHẬT LOGIC BÀN THẮNG & LUẬT VÒNG BẢNG / KNOCKOUT
 local function onGoalScored(scoringTeam)
     if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating then return end
     gameState.goalScored=true; playNetSound()
@@ -1873,70 +1923,156 @@ local function startTimer()
                and not gameState.goalCelebrationActive and not gameState.trophyActive then
                 gameState.timeLeft = gameState.timeLeft - 1
                 if gameState.timeLeft <= 0 then
-                    if gameState.isExtraTime then
+                    local stageName = getCurrentStage()
+                    local isGroup = (stageName == "GROUP STAGE")
+                    
+                    if isGroup then
+                        -- ⭐ VÒNG BẢNG: HẾT GIỜ LÀ KẾT THÚC, KHÔNG HIỆP PHỤ
                         playFinalWhistle()
-                        if gameState.scoreRed == gameState.scoreBlue then
-                            task.wait(3)
-                            local ok, err = pcall(runPenaltyShootout)
-                            if not ok then warn("[Timer] PenaltyShootout error: "..tostring(err)) end
-                        else
-                            local ok, err = pcall(endMatch)
-                            if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
-                        end
-                    elseif gameState.currentHalf < gameState.maxHalves then
                         gameState.paused = true
                         gameState.gameActive = false
-                        playWhistle()
-                        task.wait(3)
-                        gameState.restartCountdown = HALF_BREAK
+                        -- Cộng dồn tỉ số
+                        gameState.aggRed = gameState.aggRed + gameState.scoreRed
+                        gameState.aggBlue = gameState.aggBlue + gameState.scoreBlue
+                        
+                        task.wait(2)
+                        gameState.restartCountdown = FULL_BREAK
                         while gameState.restartCountdown > 0 do
                             task.wait(1)
                             gameState.restartCountdown = gameState.restartCountdown - 1
                         end
-                        gameState.currentHalf = gameState.currentHalf + 1
+                        
+                        gameState.currentHalf = 1
                         gameState.timeLeft = HALF_TIME
+                        gameState.scoreRed = 0
+                        gameState.scoreBlue = 0
+                        gameState.isExtraTime = false
+                        gameState.lastTouchTeam = nil
+                        gameState.goalScored = false
+                        gameState.gkHoldCooldowns = {}
+                        gameState.passCooldowns = {}
                         gameState.playerDribbling = false
+                        gameState.aiDribbleState = {}
                         gameState.stoppageTimeActive = false
-                        resetPositions("Red")
                         gameState.paused = false
+                        gameState.celebrating = false
+                        
+                        resetPlayerAchievement()
+                        if gameState.ball then gameState.ball.Anchored = false end
+                        resetPositions("Red")
                         gameState.gameActive = true
+                        advanceTournament()
+                        
                     else
-                        gameState.paused = true
-                        gameState.gameActive = false
-                        if gameState.scoreRed == gameState.scoreBlue then
-                            playWhistle()
-                            task.wait(3)
-                            gameState.restartCountdown = HALF_BREAK
-                            while gameState.restartCountdown > 0 do
-                                task.wait(1)
-                                gameState.restartCountdown = gameState.restartCountdown - 1
-                            end
-                            gameState.isExtraTime = true
-                            gameState.timeLeft = EXTRA_TIME
-                            gameState.playerDribbling = false
-                            gameState.stoppageTimeActive = false
-                            resetPositions("Red")
-                            gameState.paused = false
-                            gameState.gameActive = true
-                        else
-                            local ok, err = pcall(endMatch)
-                            if not ok then
-                                warn("[Timer] endMatch error: "..tostring(err))
-                                gameState.paused = false
-                                gameState.gameActive = true
+                        -- KNOCKOUT STAGE
+                        if gameState.scoreRed ~= gameState.scoreBlue then
+                            -- Nếu không hòa trong trận này, tính tổng
+                            local aggR = gameState.aggRed + gameState.scoreRed
+                            local aggB = gameState.aggBlue + gameState.scoreBlue
+                            
+                            if aggR ~= aggB then
+                                playFinalWhistle()
+                                gameState.paused = true
+                                gameState.gameActive = false
+                                
+                                task.wait(2)
+                                gameState.restartCountdown = FULL_BREAK
+                                while gameState.restartCountdown > 0 do
+                                    task.wait(1)
+                                    gameState.restartCountdown = gameState.restartCountdown - 1
+                                end
+                                
                                 gameState.currentHalf = 1
                                 gameState.timeLeft = HALF_TIME
                                 gameState.scoreRed = 0
                                 gameState.scoreBlue = 0
                                 gameState.isExtraTime = false
-                                gameState.stoppageTimeActive = false
-                                gameState.celebrating = false
-                                gameState.trophyActive = false
-                                gameState.restartCountdown = 0
+                                gameState.lastTouchTeam = nil
                                 gameState.goalScored = false
-                                gameState.inPenaltyShootout = false
-                                gameState.goalCelebrationActive = false
+                                gameState.gkHoldCooldowns = {}
+                                gameState.passCooldowns = {}
+                                gameState.playerDribbling = false
+                                gameState.aiDribbleState = {}
+                                gameState.stoppageTimeActive = false
+                                gameState.paused = false
+                                gameState.celebrating = false
+                                
+                                resetPlayerAchievement()
+                                if gameState.ball then gameState.ball.Anchored = false end
                                 resetPositions("Red")
+                                gameState.gameActive = true
+                                advanceTournament()
+                            else
+                                -- Hòa tổng tỉ số -> Hiệp phụ
+                                gameState.paused = true
+                                gameState.gameActive = false
+                                playWhistle()
+                                task.wait(3)
+                                gameState.restartCountdown = HALF_BREAK
+                                while gameState.restartCountdown > 0 do
+                                    task.wait(1)
+                                    gameState.restartCountdown = gameState.restartCountdown - 1
+                                end
+                                gameState.isExtraTime = true
+                                gameState.timeLeft = EXTRA_TIME
+                                gameState.playerDribbling = false
+                                gameState.stoppageTimeActive = false
+                                resetPositions("Red")
+                                gameState.paused = false
+                                gameState.gameActive = true
+                            end
+                        else
+                            -- Nếu hòa trong trận này, kiểm tra tổng
+                            if gameState.currentLeg == 1 then
+                                -- Lượt đi hòa, chấp nhận kết quả
+                                playFinalWhistle()
+                                gameState.paused = true
+                                gameState.gameActive = false
+                                gameState.aggRed = gameState.aggRed + gameState.scoreRed
+                                gameState.aggBlue = gameState.aggBlue + gameState.scoreBlue
+                                task.wait(2)
+                                gameState.restartCountdown = FULL_BREAK
+                                while gameState.restartCountdown > 0 do
+                                    task.wait(1)
+                                    gameState.restartCountdown = gameState.restartCountdown - 1
+                                end
+                                gameState.currentHalf = 1
+                                gameState.timeLeft = HALF_TIME
+                                gameState.scoreRed = 0
+                                gameState.scoreBlue = 0
+                                gameState.isExtraTime = false
+                                gameState.lastTouchTeam = nil
+                                gameState.goalScored = false
+                                gameState.gkHoldCooldowns = {}
+                                gameState.passCooldowns = {}
+                                gameState.playerDribbling = false
+                                gameState.aiDribbleState = {}
+                                gameState.stoppageTimeActive = false
+                                gameState.paused = false
+                                gameState.celebrating = false
+                                resetPlayerAchievement()
+                                if gameState.ball then gameState.ball.Anchored = false end
+                                resetPositions("Red")
+                                gameState.gameActive = true
+                                advanceTournament()
+                            else
+                                -- Lượt về, hòa cả trận và hòa tổng -> Hiệp phụ
+                                gameState.paused = true
+                                gameState.gameActive = false
+                                playWhistle()
+                                task.wait(3)
+                                gameState.restartCountdown = HALF_BREAK
+                                while gameState.restartCountdown > 0 do
+                                    task.wait(1)
+                                    gameState.restartCountdown = gameState.restartCountdown - 1
+                                end
+                                gameState.isExtraTime = true
+                                gameState.timeLeft = EXTRA_TIME
+                                gameState.playerDribbling = false
+                                gameState.stoppageTimeActive = false
+                                resetPositions("Red")
+                                gameState.paused = false
+                                gameState.gameActive = true
                             end
                         end
                     end
@@ -2068,70 +2204,73 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     msh(sc,300,"TOURNAMENT",Color3.fromRGB(255,215,0))
-    local tn={"World Cup","Champions League","Copa America","Euro"}
-    local tr3=Instance.new("Frame",sc); tr3.Size=UDim2.new(1,-24,0,30); tr3.Position=UDim2.new(0,12,0,326); tr3.BackgroundTransparency=1
+    local tn={"World Cup","Champions League","Europa League","Nations League","Bundesliga","La Liga","Serie A"}
+    local tr3=Instance.new("Frame",sc); tr3.Size=UDim2.new(1,-24,0,60); tr3.Position=UDim2.new(0,12,0,326); tr3.BackgroundTransparency=1
     local tbt={}
     for i,name in ipairs(tn) do
-        local b=Instance.new("TextButton",tr3); b.Size=UDim2.new(0.24,-4,1,0); b.Position=UDim2.new((i-1)*0.255,0,0,0)
+        local row = math.floor((i-1)/2)
+        local col = (i-1)%2
+        local b=Instance.new("TextButton",tr3); b.Size=UDim2.new(0.49,-4,0.45,0); b.Position=UDim2.new(col*0.51,0,row,0)
         b.BackgroundColor3=(gameState.tournamentType==name) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
         b.Text=name; b.TextColor3=Color3.new(1,1,1); b.TextScaled=true; b.Font=Enum.Font.FredokaOne
         Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
         b.MouseButton1Click:Connect(function()
             gameState.tournamentType=name; gameState.currentStageIndex=1; gameState.currentMatchInStage=1
+            gameState.currentLeg = 1; gameState.aggRed = 0; gameState.aggBlue = 0
             for j,bb2 in ipairs(tbt) do bb2.BackgroundColor3=(tn[j]==name) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end
             updateTournamentDisplay()
         end)
         tbt[i]=b
     end
-    msh(sc,370,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,396)
+    msh(sc,400,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,426)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,396)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,426)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
-    msh(sc,440,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,466)
+    msh(sc,470,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,496)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,496)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,526)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
-    msh(sc,530,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,560,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,556,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,606,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,656,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,706,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
-    msh(sc,764,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    rdb.defense=mdr(sc,586,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,636,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,686,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,736,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    msh(sc,794,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,790,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,840,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,890,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,940,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
-    msh(sc,998,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1020)
+    bdb.defense=mdr(sc,820,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,870,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,920,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,970,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    msh(sc,1028,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1050)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.6,0.13,0.35,0.05,0.75,0,0}; local pst={1,1,1,1,1,1,0,0}; local pvl={1,1,1,1,1,1,1,0.08}
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1022); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1052); rw1.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1056,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1092,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    msh(sc,1130,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1152)
+    local srs=msl(sc,1086,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1122,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    msh(sc,1160,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1182)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1154); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1184); rw2.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1188,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1224,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,1218,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,1254,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
         local pi=i1; child.MouseButton1Click:Connect(function()
@@ -2144,11 +2283,11 @@ local function createSettingsUI()
             hB=ph[pi]; sB=pst[pi]; vB=pvl[pi]; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB); sbs(sB); sbv(vB)
         end); i2=i2+1 end
     end
-    msh(sc,1262,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1286)
+    msh(sc,1292,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1316)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1286)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1316)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     local ap=Instance.new("TextButton",bb); ap.Size=UDim2.new(0.49,0,1,0); ap.Position=UDim2.new(0,0,0,0)
@@ -2273,18 +2412,7 @@ local function createGameUI()
         return (h.Position-gameState.ball.Position).Magnitude<20,h
     end
     local function sdb() gameState.playerDribbling=false end
-    local function fnt()
-        local c=gameState.playerChar; if not c then return nil end
-        local h=c:FindFirstChild("HumanoidRootPart"); if not h then return nil end
-        local tl=(gameState.playerTeam=="Red") and gameState.redTeam or gameState.blueTeam
-        local cl,md=nil,math.huge
-        for _,bot in ipairs(tl) do if bot.PrimaryPart and bot.Role.Value~="Goalkeeper" then
-            local d=(bot.PrimaryPart.Position-h.Position).Magnitude; if d<md then md=d; cl=bot end
-        end end
-        return cl
-    end
 
-    -- ⭐ SỬA NÚT SHOOT
     shb.MouseButton1Down:Connect(function()
         if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench then return end
         local n=gnb(); if not n then return end
@@ -2345,7 +2473,6 @@ local function createGameUI()
         gameState.shootChargePower=0; gameState.chargingBall=nil
     end)
 
-    -- ⭐ SỬA NÚT FAST PASS (Hướng nhìn + Chuyền bổng)
     local passCharging = false
     local passChargePower = 0
     psb.MouseButton1Down:Connect(function()
@@ -2387,7 +2514,6 @@ local function createGameUI()
         end
     end)
 
-    -- ⭐ SỬA NÚT LOB THÀNH CLEAR BALL (Phá banh)
     lbb.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         local n=gnb()
