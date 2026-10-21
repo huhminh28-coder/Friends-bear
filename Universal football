@@ -1899,7 +1899,7 @@ local function checkRules()
     end
 end
 
--- ⭐ LOGIC LUÂN LƯU ĐÃ ĐƯỢC SỬA CHUẨN XÁC
+-- ⭐ LOGIC LUÂN LƯU (FIX: BỔ SUNG HIỆP 2)
 local function startTimer()
     task.spawn(function()
         while true do
@@ -1916,54 +1916,71 @@ local function startTimer()
                     gameState.gameActive = false
                     gameState.playerDribbling = false
                     
-                    local isGroup = (getCurrentStage() == "GROUP STAGE")
-                    
-                    if isGroup then
-                        -- VÒNG BẢNG: Hết 2 hiệp là kết thúc (có thể hòa)
+                    -- ⭐ HIỆP 1 KẾT THÚC → NGHỈ GIỮA HIỆP → SANG HIỆP 2
+                    if gameState.currentHalf == 1 and not gameState.isExtraTime then
                         task.spawn(function()
-                            local ok, err = pcall(endMatch)
-                            if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                            gameState.restartCountdown = HALF_BREAK
+                            while gameState.restartCountdown > 0 do
+                                task.wait(1)
+                                gameState.restartCountdown = gameState.restartCountdown - 1
+                            end
+                            gameState.currentHalf = 2
+                            gameState.timeLeft = HALF_TIME
+                            gameState.stoppageTimeActive = false
+                            resetPositions("Red")
+                            gameState.paused = false
+                            gameState.gameActive = true
                         end)
                     else
-                        -- KNOCKOUT
-                        if not gameState.isExtraTime then
-                            -- Hết hiệp 2
-                            if gameState.scoreRed == gameState.scoreBlue then
-                                -- Hòa -> Đá hiệp phụ
-                                task.wait(3)
-                                gameState.restartCountdown = HALF_BREAK
-                                while gameState.restartCountdown > 0 do
-                                    task.wait(1)
-                                    gameState.restartCountdown = gameState.restartCountdown - 1
-                                end
-                                gameState.isExtraTime = true
-                                gameState.currentHalf = 3
-                                gameState.timeLeft = EXTRA_TIME
-                                gameState.stoppageTimeActive = false
-                                resetPositions("Red")
-                                gameState.paused = false
-                                gameState.gameActive = true
-                            else
-                                -- Có tỉ số -> Kết thúc
-                                task.spawn(function()
-                                    local ok, err = pcall(endMatch)
-                                    if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
-                                end)
-                            end
+                        local isGroup = (getCurrentStage() == "GROUP STAGE")
+                        
+                        if isGroup then
+                            -- VÒNG BẢNG: Hết hiệp 2 là kết thúc (có thể hòa)
+                            task.spawn(function()
+                                local ok, err = pcall(endMatch)
+                                if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                            end)
                         else
-                            -- Hết hiệp phụ
-                            if gameState.scoreRed == gameState.scoreBlue then
-                                -- Hòa -> LUÂN LƯU
-                                task.spawn(function()
-                                    local ok, err = pcall(runPenaltyShootout)
-                                    if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
-                                end)
+                            -- KNOCKOUT
+                            if not gameState.isExtraTime then
+                                -- Hết hiệp 2
+                                if gameState.scoreRed == gameState.scoreBlue then
+                                    -- Hòa -> Đá hiệp phụ
+                                    task.wait(3)
+                                    gameState.restartCountdown = HALF_BREAK
+                                    while gameState.restartCountdown > 0 do
+                                        task.wait(1)
+                                        gameState.restartCountdown = gameState.restartCountdown - 1
+                                    end
+                                    gameState.isExtraTime = true
+                                    gameState.currentHalf = 3
+                                    gameState.timeLeft = EXTRA_TIME
+                                    gameState.stoppageTimeActive = false
+                                    resetPositions("Red")
+                                    gameState.paused = false
+                                    gameState.gameActive = true
+                                else
+                                    -- Có tỉ số -> Kết thúc
+                                    task.spawn(function()
+                                        local ok, err = pcall(endMatch)
+                                        if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                    end)
+                                end
                             else
-                                -- Có tỉ số -> Kết thúc
-                                task.spawn(function()
-                                    local ok, err = pcall(endMatch)
-                                    if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
-                                end)
+                                -- Hết hiệp phụ
+                                if gameState.scoreRed == gameState.scoreBlue then
+                                    -- Hòa -> LUÂN LƯU
+                                    task.spawn(function()
+                                        local ok, err = pcall(runPenaltyShootout)
+                                        if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
+                                    end)
+                                else
+                                    -- Có tỉ số -> Kết thúc
+                                    task.spawn(function()
+                                        local ok, err = pcall(endMatch)
+                                        if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                    end)
+                                end
                             end
                         end
                     end
