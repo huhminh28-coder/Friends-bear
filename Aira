@@ -1,0 +1,943 @@
+-- AURA ROLLER PRO — 46 auras, layered visuals, admin panel
+if getgenv and getgenv().AURA_RUNNING then pcall(function() getgenv().AURA_STOP() end) end
+if getgenv then getgenv().AURA_RUNNING = true end
+
+local Players      = game:GetService("Players")
+local UIS          = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local RunService   = game:GetService("RunService")
+local player = Players.LocalPlayer
+local pg     = player:WaitForChild("PlayerGui")
+for _, n in ipairs({"AuraRoller"}) do local o = pg:FindFirstChild(n); if o then o:Destroy() end end
+
+-- =====================================================
+--  AURA DB
+-- =====================================================
+local AURAS = {
+    {name="Common",      rarity=1,       tier="COMMON",       color=Color3.fromRGB(200,200,200), glow=Color3.fromRGB(230,230,230)},
+    {name="Uncommon",    rarity=3,       tier="COMMON",       color=Color3.fromRGB(170,210,170), glow=Color3.fromRGB(200,240,200)},
+    {name="Good",        rarity=5,       tier="COMMON",       color=Color3.fromRGB(150,190,240), glow=Color3.fromRGB(190,220,255)},
+    {name="Natural",     rarity=8,       tier="COMMON",       color=Color3.fromRGB(180,200,140), glow=Color3.fromRGB(210,230,170)},
+    {name="Spring",      rarity=12,      tier="COMMON",       color=Color3.fromRGB(180,230,180), glow=Color3.fromRGB(210,255,210)},
+    {name="Summer",      rarity=15,      tier="COMMON",       color=Color3.fromRGB(255,230,150), glow=Color3.fromRGB(255,245,190)},
+    {name="Autumn",      rarity=18,      tier="COMMON",       color=Color3.fromRGB(255,170,100), glow=Color3.fromRGB(255,200,140)},
+    {name="Winter",      rarity=22,      tier="COMMON",       color=Color3.fromRGB(190,220,255), glow=Color3.fromRGB(220,240,255)},
+    {name="Rocky",       rarity=28,      tier="COMMON",       color=Color3.fromRGB(150,140,130), glow=Color3.fromRGB(190,180,170)},
+    {name="Flora",       rarity=35,      tier="COMMON",       color=Color3.fromRGB(120,190,110), glow=Color3.fromRGB(160,230,140)},
+
+    {name="Rare",        rarity=64,      tier="UNCOMMON",     color=Color3.fromRGB(100,160,255), glow=Color3.fromRGB(140,200,255)},
+    {name="Aquatic",     rarity=90,      tier="UNCOMMON",     color=Color3.fromRGB(80,200,255),  glow=Color3.fromRGB(120,230,255)},
+    {name="Blaze",       rarity=120,     tier="UNCOMMON",     color=Color3.fromRGB(255,120,60),  glow=Color3.fromRGB(255,160,100)},
+    {name="Frost",       rarity=150,     tier="UNCOMMON",     color=Color3.fromRGB(160,240,255), glow=Color3.fromRGB(200,250,255)},
+    {name="Volcanic",    rarity=200,     tier="UNCOMMON",     color=Color3.fromRGB(200,60,40),   glow=Color3.fromRGB(255,100,80)},
+
+    {name="Divinus",     rarity=250,     tier="RARE",         color=Color3.fromRGB(255,210,80),  glow=Color3.fromRGB(255,230,120)},
+    {name="Crystallize", rarity=380,     tier="RARE",         color=Color3.fromRGB(150,220,255), glow=Color3.fromRGB(190,240,255)},
+    {name="Gilded",      rarity=512,     tier="RARE",         color=Color3.fromRGB(255,215,0),   glow=Color3.fromRGB(255,240,100)},
+    {name="Chromatic",   rarity=680,     tier="RARE",         color=Color3.fromRGB(255,100,200), glow=Color3.fromRGB(200,150,255)},
+    {name="Glacial",     rarity=850,     tier="RARE",         color=Color3.fromRGB(180,240,255), glow=Color3.fromRGB(210,250,255)},
+
+    {name="Celestial",   rarity=1500,    tier="EPIC",         color=Color3.fromRGB(200,150,255), glow=Color3.fromRGB(230,190,255)},
+    {name="Precious",    rarity=2500,    tier="EPIC",         color=Color3.fromRGB(255,100,200), glow=Color3.fromRGB(255,150,220)},
+    {name="Undead",      rarity=4000,    tier="EPIC",         color=Color3.fromRGB(150,60,180),  glow=Color3.fromRGB(190,100,220)},
+    {name="Lunar",       rarity=6000,    tier="EPIC",         color=Color3.fromRGB(180,180,255), glow=Color3.fromRGB(210,210,255)},
+    {name="Solar",       rarity=8500,    tier="EPIC",         color=Color3.fromRGB(255,180,80),  glow=Color3.fromRGB(255,220,130)},
+
+    {name="Corrosive",   rarity=15000,   tier="LEGENDARY",    color=Color3.fromRGB(130,255,80),  glow=Color3.fromRGB(170,255,120)},
+    {name="Toxic",       rarity=25000,   tier="LEGENDARY",    color=Color3.fromRGB(200,255,100), glow=Color3.fromRGB(220,255,140)},
+    {name="Storm",       rarity=40000,   tier="LEGENDARY",    color=Color3.fromRGB(100,150,255), glow=Color3.fromRGB(150,190,255)},
+    {name="Ink",         rarity=65000,   tier="LEGENDARY",    color=Color3.fromRGB(80,80,140),   glow=Color3.fromRGB(120,120,200)},
+    {name="Aurora",      rarity=90000,   tier="LEGENDARY",    color=Color3.fromRGB(150,255,200), glow=Color3.fromRGB(200,255,230)},
+
+    {name="Bloodlust",   rarity=250000,  tier="MYTHIC",       color=Color3.fromRGB(220,30,30),   glow=Color3.fromRGB(255,80,80)},
+    {name="Abyssal",     rarity=500000,  tier="MYTHIC",       color=Color3.fromRGB(60,60,180),   glow=Color3.fromRGB(100,100,240)},
+    {name="Exotic",      rarity=850000,  tier="MYTHIC",       color=Color3.fromRGB(255,100,255), glow=Color3.fromRGB(255,150,255)},
+    {name="Void",        rarity=1500000, tier="MYTHIC",       color=Color3.fromRGB(80,20,120),   glow=Color3.fromRGB(150,60,200)},
+    {name="Crimson",     rarity=2500000, tier="MYTHIC",       color=Color3.fromRGB(200,0,50),    glow=Color3.fromRGB(255,80,130)},
+
+    {name="Overture",    rarity=1e7,     tier="DIVINE",       color=Color3.fromRGB(255,255,200), glow=Color3.fromRGB(255,255,230)},
+    {name="Impeached",   rarity=25e6,    tier="DIVINE",       color=Color3.fromRGB(255,180,80),  glow=Color3.fromRGB(255,220,130)},
+    {name="Matrix",      rarity=50e6,    tier="DIVINE",       color=Color3.fromRGB(0,255,100),   glow=Color3.fromRGB(100,255,160)},
+    {name="Radiant",     rarity=75e6,    tier="DIVINE",       color=Color3.fromRGB(255,255,255), glow=Color3.fromRGB(255,255,255)},
+    {name="Eternal",     rarity=1e8,     tier="DIVINE",       color=Color3.fromRGB(180,220,255), glow=Color3.fromRGB(220,240,255)},
+
+    {name="Gargantua",   rarity=1e9,     tier="TRANSCENDENT", color=Color3.fromRGB(255,60,60),   glow=Color3.fromRGB(255,120,120)},
+    {name="Glitch",      rarity=5e9,     tier="TRANSCENDENT", color=Color3.fromRGB(255,0,255),   glow=Color3.fromRGB(200,100,255)},
+    {name="Aegis",       rarity=1e10,    tier="TRANSCENDENT", color=Color3.fromRGB(200,255,255), glow=Color3.fromRGB(230,255,255)},
+    {name="Genesis",     rarity=1e11,    tier="TRANSCENDENT", color=Color3.fromRGB(255,200,100), glow=Color3.fromRGB(255,230,150)},
+    {name="Singularity", rarity=1e12,    tier="TRANSCENDENT", color=Color3.fromRGB(120,0,200),   glow=Color3.fromRGB(180,80,255)},
+    {name="Infinity",    rarity=1e13,    tier="TRANSCENDENT", color=Color3.fromRGB(255,255,255), glow=Color3.fromRGB(255,255,255)},
+}
+
+local TIER_COLORS = {
+    COMMON       = Color3.fromRGB(170,170,170),
+    UNCOMMON     = Color3.fromRGB(120,220,120),
+    RARE         = Color3.fromRGB(80,150,255),
+    EPIC         = Color3.fromRGB(200,150,255),
+    LEGENDARY    = Color3.fromRGB(255,200,80),
+    MYTHIC       = Color3.fromRGB(255,100,200),
+    DIVINE       = Color3.fromRGB(255,255,150),
+    TRANSCENDENT = Color3.fromRGB(255,100,255),
+}
+
+local RATE = {COMMON=18, UNCOMMON=24, RARE=32, EPIC=42, LEGENDARY=52, MYTHIC=62, DIVINE=72, TRANSCENDENT=85}
+local GOOD_PLUS   = {GOOD=true, NATURAL=true, RARE=true, EPIC=true, LEGENDARY=true, MYTHIC=true, DIVINE=true, TRANSCENDENT=true}
+local RARE_PLUS   = {RARE=true, EPIC=true, LEGENDARY=true, MYTHIC=true, DIVINE=true, TRANSCENDENT=true}
+local EPIC_PLUS   = {EPIC=true, LEGENDARY=true, MYTHIC=true, DIVINE=true, TRANSCENDENT=true}
+local LEG_PLUS    = {LEGENDARY=true, MYTHIC=true, DIVINE=true, TRANSCENDENT=true}
+local DIVINE_PLUS = {DIVINE=true, TRANSCENDENT=true}
+
+-- =====================================================
+--  STATE
+-- =====================================================
+local S = {
+    rolling=false, streak=0, best=nil, history=[],
+    exit=false, equippedAura=nil, auraObjects={}, auraRings={},
+    auraOrbiters={}, auraBeam=nil, auraConn=nil, pulseTask=nil,
+    adminRows={}, adminPanel=nil, adminOpen=false,
+}
+
+-- =====================================================
+--  HELPERS
+-- =====================================================
+local function fmtRarity(r)
+    if r >= 1e12 then return string.format("1 in %.1fT", r/1e12) end
+    if r >= 1e9  then return string.format("1 in %.1fB", r/1e9) end
+    if r >= 1e6  then return string.format("1 in %.1fM", r/1e6) end
+    if r >= 1e3  then return string.format("1 in %.1fK", r/1e3) end
+    return "1 in " .. tostring(r)
+end
+
+-- =====================================================
+--  AURA VISUALS
+-- =====================================================
+local function clearAura()
+    if S.pulseTask then pcall(function() task.cancel(S.pulseTask) end); S.pulseTask=nil end
+    if S.auraConn then pcall(function() S.auraConn:Disconnect() end); S.auraConn=nil end
+    for _, o in ipairs(S.auraObjects) do pcall(function() if o and o.Parent then o:Destroy() end end) end
+    S.auraObjects = {}; S.auraRings = {}; S.auraOrbiters = {}; S.auraBeam = nil
+end
+
+local function addCore(hrp, aura, rate)
+    local att = Instance.new("Attachment", hrp); att.Name="Core"; att.Position=Vector3.new(0,0,0)
+    table.insert(S.auraObjects, att)
+    local pe = Instance.new("ParticleEmitter", att)
+    pe.Texture = "rbxassetid://296874871"
+    pe.Color = ColorSequence.new(aura.color)
+    pe.LightEmission = 1; pe.LightInfluence = 0
+    pe.Size = NumberSequence.new{NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(0.4,1.8), NumberSequenceKeypoint.new(1,0)}
+    pe.Transparency = NumberSequence.new{NumberSequenceKeypoint.new(0,0.1), NumberSequenceKeypoint.new(1,1)}
+    pe.Lifetime = NumberRange.new(1, 2)
+    pe.Rate = rate
+    pe.Speed = NumberRange.new(2, 6)
+    pe.SpreadAngle = Vector2.new(180, 180)
+    pe.Rotation = NumberRange.new(0, 360)
+    pe.RotSpeed = NumberRange.new(-180, 180)
+    pe.Acceleration = Vector3.new(0, 3, 0)
+end
+
+local function addTrail(hrp, aura, rate)
+    local att = Instance.new("Attachment", hrp); att.Position=Vector3.new(0,-1.5,0)
+    table.insert(S.auraObjects, att)
+    local pe = Instance.new("ParticleEmitter", att)
+    pe.Texture = "rbxassetid://243660364"
+    pe.Color = ColorSequence.new(aura.glow)
+    pe.LightEmission = 1; pe.LightInfluence = 0
+    pe.Size = NumberSequence.new{NumberSequenceKeypoint.new(0,1.4), NumberSequenceKeypoint.new(1,0)}
+    pe.Transparency = NumberSequence.new{NumberSequenceKeypoint.new(0,0.3), NumberSequenceKeypoint.new(1,1)}
+    pe.Lifetime = NumberRange.new(0.8, 1.5)
+    pe.Rate = math.floor(rate * 0.6)
+    pe.Speed = NumberRange.new(1, 3)
+    pe.SpreadAngle = Vector2.new(180, 180)
+    pe.Acceleration = Vector3.new(0, 5, 0)
+end
+
+local function addDoubleColor(hrp, aura, rate)
+    local att = Instance.new("Attachment", hrp); att.Position=Vector3.new(0,3,0)
+    table.insert(S.auraObjects, att)
+    local pe = Instance.new("ParticleEmitter", att)
+    pe.Texture = "rbxassetid://243660364"
+    pe.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, aura.glow),
+        ColorSequenceKeypoint.new(0.5, aura.color),
+        ColorSequenceKeypoint.new(1, aura.glow),
+    }
+    pe.LightEmission = 1; pe.LightInfluence = 0
+    pe.Size = NumberSequence.new{NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(0.5,2.8), NumberSequenceKeypoint.new(1,0)}
+    pe.Lifetime = NumberRange.new(1, 2)
+    pe.Rate = math.floor(rate * 0.4)
+    pe.Speed = NumberRange.new(2, 5)
+    pe.SpreadAngle = Vector2.new(180, 180)
+    pe.Acceleration = Vector3.new(0, 4, 0)
+end
+
+local function addGroundPulse(hrp, aura)
+    local myAura = aura
+    S.pulseTask = task.spawn(function()
+        while S.equippedAura == myAura and hrp.Parent do
+            task.wait(1.4)
+            if not hrp.Parent or S.equippedAura ~= myAura then break end
+            local ring = Instance.new("Part")
+            ring.Shape = Enum.PartType.Cylinder
+            ring.Size = Vector3.new(0.4, 1, 1)
+            ring.CFrame = hrp.CFrame * CFrame.Angles(0,0,math.rad(90)) * CFrame.new(0,-3.5,0)
+            ring.Color = aura.glow
+            ring.Material = Enum.Material.Neon
+            ring.Transparency = 0.3
+            ring.Anchored = true; ring.CanCollide = false; ring.CanQuery = false; ring.CastShadow = false
+            ring.Parent = workspace
+            TweenService:Create(ring, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Size = Vector3.new(0.4, 22, 22),
+                Transparency = 1,
+            }):Play()
+            task.delay(1.2, function() if ring then ring:Destroy() end end)
+        end
+    end)
+end
+
+local function addOrbiters(hrp, aura, count)
+    for i = 1, count do
+        local orb = Instance.new("Part")
+        orb.Shape = Enum.PartType.Ball
+        orb.Size = Vector3.new(0.7, 0.7, 0.7)
+        orb.Color = aura.glow
+        orb.Material = Enum.Material.Neon
+        orb.Anchored = true; orb.CanCollide = false; orb.CanQuery = false; orb.CastShadow = false
+        orb.Parent = workspace
+        table.insert(S.auraObjects, orb)
+        table.insert(S.auraOrbiters, {
+            part = orb,
+            angle = (i - 1) * (math.pi * 2 / count),
+            radius = 4.2,
+            height = 1.5,
+        })
+    end
+end
+
+local function addBeam(hrp, aura)
+    local beam = Instance.new("Part")
+    beam.Shape = Enum.PartType.Cylinder
+    beam.Size = Vector3.new(45, 1.2, 1.2)
+    beam.Color = aura.glow
+    beam.Material = Enum.Material.Neon
+    beam.Transparency = 0.75
+    beam.Anchored = true; beam.CanCollide = false; beam.CanQuery = false; beam.CastShadow = false
+    beam.Parent = workspace
+    table.insert(S.auraObjects, beam)
+    S.auraBeam = beam
+end
+
+local function equipAura(aura)
+    if not aura then return end
+    clearAura()
+    S.equippedAura = aura
+
+    local char = player.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local tier = aura.tier
+    local rate = RATE[tier] or 20
+
+    addCore(hrp, aura, rate)
+    if tier ~= "COMMON" then addTrail(hrp, aura, rate) end
+    if GOOD_PLUS[tier] then addDoubleColor(hrp, aura, rate) end
+
+    local light = Instance.new("PointLight", hrp)
+    light.Color = aura.glow
+    light.Brightness = 1.5 + (rate / 40)
+    light.Range = 12 + rate / 6
+    table.insert(S.auraObjects, light)
+
+    if RARE_PLUS[tier] then addGroundPulse(hrp, aura) end
+
+    if EPIC_PLUS[tier] then
+        local ring = Instance.new("Part")
+        ring.Shape = Enum.PartType.Cylinder
+        ring.Size = Vector3.new(0.2, 6, 6)
+        ring.Color = aura.glow
+        ring.Material = Enum.Material.Neon
+        ring.Transparency = 0.25
+        ring.Anchored = true; ring.CanCollide = false; ring.CanQuery = false; ring.CastShadow = false
+        ring.Parent = workspace
+        table.insert(S.auraObjects, ring)
+        table.insert(S.auraRings, ring)
+        if LEG_PLUS[tier] then
+            local ring2 = ring:Clone()
+            ring2.Transparency = 0.35
+            ring2.Parent = workspace
+            table.insert(S.auraObjects, ring2)
+            table.insert(S.auraRings, ring2)
+        end
+    end
+
+    if LEG_PLUS[tier] then
+        local n = (tier=="LEGENDARY" and 2) or (tier=="MYTHIC" and 3) or (tier=="DIVINE" and 4) or 6
+        addOrbiters(hrp, aura, n)
+    end
+    if DIVINE_PLUS[tier] then addBeam(hrp, aura) end
+
+    S.auraConn = RunService.Heartbeat:Connect(function()
+        if not hrp or not hrp.Parent then return end
+        local t = tick()
+        for i, r in ipairs(S.auraRings) do
+            if r.Parent then
+                local off = (i - 1) * 0.7
+                r.CFrame = hrp.CFrame * CFrame.new(0, 1 + off, 0) * CFrame.Angles(t * 2, t * 3 + i, math.rad(90))
+            end
+        end
+        for _, o in ipairs(S.auraOrbiters) do
+            if o.part and o.part.Parent then
+                local a = o.angle + t * 1.8
+                local p = Vector3.new(math.cos(a)*o.radius, o.height + math.sin(t*2 + o.angle)*0.6, math.sin(a)*o.radius)
+                o.part.CFrame = CFrame.new(hrp.Position + p)
+            end
+        end
+        if S.auraBeam and S.auraBeam.Parent then
+            S.auraBeam.CFrame = hrp.CFrame * CFrame.new(0, 24, 0) * CFrame.Angles(0, 0, math.rad(90))
+        end
+    end)
+
+    local sw = Instance.new("Part")
+    sw.Shape = Enum.PartType.Cylinder
+    sw.Size = Vector3.new(0.5, 1, 1)
+    sw.CFrame = hrp.CFrame * CFrame.Angles(0,0,math.rad(90))
+    sw.Color = aura.glow
+    sw.Material = Enum.Material.Neon
+    sw.Transparency = 0
+    sw.Anchored = true; sw.CanCollide = false; sw.CanQuery = false; sw.CastShadow = false
+    sw.Parent = workspace
+    TweenService:Create(sw, TweenInfo.new(0.85, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Size = Vector3.new(0.5, 28, 28),
+        Transparency = 1,
+    }):Play()
+    task.delay(1, function() if sw then sw:Destroy() end end)
+end
+
+-- =====================================================
+--  ROLL PANEL
+-- =====================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "AuraRoller"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+gui.DisplayOrder = 9999; gui.Parent = pg
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.fromOffset(310, 420)
+panel.Position = UDim2.new(0, 20, 0, 100)
+panel.BackgroundColor3 = Color3.fromRGB(16, 16, 24)
+panel.BorderSizePixel = 0; panel.Active = true; panel.Parent = gui
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+
+local pStroke = Instance.new("UIStroke", panel)
+pStroke.Color = Color3.fromRGB(120, 100, 200); pStroke.Thickness = 1.5
+
+local pGrad = Instance.new("UIGradient", panel)
+pGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(22,22,34)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10,10,18)),
+}
+pGrad.Rotation = 90
+
+local titleBar = Instance.new("Frame", panel)
+titleBar.Size = UDim2.new(1, 0, 0, 38)
+titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 46)
+titleBar.BorderSizePixel = 0; titleBar.Active = true
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 14)
+local tbFix = Instance.new("Frame", titleBar)
+tbFix.Size = UDim2.new(1, 0, 0, 12); tbFix.Position = UDim2.new(0, 0, 1, -12)
+tbFix.BackgroundColor3 = titleBar.BackgroundColor3; tbFix.BorderSizePixel = 0
+
+local tbGrad = Instance.new("UIGradient", titleBar)
+tbGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 80, 200)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 40, 120)),
+}
+tbGrad.Rotation = 45
+
+local titleIcon = Instance.new("TextLabel", titleBar)
+titleIcon.Size = UDim2.fromOffset(32, 38); titleIcon.Position = UDim2.fromOffset(8, 0)
+titleIcon.BackgroundTransparency = 1; titleIcon.Text = "✨"; titleIcon.TextSize = 16
+
+local titleTxt = Instance.new("TextLabel", titleBar)
+titleTxt.Size = UDim2.new(1, -120, 1, 0); titleTxt.Position = UDim2.fromOffset(42, 0)
+titleTxt.BackgroundTransparency = 1; titleTxt.Text = "AURA ROLLER"
+titleTxt.TextColor3 = Color3.fromRGB(240, 240, 250); titleTxt.Font = Enum.Font.GothamBold
+titleTxt.TextSize = 13; titleTxt.TextXAlignment = Enum.TextXAlignment.Left
+
+local function mkTitleBtn(x, bgColor, hoverColor, text, txtColor)
+    local b = Instance.new("TextButton", titleBar)
+    b.Size = UDim2.fromOffset(24, 24); b.Position = UDim2.new(1, x, 0, 7)
+    b.BackgroundColor3 = bgColor; b.Text = text; b.TextColor3 = txtColor
+    b.Font = Enum.Font.GothamBold; b.TextSize = 13; b.BorderSizePixel = 0
+    b.AutoButtonColor = false
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+    b.MouseEnter:Connect(function() b.BackgroundColor3 = hoverColor end)
+    b.MouseLeave:Connect(function() b.BackgroundColor3 = bgColor end)
+    return b
+end
+
+local adminBtn = mkTitleBtn(-60, Color3.fromRGB(50,40,80), Color3.fromRGB(90,70,140), "⚙", Color3.fromRGB(200,180,255))
+local closeBtn = mkTitleBtn(-30, Color3.fromRGB(60,30,40), Color3.fromRGB(160,40,60), "✕", Color3.fromRGB(255,200,200))
+
+local rollBox = Instance.new("Frame", panel)
+rollBox.Size = UDim2.new(1, -24, 0, 150); rollBox.Position = UDim2.fromOffset(12, 48)
+rollBox.BackgroundColor3 = Color3.fromRGB(24, 24, 38); rollBox.BorderSizePixel = 0
+rollBox.ClipsDescendants = true
+Instance.new("UICorner", rollBox).CornerRadius = UDim.new(0, 12)
+
+local rbStroke = Instance.new("UIStroke", rollBox)
+rbStroke.Color = Color3.fromRGB(80, 80, 120); rbStroke.Thickness = 1.5
+
+local rbGrad = Instance.new("UIGradient", rollBox)
+rbGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(35, 30, 55)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(16, 16, 28)),
+}
+rbGrad.Rotation = 135
+
+local rarityBadge = Instance.new("Frame", rollBox)
+rarityBadge.Size = UDim2.fromOffset(76, 22); rarityBadge.Position = UDim2.fromOffset(12, 12)
+rarityBadge.BackgroundColor3 = Color3.fromRGB(60, 60, 80); rarityBadge.BorderSizePixel = 0
+Instance.new("UICorner", rarityBadge).CornerRadius = UDim.new(1, 0)
+local rBadgeStroke = Instance.new("UIStroke", rarityBadge)
+rBadgeStroke.Color = Color3.fromRGB(120, 120, 140); rBadgeStroke.Thickness = 1
+
+local rarityTag = Instance.new("TextLabel", rarityBadge)
+rarityTag.Size = UDim2.fromScale(1, 1); rarityTag.BackgroundTransparency = 1
+rarityTag.Text = "READY"; rarityTag.TextColor3 = Color3.fromRGB(220, 220, 230)
+rarityTag.Font = Enum.Font.GothamBold; rarityTag.TextSize = 10
+
+local auraName = Instance.new("TextLabel", rollBox)
+auraName.Size = UDim2.new(1, -24, 0, 50); auraName.Position = UDim2.fromOffset(12, 44)
+auraName.BackgroundTransparency = 1; auraName.Text = "—"
+auraName.TextColor3 = Color3.fromRGB(200, 200, 215)
+auraName.Font = Enum.Font.GothamBold; auraName.TextSize = 32
+auraName.TextXAlignment = Enum.TextXAlignment.Left
+
+local rarityTxt = Instance.new("TextLabel", rollBox)
+rarityTxt.Size = UDim2.new(1, -24, 0, 22); rarityTxt.Position = UDim2.fromOffset(12, 96)
+rarityTxt.BackgroundTransparency = 1; rarityTxt.Text = "Tap ROLL to begin"
+rarityTxt.TextColor3 = Color3.fromRGB(150, 150, 175)
+rarityTxt.Font = Enum.Font.Gotham; rarityTxt.TextSize = 13
+rarityTxt.TextXAlignment = Enum.TextXAlignment.Left
+
+local oddsTxt = Instance.new("TextLabel", rollBox)
+oddsTxt.Size = UDim2.new(1, -24, 0, 18); oddsTxt.Position = UDim2.fromOffset(12, 122)
+oddsTxt.BackgroundTransparency = 1; oddsTxt.Text = "46 auras in pool"
+oddsTxt.TextColor3 = Color3.fromRGB(110, 110, 135)
+oddsTxt.Font = Enum.Font.Gotham; oddsTxt.TextSize = 11
+oddsTxt.TextXAlignment = Enum.TextXAlignment.Left
+
+local statsFrame = Instance.new("Frame", panel)
+statsFrame.Size = UDim2.new(1, -24, 0, 34); statsFrame.Position = UDim2.fromOffset(12, 208)
+statsFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 34); statsFrame.BorderSizePixel = 0
+Instance.new("UICorner", statsFrame).CornerRadius = UDim.new(0, 8)
+
+local function mkStat(x, w, label)
+    local f = Instance.new("Frame", statsFrame)
+    f.Size = UDim2.new(w, -4, 1, -8); f.Position = UDim2.new(x, 4, 0, 4); f.BackgroundTransparency = 1
+    local lbl = Instance.new("TextLabel", f)
+    lbl.Size = UDim2.new(1, 0, 0, 12); lbl.BackgroundTransparency = 1
+    lbl.Text = label; lbl.TextColor3 = Color3.fromRGB(120, 120, 145)
+    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 9
+    local val = Instance.new("TextLabel", f)
+    val.Size = UDim2.new(1, 0, 0, 16); val.Position = UDim2.fromOffset(0, 12)
+    val.BackgroundTransparency = 1; val.Text = "0"
+    val.TextColor3 = Color3.fromRGB(230, 230, 245)
+    val.Font = Enum.Font.GothamBold; val.TextSize = 13
+    return val
+end
+
+local streakVal = mkStat(0, 0.25, "STREAK")
+local bestVal   = mkStat(0.25, 0.5, "BEST")
+local totalVal  = mkStat(0.75, 0.25, "ROLLS")
+
+local histLbl = Instance.new("TextLabel", panel)
+histLbl.Size = UDim2.new(1, -24, 0, 16); histLbl.Position = UDim2.fromOffset(12, 250)
+histLbl.BackgroundTransparency = 1; histLbl.Text = "RECENT"
+histLbl.TextColor3 = Color3.fromRGB(140, 140, 170); histLbl.Font = Enum.Font.GothamBold
+histLbl.TextSize = 10; histLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+local histFrame = Instance.new("Frame", panel)
+histFrame.Size = UDim2.new(1, -24, 0, 92); histFrame.Position = UDim2.fromOffset(12, 268)
+histFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 34); histFrame.BorderSizePixel = 0
+Instance.new("UICorner", histFrame).CornerRadius = UDim.new(0, 8)
+local hfLayout = Instance.new("UIListLayout", histFrame)
+hfLayout.Padding = UDim.new(0, 2); hfLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local hfPad = Instance.new("UIPadding", histFrame)
+hfPad.PaddingLeft = UDim.new(0, 8); hfPad.PaddingRight = UDim.new(0, 8)
+hfPad.PaddingTop = UDim.new(0, 6); hfPad.PaddingBottom = UDim.new(0, 6)
+
+local histPlaceholder = Instance.new("TextLabel", histFrame)
+histPlaceholder.Size = UDim2.new(1, 0, 0, 20); histPlaceholder.BackgroundTransparency = 1
+histPlaceholder.Text = "No rolls yet..."
+histPlaceholder.TextColor3 = Color3.fromRGB(90, 90, 115)
+histPlaceholder.Font = Enum.Font.Gotham; histPlaceholder.TextSize = 11
+
+local rollBtn = Instance.new("TextButton", panel)
+rollBtn.Size = UDim2.new(1, -24, 0, 50); rollBtn.Position = UDim2.new(0, 12, 1, -62)
+rollBtn.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
+rollBtn.Text = "🎲  ROLL"
+rollBtn.TextColor3 = Color3.new(1, 1, 1)
+rollBtn.Font = Enum.Font.GothamBold; rollBtn.TextSize = 16
+rollBtn.BorderSizePixel = 0; rollBtn.AutoButtonColor = false
+Instance.new("UICorner", rollBtn).CornerRadius = UDim.new(0, 12)
+
+local rBtnStroke = Instance.new("UIStroke", rollBtn)
+rBtnStroke.Color = Color3.fromRGB(160, 140, 255); rBtnStroke.Thickness = 1.5
+
+local rBtnGrad = Instance.new("UIGradient", rollBtn)
+rBtnGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(130, 110, 250)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(70, 50, 170)),
+}
+rBtnGrad.Rotation = 90
+
+-- =====================================================
+--  DRAG
+-- =====================================================
+local dragging, dragStart, dragPos
+titleBar.InputBegan:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+        dragging = true; dragStart = i.Position; dragPos = panel.Position
+    end
+end)
+UIS.InputChanged:Connect(function(i)
+    if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+        local d = i.Position - dragStart
+        panel.Position = UDim2.new(dragPos.X.Scale, dragPos.X.Offset + d.X, dragPos.Y.Scale, dragPos.Y.Offset + d.Y)
+    end
+end)
+UIS.InputEnded:Connect(function(i)
+    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
+end)
+
+-- =====================================================
+--  SPARKLE BURST
+-- =====================================================
+local function burst(color)
+    for i = 1, 16 do
+        task.spawn(function()
+            local dot = Instance.new("Frame", rollBox)
+            local sz = math.random(4, 8)
+            dot.Size = UDim2.fromOffset(sz, sz)
+            dot.Position = UDim2.new(0.5, -sz/2, 0.5, -sz/2)
+            dot.BackgroundColor3 = color
+            dot.BorderSizePixel = 0
+            Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+            local a = math.random() * math.pi * 2
+            local d = math.random(60, 180)
+            TweenService:Create(dot, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0.5, math.cos(a)*d, 0.5, math.sin(a)*d),
+                BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(1, 1),
+            }):Play()
+            task.delay(1, function() if dot then dot:Destroy() end end)
+        end)
+    end
+end
+
+-- =====================================================
+--  ROLL LOGIC
+-- =====================================================
+local function pickRandom()
+    local weights, total = {}, 0
+    for i, a in ipairs(AURAS) do
+        weights[i] = 1 / math.max(1, math.sqrt(a.rarity))
+        total = total + weights[i]
+    end
+    local r = math.random() * total
+    local acc = 0
+    for i = 1, #AURAS do
+        acc = acc + weights[i]
+        if r <= acc then return AURAS[i] end
+    end
+    return AURAS[1]
+end
+
+local function setDisplay(aura, equipped)
+    rarityTag.Text = aura.tier
+    rarityBadge.BackgroundColor3 = TIER_COLORS[aura.tier]
+    rarityBadge.BackgroundTransparency = 0.7
+    rBadgeStroke.Color = TIER_COLORS[aura.tier]
+    auraName.Text = aura.name
+    auraName.TextColor3 = aura.color
+    rarityTxt.Text = "Rarity: " .. fmtRarity(aura.rarity)
+    rarityTxt.TextColor3 = aura.glow
+    rbStroke.Color = aura.glow
+    if equipped then
+        oddsTxt.Text = "✅ Equipped on player"
+        oddsTxt.TextColor3 = aura.glow
+    end
+end
+
+local function updateStats()
+    streakVal.Text = tostring(S.streak)
+    totalVal.Text  = tostring(#S.history)
+    if S.best then
+        bestVal.Text = S.best.name
+        bestVal.TextColor3 = S.best.glow
+    else
+        bestVal.Text = "—"
+        bestVal.TextColor3 = Color3.fromRGB(230, 230, 245)
+    end
+end
+
+local function addHistory(aura)
+    if histPlaceholder and histPlaceholder.Parent then histPlaceholder:Destroy() end
+    local row = Instance.new("Frame", histFrame)
+    row.Size = UDim2.new(1, 0, 0, 18); row.BackgroundTransparency = 1
+    row.LayoutOrder = -tick()
+
+    local dot = Instance.new("Frame", row)
+    dot.Size = UDim2.fromOffset(8, 8); dot.Position = UDim2.fromOffset(0, 5)
+    dot.BackgroundColor3 = aura.glow; dot.BorderSizePixel = 0
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+    local nm = Instance.new("TextLabel", row)
+    nm.Size = UDim2.new(1, -80, 1, 0); nm.Position = UDim2.fromOffset(14, 0)
+    nm.BackgroundTransparency = 1; nm.Text = aura.name
+    nm.TextColor3 = aura.color; nm.Font = Enum.Font.Gotham
+    nm.TextSize = 12; nm.TextXAlignment = Enum.TextXAlignment.Left
+
+    local rar = Instance.new("TextLabel", row)
+    rar.Size = UDim2.fromOffset(66, 18); rar.Position = UDim2.new(1, -66, 0, 0)
+    rar.BackgroundTransparency = 1; rar.Text = fmtRarity(aura.rarity)
+    rar.TextColor3 = TIER_COLORS[aura.tier]; rar.Font = Enum.Font.Gotham
+    rar.TextSize = 10; rar.TextXAlignment = Enum.TextXAlignment.Right
+
+    local cnt = 0
+    for _, c in ipairs(histFrame:GetChildren()) do if c:IsA("Frame") then cnt = cnt + 1 end end
+    if cnt > 4 then
+        local oldest
+        for _, c in ipairs(histFrame:GetChildren()) do
+            if c:IsA("Frame") and (not oldest or c.LayoutOrder > oldest.LayoutOrder) then oldest = c end
+        end
+        if oldest then oldest:Destroy() end
+    end
+end
+
+local function doRoll()
+    if S.rolling then return end
+    S.rolling = true
+    rollBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 85)
+    rBtnGrad.Color = ColorSequence.new(Color3.fromRGB(60, 60, 85))
+    rollBtn.Text = "ROLLING..."
+
+    for i = 1, 14 do
+        if S.exit or not panel.Parent then S.rolling = false; return end
+        local fake = AURAS[math.random(1, #AURAS)]
+        rarityTag.Text = fake.tier
+        rarityBadge.BackgroundColor3 = TIER_COLORS[fake.tier]
+        rBadgeStroke.Color = TIER_COLORS[fake.tier]
+        auraName.Text = fake.name
+        auraName.TextColor3 = fake.color
+        rarityTxt.Text = "Rarity: " .. fmtRarity(fake.rarity)
+        rarityTxt.TextColor3 = Color3.fromRGB(150, 150, 175)
+        rbStroke.Color = fake.glow
+        task.wait(0.02 + i * 0.018)
+    end
+
+    local result = pickRandom()
+    setDisplay(result, true)
+
+    rbStroke.Thickness = 3
+    TweenService:Create(rbStroke, TweenInfo.new(0.5), {Thickness = 1.5}):Play()
+
+    local tw = TweenService:Create(rollBox, TweenInfo.new(0.12), {Size = UDim2.new(1, -20, 0, 154)})
+    tw:Play(); tw.Completed:Wait()
+    TweenService:Create(rollBox, TweenInfo.new(0.3), {Size = UDim2.new(1, -24, 0, 150)}):Play()
+
+    burst(result.glow)
+    equipAura(result)
+
+    S.streak = S.streak + 1
+    table.insert(S.history, result)
+    if not S.best or result.rarity > S.best.rarity then
+        S.best = result
+    end
+
+    if S.adminOpen and S.adminPanel then
+        for _, r in ipairs(S.adminRows) do
+            if r.aura.name == result.name then
+                r.check.Text = "✓"
+                r.frame.BackgroundColor3 = Color3.fromRGB(40, 65, 50)
+            else
+                r.check.Text = ""
+                r.frame.BackgroundColor3 = Color3.fromRGB(28, 28, 42)
+            end
+        end
+    end
+
+    addHistory(result)
+    updateStats()
+
+    rollBtn.Text = "🎲  ROLL"
+    rBtnGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(130, 110, 250)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(70, 50, 170)),
+    }
+    rollBtn.BackgroundColor3 = Color3.fromRGB(100, 80, 200)
+    S.rolling = false
+end
+
+rollBtn.MouseButton1Click:Connect(doRoll)
+rollBtn.MouseEnter:Connect(function()
+    if S.rolling then return end
+    rBtnStroke.Thickness = 2.5
+end)
+rollBtn.MouseLeave:Connect(function()
+    if S.rolling then return end
+    rBtnStroke.Thickness = 1.5
+end)
+
+-- =====================================================
+--  ADMIN PANEL
+-- =====================================================
+local function buildAdminList(scroll)
+    for _, r in ipairs(S.adminRows) do pcall(function() r.frame:Destroy() end) end
+    S.adminRows = {}
+
+    local lastTier = nil
+    for _, a in ipairs(AURAS) do
+        if a.tier ~= lastTier then
+            lastTier = a.tier
+            local header = Instance.new("TextLabel", scroll)
+            header.Size = UDim2.new(1, -8, 0, 20); header.BackgroundTransparency = 1
+            header.Text = "  " .. a.tier; header.TextColor3 = TIER_COLORS[a.tier]
+            header.Font = Enum.Font.GothamBold; header.TextSize = 10
+            header.TextXAlignment = Enum.TextXAlignment.Left
+        end
+
+        local row = Instance.new("TextButton", scroll)
+        row.Size = UDim2.new(1, -8, 0, 32)
+        row.BackgroundColor3 = Color3.fromRGB(28, 28, 42)
+        row.BorderSizePixel = 0; row.AutoButtonColor = false; row.Text = ""
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 7)
+
+        local dot = Instance.new("Frame", row)
+        dot.Size = UDim2.fromOffset(10, 10); dot.Position = UDim2.new(0, 10, 0.5, -5)
+        dot.BackgroundColor3 = a.glow; dot.BorderSizePixel = 0
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local nameLbl = Instance.new("TextLabel", row)
+        nameLbl.Size = UDim2.new(1, -140, 1, 0); nameLbl.Position = UDim2.fromOffset(28, 0)
+        nameLbl.BackgroundTransparency = 1; nameLbl.Text = a.name
+        nameLbl.TextColor3 = a.color; nameLbl.Font = Enum.Font.GothamBold
+        nameLbl.TextSize = 12; nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        local rarLbl = Instance.new("TextLabel", row)
+        rarLbl.Size = UDim2.fromOffset(86, 32); rarLbl.Position = UDim2.new(1, -110, 0, 0)
+        rarLbl.BackgroundTransparency = 1; rarLbl.Text = fmtRarity(a.rarity)
+        rarLbl.TextColor3 = TIER_COLORS[a.tier]; rarLbl.Font = Enum.Font.Gotham
+        rarLbl.TextSize = 10; rarLbl.TextXAlignment = Enum.TextXAlignment.Right
+
+        local check = Instance.new("TextLabel", row)
+        check.Size = UDim2.fromOffset(20, 32); check.Position = UDim2.new(1, -24, 0, 0)
+        check.BackgroundTransparency = 1; check.Text = ""
+        check.TextColor3 = Color3.fromRGB(80, 255, 120)
+        check.Font = Enum.Font.GothamBold; check.TextSize = 14
+
+        row.MouseEnter:Connect(function() row.BackgroundColor3 = Color3.fromRGB(38, 38, 56) end)
+        row.MouseLeave:Connect(function()
+            if S.equippedAura and S.equippedAura.name == a.name then
+                row.BackgroundColor3 = Color3.fromRGB(40, 65, 50)
+            else
+                row.BackgroundColor3 = Color3.fromRGB(28, 28, 42)
+            end
+        end)
+        row.MouseButton1Click:Connect(function()
+            equipAura(a)
+            setDisplay(a, true)
+            for _, r in ipairs(S.adminRows) do
+                if r.aura.name == a.name then
+                    r.check.Text = "✓"
+                    r.frame.BackgroundColor3 = Color3.fromRGB(40, 65, 50)
+                else
+                    r.check.Text = ""
+                    r.frame.BackgroundColor3 = Color3.fromRGB(28, 28, 42)
+                end
+            end
+        end)
+
+        table.insert(S.adminRows, {frame=row, aura=a, check=check})
+    end
+    for _, r in ipairs(S.adminRows) do
+        if S.equippedAura and r.aura.name == S.equippedAura.name then
+            r.check.Text = "✓"
+            r.frame.BackgroundColor3 = Color3.fromRGB(40, 65, 50)
+        end
+    end
+end
+
+local function closeAdmin()
+    if S.adminPanel then pcall(function() S.adminPanel:Destroy() end); S.adminPanel = nil end
+    S.adminOpen = false
+end
+
+local function openAdmin()
+    if S.adminPanel then closeAdmin() end
+    S.adminOpen = true
+
+    local ap = Instance.new("Frame", gui)
+    ap.Size = UDim2.fromOffset(340, 520); ap.Position = UDim2.new(0, 345, 0, 100)
+    ap.BackgroundColor3 = Color3.fromRGB(16, 16, 24); ap.BorderSizePixel = 0
+    ap.Active = true; S.adminPanel = ap
+    Instance.new("UICorner", ap).CornerRadius = UDim.new(0, 14)
+    local aStroke = Instance.new("UIStroke", ap)
+    aStroke.Color = Color3.fromRGB(140, 100, 220); aStroke.Thickness = 1.5
+
+    local tBar = Instance.new("Frame", ap)
+    tBar.Size = UDim2.new(1, 0, 0, 38)
+    tBar.BackgroundColor3 = Color3.fromRGB(46, 36, 70)
+    tBar.BorderSizePixel = 0; tBar.Active = true
+    Instance.new("UICorner", tBar).CornerRadius = UDim.new(0, 14)
+    local tbf = Instance.new("Frame", tBar)
+    tbf.Size = UDim2.new(1, 0, 0, 12); tbf.Position = UDim2.new(0, 0, 1, -12)
+    tbf.BackgroundColor3 = tBar.BackgroundColor3; tbf.BorderSizePixel = 0
+
+    local tIcon = Instance.new("TextLabel", tBar)
+    tIcon.Size = UDim2.fromOffset(32, 38); tIcon.Position = UDim2.fromOffset(8, 0)
+    tIcon.BackgroundTransparency = 1; tIcon.Text = "⚙"
+    tIcon.TextColor3 = Color3.fromRGB(200, 180, 255); tIcon.TextSize = 16
+
+    local tTxt = Instance.new("TextLabel", tBar)
+    tTxt.Size = UDim2.new(1, -80, 1, 0); tTxt.Position = UDim2.fromOffset(42, 0)
+    tTxt.BackgroundTransparency = 1; tTxt.Text = "AURA ADMIN"
+    tTxt.TextColor3 = Color3.fromRGB(240, 240, 250); tTxt.Font = Enum.Font.GothamBold
+    tTxt.TextSize = 13; tTxt.TextXAlignment = Enum.TextXAlignment.Left
+
+    local aClose = Instance.new("TextButton", tBar)
+    aClose.Size = UDim2.fromOffset(24, 24); aClose.Position = UDim2.new(1, -30, 0, 7)
+    aClose.BackgroundColor3 = Color3.fromRGB(60, 30, 40); aClose.Text = "✕"
+    aClose.TextColor3 = Color3.fromRGB(255, 200, 200); aClose.Font = Enum.Font.GothamBold
+    aClose.TextSize = 13; aClose.BorderSizePixel = 0; aClose.AutoButtonColor = false
+    Instance.new("UICorner", aClose).CornerRadius = UDim.new(0, 6)
+    aClose.MouseEnter:Connect(function() aClose.BackgroundColor3 = Color3.fromRGB(160, 40, 60) end)
+    aClose.MouseLeave:Connect(function() aClose.BackgroundColor3 = Color3.fromRGB(60, 30, 40) end)
+    aClose.MouseButton1Click:Connect(closeAdmin)
+
+    local aDrag, aStart, aPos
+    tBar.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            aDrag = true; aStart = i.Position; aPos = ap.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if aDrag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local d = i.Position - aStart
+            ap.Position = UDim2.new(aPos.X.Scale, aPos.X.Offset + d.X, aPos.Y.Scale, aPos.Y.Offset + d.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then aDrag = false end
+    end)
+
+    local searchBox = Instance.new("Frame", ap)
+    searchBox.Size = UDim2.new(1, -24, 0, 32); searchBox.Position = UDim2.fromOffset(12, 46)
+    searchBox.BackgroundColor3 = Color3.fromRGB(28, 28, 42); searchBox.BorderSizePixel = 0
+    Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
+    local sbStroke = Instance.new("UIStroke", searchBox)
+    sbStroke.Color = Color3.fromRGB(80, 80, 120); sbStroke.Thickness = 1
+
+    local sIcon = Instance.new("TextLabel", searchBox)
+    sIcon.Size = UDim2.fromOffset(30, 32); sIcon.Position = UDim2.fromOffset(4, 0)
+    sIcon.BackgroundTransparency = 1; sIcon.Text = "🔍"; sIcon.TextSize = 13
+
+    local searchInput = Instance.new("TextBox", searchBox)
+    searchInput.Size = UDim2.new(1, -40, 1, 0); searchInput.Position = UDim2.fromOffset(32, 0)
+    searchInput.BackgroundTransparency = 1; searchInput.Text = ""
+    searchInput.PlaceholderText = "Search auras..."
+    searchInput.PlaceholderColor3 = Color3.fromRGB(120, 120, 145)
+    searchInput.TextColor3 = Color3.fromRGB(220, 220, 235)
+    searchInput.Font = Enum.Font.Gotham; searchInput.TextSize = 12
+    searchInput.TextXAlignment = Enum.TextXAlignment.Left; searchInput.ClearTextOnFocus = false
+
+    local equippedLbl = Instance.new("TextLabel", ap)
+    equippedLbl.Size = UDim2.new(1, -24, 0, 22); equippedLbl.Position = UDim2.fromOffset(12, 84)
+    equippedLbl.BackgroundColor3 = Color3.fromRGB(30, 45, 36); equippedLbl.BorderSizePixel = 0
+    Instance.new("UICorner", equippedLbl).CornerRadius = UDim.new(0, 6)
+    equippedLbl.Text = S.equippedAura and ("  Equipped: " .. S.equippedAura.name) or "  Equipped: None"
+    equippedLbl.TextColor3 = S.equippedAura and S.equippedAura.glow or Color3.fromRGB(150, 150, 175)
+    equippedLbl.Font = Enum.Font.GothamBold; equippedLbl.TextSize = 11
+    equippedLbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local scroll = Instance.new("ScrollingFrame", ap)
+    scroll.Size = UDim2.new(1, -16, 1, -190); scroll.Position = UDim2.fromOffset(8, 114)
+    scroll.BackgroundTransparency = 1; scroll.BorderSizePixel = 0
+    scroll.ScrollBarThickness = 6; scroll.ScrollBarImageColor3 = Color3.fromRGB(140, 100, 220)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y; scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    local list = Instance.new("UIListLayout", scroll)
+    list.Padding = UDim.new(0, 3); list.SortOrder = Enum.SortOrder.LayoutOrder
+
+    buildAdminList(scroll)
+
+    searchInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local q = string.lower(searchInput.Text)
+        for _, r in ipairs(S.adminRows) do
+            r.frame.Visible = q == "" or string.find(string.lower(r.aura.name), q, 1, true)
+                or string.find(string.lower(r.aura.tier), q, 1, true)
+        end
+    end)
+
+    local removeBtn = Instance.new("TextButton", ap)
+    removeBtn.Size = UDim2.new(1, -24, 0, 40); removeBtn.Position = UDim2.new(0, 12, 1, -52)
+    removeBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 55); removeBtn.Text = "🗑  REMOVE AURA"
+    removeBtn.TextColor3 = Color3.new(1, 1, 1); removeBtn.Font = Enum.Font.GothamBold
+    removeBtn.TextSize = 13; removeBtn.BorderSizePixel = 0; removeBtn.AutoButtonColor = false
+    Instance.new("UICorner", removeBtn).CornerRadius = UDim.new(0, 10)
+    local rmGrad = Instance.new("UIGradient", removeBtn)
+    rmGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 55, 70)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(90, 30, 45)),
+    }
+    rmGrad.Rotation = 90
+    removeBtn.MouseEnter:Connect(function() removeBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 70) end)
+    removeBtn.MouseLeave:Connect(function() removeBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 55) end)
+    removeBtn.MouseButton1Click:Connect(function()
+        clearAura()
+        S.equippedAura = nil
+        equippedLbl.Text = "  Equipped: None"
+        equippedLbl.TextColor3 = Color3.fromRGB(150, 150, 175)
+        for _, r in ipairs(S.adminRows) do
+            r.check.Text = ""
+            r.frame.BackgroundColor3 = Color3.fromRGB(28, 28, 42)
+        end
+        oddsTxt.Text = "Aura removed"
+        oddsTxt.TextColor3 = Color3.fromRGB(150, 150, 175)
+    end)
+end
+
+adminBtn.MouseButton1Click:Connect(function()
+    if S.adminOpen then closeAdmin() else openAdmin() end
+end)
+
+-- =====================================================
+--  RESPAWN
+-- =====================================================
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    if S.equippedAura then equipAura(S.equippedAura) end
+end)
+
+-- =====================================================
+--  CLOSE / HOTKEY
+-- =====================================================
+local function closeAll()
+    S.exit = true
+    clearAura()
+    if S.adminPanel then pcall(function() S.adminPanel:Destroy() end) end
+    if gui then gui:Destroy() end
+    if getgenv then getgenv().AURA_RUNNING = nil end
+end
+
+closeBtn.MouseButton1Click:Connect(closeAll)
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe or UIS:GetFocusedTextBox() then return end
+    if input.KeyCode == Enum.KeyCode.R and UIS:IsKeyDown(Enum.KeyCode.LeftControl) then doRoll() end
+end)
+getgenv().AURA_STOP = closeAll
+
+updateStats()
+print("[Aura Roller] Loaded — " .. #AURAS .. " auras. AURA_STOP() to close.")
