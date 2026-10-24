@@ -76,8 +76,6 @@ local gameState = {
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
     playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil,
     playerPosition="Striker", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
-    -- NEW RULE SETTINGS --
-    knockoutEnabled = true,
     extraTimeEnabled = true,
     penaltyEnabled = true,
     twoLeggedEnabled = false,
@@ -183,14 +181,14 @@ local function updateTournamentDisplay()
     gameState.tournamentLbl.Text = gameState.tournamentType
     gameState.stageLbl.Text = s
     local legText = ""
-    if gameState.knockoutEnabled and gameState.twoLeggedEnabled then
+    if s ~= "GROUP STAGE" and gameState.twoLeggedEnabled then
         legText = " (LEG " .. gameState.currentLeg .. ")"
     end
     gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm..legText
     
     local dispRed = gameState.scoreRed
     local dispBlue = gameState.scoreBlue
-    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
+    if s ~= "GROUP STAGE" and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
         dispRed = dispRed + gameState.firstLegScoreRed
         dispBlue = dispBlue + gameState.firstLegScoreBlue
         gameState.scoreLbl.Text = gameState.teamRedName.." "..dispRed.." - "..dispBlue.." "..gameState.teamBlueName.." (Agg: "..gameState.firstLegScoreRed.."-"..gameState.firstLegScoreBlue..")"
@@ -201,8 +199,8 @@ end
 
 local function advanceTournament()
     local t = TOURNAMENTS[gameState.tournamentType]; if not t then return end
-    -- Nếu đá lượt về, không tăng trận
-    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
+    local isGroup = (getCurrentStage() == "GROUP STAGE")
+    if not isGroup and gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
         updateTournamentDisplay()
         return
     end
@@ -436,6 +434,38 @@ local function buildTrophy(tournamentType)
     return model
 end
 
+local function createTrophyTool()
+    local tool = Instance.new("Tool")
+    tool.Name = "Trophy"
+    tool.RequiresHandle = true
+    tool.CanBeDropped = false
+    
+    local model = buildTrophy(gameState.tournamentType)
+    local handle = model.PrimaryPart
+    if not handle then return end
+    
+    local scale = 0.35
+    handle.Size = handle.Size * scale
+    for _, p in ipairs(model:GetChildren()) do
+        if p:IsA("BasePart") then
+            p.Size = p.Size * scale
+            if p ~= handle then
+                local w = Instance.new("Weld")
+                w.Part0 = handle
+                w.Part1 = p
+                w.C0 = handle.CFrame:Inverse() * p.CFrame
+                w.Parent = handle
+                p.Anchored = false
+                p.CanCollide = false
+                p.Parent = tool
+            else
+                p.Parent = tool
+            end
+        end
+    end
+    tool.Parent = player.Backpack
+end
+
 local function launchFirework(position)
     local rocket = Instance.new("Part")
     rocket.Size = Vector3.new(0.8, 0.8, 0.8)
@@ -493,16 +523,42 @@ local function launchFirework(position)
     end)
 end
 
+local function createGuard(pos)
+    local guard = Instance.new("Model")
+    guard.Name = "SecurityGuard"
+    local function mp(name,size,color,ox,oy,oz)
+        local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Color=color
+        p.Material=Enum.Material.SmoothPlastic; p.Anchored=true; p.CanCollide=true
+        p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth
+        p:SetAttribute("OffX",ox or 0); p:SetAttribute("OffY",oy or 0); p:SetAttribute("OffZ",oz or 0)
+        p.Parent=guard; return p
+    end
+    local black = Color3.fromRGB(10, 10, 10)
+    mp("Torso",Vector3.new(2,2,1),black,0,0,0)
+    local head = mp("Head",Vector3.new(2,1,1),Color3.fromRGB(255,215,170),0,1.5,0)
+    mp("LeftArm",Vector3.new(1,2,1),black,-1.5,0,0)
+    mp("RightArm",Vector3.new(1,2,1),black,1.5,0,0)
+    mp("LeftLeg",Vector3.new(1,2,1),black,-0.5,-2,0)
+    mp("RightLeg",Vector3.new(1,2,1),black,0.5,-2,0)
+    guard.PrimaryPart=guard:FindFirstChild("Torso")
+    guard.Parent = workspace
+    moveCharacter(guard, pos, pos + Vector3.new(0,0,1))
+    return guard
+end
+
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
     local playerIsWinner = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
-    if gameState.podiumModel then gameState.podiumModel:Destroy() end
+    
+    local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
+    local pedestalPos = podiumCenter + Vector3.new(-40, 3, 30)
+    
+    -- 1. Build Podium
     local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
     gameState.podiumModel = podium
-    local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
     local function mkStep(name, size, pos, color)
         local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Position=pos
         p.Color=color or Color3.fromRGB(180,180,190); p.Material=Enum.Material.Marble
@@ -511,105 +567,182 @@ local function startTrophyCeremony(winningTeam)
     mkStep("Center", Vector3.new(14, 6, 10), podiumCenter + Vector3.new(0, 3, 0), Color3.fromRGB(220, 200, 100))
     mkStep("Left", Vector3.new(9, 4, 9), podiumCenter + Vector3.new(-12, 2, 0), Color3.fromRGB(180, 180, 200))
     mkStep("Right", Vector3.new(9, 4, 9), podiumCenter + Vector3.new(12, 2, 0), Color3.fromRGB(180, 180, 200))
-    local carpet = Instance.new("Part")
-    carpet.Name="Carpet"; carpet.Size=Vector3.new(70, 0.2, 8)
-    carpet.Position=podiumCenter+Vector3.new(0,6.2,6)
-    carpet.Color=Color3.fromRGB(180,30,30); carpet.Material=Enum.Material.Fabric
-    carpet.Anchored=true; carpet.Parent=podium
-    if gameState.trophyModel then gameState.trophyModel:Destroy() end
-    local trophy = buildTrophy(gameState.tournamentType)
-    trophy:PivotTo(CFrame.new(podiumCenter + Vector3.new(0, 40, 0)))
-    trophy.Parent = workspace
-    gameState.trophyModel = trophy
-    local nonGKWinners = {}
-    for _, bot in ipairs(winners) do
-        if bot.PrimaryPart then table.insert(nonGKWinners, bot) end
+    local carpet = mkStep("Carpet", Vector3.new(70, 0.2, 8), podiumCenter+Vector3.new(0,6.2,6), Color3.fromRGB(180,30,30))
+    carpet.Material = Enum.Material.Fabric
+    
+    -- 2. Pedestal & Guard & Display Trophy
+    local pedestal = Instance.new("Part")
+    pedestal.Size = Vector3.new(6, 6, 6)
+    pedestal.Position = pedestalPos + Vector3.new(0, 3, 0)
+    pedestal.Color = Color3.fromRGB(100, 100, 100)
+    pedestal.Material = Enum.Material.Marble
+    pedestal.Anchored = true
+    pedestal.Parent = podium
+    
+    local displayTrophy = buildTrophy(gameState.tournamentType)
+    displayTrophy:PivotTo(CFrame.new(pedestalPos + Vector3.new(0, 9, 0)))
+    displayTrophy.Parent = podium
+    gameState.trophyModel = displayTrophy
+    
+    local guard = createGuard(pedestalPos + Vector3.new(6, 0, 0))
+    
+    -- 3. Losers walk past guard
+    local loserStartPos = pedestalPos + Vector3.new(-20, 0, 0)
+    local loserViewPos = podiumCenter + Vector3.new(0, 0, 35)
+    
+    for i, bot in ipairs(losers) do
+        local start = loserStartPos + Vector3.new(0, 0, i * 3)
+        pcall(moveCharacter, bot, start, guard.PrimaryPart.Position)
     end
+    task.wait(1)
+    
+    -- Move to guard
+    local stopAtGuard = {}
+    for i, bot in ipairs(losers) do
+        stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
+    end
+    
+    local t0 = tick()
+    local conn
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - t0 > 4 then if conn then conn:Disconnect() end return end
+        for bot, target in pairs(stopAtGuard) do
+            local cur = bot.PrimaryPart.Position
+            local dir = target - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), guard.PrimaryPart.Position)
+            end
+        end
+    end)
+    task.wait(4)
+    if conn then conn:Disconnect() end
+    
+    -- Stand still for 3 seconds
+    task.wait(3)
+    
+    -- Walk to viewing area
+    local viewTargets = {}
+    for i, bot in ipairs(losers) do
+        viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
+    end
+    local t1 = tick()
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - t1 > 3 then if conn then conn:Disconnect() end return end
+        for bot, target in pairs(viewTargets) do
+            local cur = bot.PrimaryPart.Position
+            local dir = target - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), podiumCenter)
+            end
+        end
+    end)
+    task.wait(3)
+    if conn then conn:Disconnect() end
+    for bot, target in pairs(viewTargets) do
+        pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y, target.Z), podiumCenter)
+    end
+    
+    -- 4. Winner representative goes to pedestal, grabs trophy, goes to podium
+    local rep = winners[1]
+    if playerIsWinner and gameState.playerChar then
+        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+        if hrp then rep = "PLAYER" end
+    end
+    
+    local grabPos = pedestalPos + Vector3.new(0, 0, 4)
+    if rep == "PLAYER" then
+        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+        local t2 = tick()
+        conn = RunService.Heartbeat:Connect(function()
+            if tick() - t2 > 3 then if conn then conn:Disconnect() end return end
+            local dir = grabPos - hrp.Position
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                hrp.CFrame = CFrame.new(hrp.Position + horiz.Unit * 15 * 0.033)
+            end
+        end)
+        task.wait(3)
+        if conn then conn:Disconnect() end
+    else
+        local cur = rep.PrimaryPart.Position
+        local t2 = tick()
+        conn = RunService.Heartbeat:Connect(function()
+            if tick() - t2 > 3 then if conn then conn:Disconnect() end return end
+            local dir = grabPos - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, rep, Vector3.new(np.X, cur.Y, np.Z), pedestalPos)
+            end
+        end)
+        task.wait(3)
+        if conn then conn:Disconnect() end
+    end
+    
+    -- Cúp gắn vào người đại diện
+    local trophyHandPos = grabPos + Vector3.new(0, 5, 0)
+    displayTrophy:PivotTo(CFrame.new(trophyHandPos))
+    
+    -- 5. Representative walks to podium center
+    local targetPodium = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
+    local t3 = tick()
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - t3 > 3 then if conn then conn:Disconnect() end return end
+        local refPos
+        if rep == "PLAYER" then
+            refPos = gameState.playerChar.HumanoidRootPart.Position
+            local dir = targetPodium - refPos
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                gameState.playerChar.HumanoidRootPart.CFrame = CFrame.new(refPos + horiz.Unit * 15 * 0.033)
+            end
+        else
+            refPos = rep.PrimaryPart.Position
+            local dir = targetPodium - refPos
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = refPos + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, rep, Vector3.new(np.X, refPos.Y, np.Z), podiumCenter)
+            end
+        end
+        -- Kéo cúp theo người
+        displayTrophy:PivotTo(CFrame.new(refPos + Vector3.new(0, 3, 0)))
+    end)
+    task.wait(3)
+    if conn then conn:Disconnect() end
+    
+    -- 6. Other winners walk to podium
+    local otherWinners = {}
+    for _, bot in ipairs(winners) do
+        if bot ~= rep then table.insert(otherWinners, bot) end
+    end
+    
+    local walkStart = tick()
+    local walkDuration = 3
     local targetPositions = {}
     local sideIdx = 0
-    for i, bot in ipairs(nonGKWinners) do
+    for i, bot in ipairs(otherWinners) do
         local pos
         if i == 1 then
-            pos = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
+            pos = podiumCenter + Vector3.new(-6, TORSO_Y - MAP_POS.Y + 6, 0)
         elseif i == 2 then
-            pos = podiumCenter + Vector3.new(-12, TORSO_Y - MAP_POS.Y + 4, 0)
-        elseif i == 3 then
-            pos = podiumCenter + Vector3.new(12, TORSO_Y - MAP_POS.Y + 4, 0)
+            pos = podiumCenter + Vector3.new(6, TORSO_Y - MAP_POS.Y + 6, 0)
         else
             local side = (sideIdx % 2 == 0) and -1 or 1
-            local dist = 18 + math.floor(sideIdx/2) * 4
-            pos = podiumCenter + Vector3.new(side * dist, TORSO_Y - MAP_POS.Y, 5)
+            local dist = 12 + math.floor(sideIdx/2) * 4
+            pos = podiumCenter + Vector3.new(side * dist, TORSO_Y - MAP_POS.Y + 6, 0)
             sideIdx = sideIdx + 1
         end
         targetPositions[bot] = pos
     end
-    if playerIsWinner and gameState.playerChar then
-        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-        if hrp then targetPositions["__player__"] = podiumCenter + Vector3.new(5, TORSO_Y - MAP_POS.Y + 6, 0) end
-    end
-    local walkStart = tick()
-    local walkDuration = 3
-    local walkConn
-    walkConn = RunService.Heartbeat:Connect(function()
-        if tick() - walkStart > walkDuration then if walkConn then walkConn:Disconnect() end; return end
+    
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - walkStart > walkDuration then if conn then conn:Disconnect() end return end
         for bot, target in pairs(targetPositions) do
-            if bot ~= "__player__" and bot.PrimaryPart then
-                local cur = bot.PrimaryPart.Position
-                local dir = target - cur
-                local horiz = Vector3.new(dir.X, 0, dir.Z)
-                if horiz.Magnitude > 1.5 then
-                    horiz = horiz.Unit
-                    local newPos = cur + horiz * 20 * 0.033
-                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), target)
-                else
-                    pcall(moveCharacter, bot, Vector3.new(target.X, cur.Y, target.Z), target + Vector3.new(0,0,5))
-                end
-            end
-        end
-        if playerIsWinner and gameState.playerChar then
-            local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local target = targetPositions["__player__"]
-                if target then
-                    local dir = target - hrp.Position
-                    local horiz = Vector3.new(dir.X, 0, dir.Z)
-                    if horiz.Magnitude > 1.5 then
-                        hrp.CFrame = CFrame.new(hrp.Position + horiz.Unit * 18 * 0.033)
-                    end
-                end
-            end
-        end
-    end)
-    task.wait(walkDuration + 1)
-    if walkConn then walkConn:Disconnect() end
-    for bot, target in pairs(targetPositions) do
-        if bot ~= "__player__" and bot.PrimaryPart then
-            pcall(moveCharacter, bot, target, target + Vector3.new(0,0,5))
-        end
-    end
-    if playerIsWinner and gameState.playerChar then
-        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local target = targetPositions["__player__"]
-            if target then hrp.CFrame = CFrame.new(target) end
-        end
-    end
-    task.wait(1.5)
-    local lineZ = podiumCenter.Z + 35
-    local lineSpacing = 6
-    local lineStartX = -((#losers - 1) * lineSpacing) / 2
-    local loserTargets = {}
-    for i, bot in ipairs(losers) do
-        if bot.PrimaryPart then
-            loserTargets[bot] = Vector3.new(podiumCenter.X + lineStartX + (i-1)*lineSpacing, TORSO_Y, lineZ)
-        end
-    end
-    local lossWalkStart = tick()
-    local lossWalkDuration = 2.5
-    local lossConn
-    lossConn = RunService.Heartbeat:Connect(function()
-        if tick() - lossWalkStart > lossWalkDuration then if lossConn then lossConn:Disconnect() end; return end
-        for bot, target in pairs(loserTargets) do
             if bot.PrimaryPart then
                 local cur = bot.PrimaryPart.Position
                 local dir = target - cur
@@ -617,41 +750,20 @@ local function startTrophyCeremony(winningTeam)
                 if horiz.Magnitude > 1.5 then
                     horiz = horiz.Unit
                     local newPos = cur + horiz * 20 * 0.033
-                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), podiumCenter)
-                else
-                    pcall(moveCharacter, bot, Vector3.new(target.X, cur.Y, target.Z), podiumCenter)
+                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), target)
                 end
             end
         end
     end)
-    task.wait(lossWalkDuration + 0.5)
-    if lossConn then lossConn:Disconnect() end
-    for bot, target in pairs(loserTargets) do
-        if bot.PrimaryPart then pcall(moveCharacter, bot, target, podiumCenter) end
-    end
-    task.wait(1)
-    local trophyHandPos = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6 + 4, 0)
-    local startPos = trophy:GetPivot().Position
-    local descendStart = tick()
-    local descendDuration = 4
-    local descendConn
-    descendConn = RunService.Heartbeat:Connect(function()
-        if tick() - descendStart > descendDuration then if descendConn then descendConn:Disconnect() end; return end
-        local t = (tick() - descendStart) / descendDuration
-        local ease = 1 - (1-t)^2
-        local newPos = startPos:Lerp(trophyHandPos, ease)
-        trophy:PivotTo(CFrame.new(newPos) * CFrame.Angles(0, tick()*0.5, 0))
-    end)
-    task.wait(descendDuration)
-    if descendConn then descendConn:Disconnect() end
-    trophy:PivotTo(CFrame.new(trophyHandPos))
-    task.wait(0.5)
+    task.wait(walkDuration + 0.5)
+    if conn then conn:Disconnect() end
+    
+    -- 7. Lift Trophy & Cheer
     local cheerStart = tick()
     local cheerDuration = 8
-    local cheerConn
-    cheerConn = RunService.Heartbeat:Connect(function()
-        if tick() - cheerStart > cheerDuration then if cheerConn then cheerConn:Disconnect() end; return end
-        for i, bot in ipairs(nonGKWinners) do
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - cheerStart > cheerDuration then if conn then conn:Disconnect() end return end
+        for i, bot in ipairs(otherWinners) do
             if bot.PrimaryPart then
                 local basePos = targetPositions[bot]
                 if basePos then
@@ -660,29 +772,21 @@ local function startTrophyCeremony(winningTeam)
                 end
             end
         end
-        if playerIsWinner and gameState.playerChar then
-            local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local base = targetPositions["__player__"]
-                if base then
-                    local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
-                    hrp.CFrame = CFrame.new(base.X, base.Y + jump, base.Z)
-                end
+        if rep == "PLAYER" then
+            local hrp = gameState.playerChar.HumanoidRootPart
+            local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
+            hrp.CFrame = CFrame.new(targetPodium.X, targetPodium.Y + jump, targetPodium.Z)
+            displayTrophy:PivotTo(CFrame.new(hrp.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick()*0.8, 0))
+        else
+            if rep.PrimaryPart then
+                local cur = rep.PrimaryPart.Position
+                local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
+                pcall(moveCharacter, rep, Vector3.new(cur.X, targetPodium.Y + jump, cur.Z), podiumCenter)
+                displayTrophy:PivotTo(CFrame.new(rep.PrimaryPart.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick()*0.8, 0))
             end
         end
     end)
-    local riseFrom = trophyHandPos
-    local riseTo = trophyHandPos + Vector3.new(0, 12, 0)
-    local riseStart = tick()
-    task.spawn(function()
-        while tick() - riseStart < cheerDuration do
-            local t = (tick() - riseStart) / cheerDuration
-            local ease = t * t
-            local newPos = riseFrom:Lerp(riseTo, ease)
-            trophy:PivotTo(CFrame.new(newPos) * CFrame.Angles(0, tick()*0.8, 0))
-            RunService.Heartbeat:Wait()
-        end
-    end)
+    
     for i = 1, 16 do
         task.spawn(function()
             local angle = math.random() * math.pi * 2
@@ -693,50 +797,18 @@ local function startTrophyCeremony(winningTeam)
         task.wait(0.5)
     end
     task.wait(cheerDuration - 8 + 2)
-    if cheerConn then cheerConn:Disconnect() end
-    task.wait(1)
-    local hugDuration = 4
-    local hugStart = tick()
-    local hugConn
-    hugConn = RunService.Heartbeat:Connect(function()
-        if tick() - hugStart > hugDuration then if hugConn then hugConn:Disconnect() end; return end
-        for i, bot in ipairs(nonGKWinners) do
-            if bot.PrimaryPart then
-                local loser = losers[i]
-                if loser and loser.PrimaryPart then
-                    local cur = bot.PrimaryPart.Position
-                    local target = loser.PrimaryPart.Position + Vector3.new(0, 0, -4)
-                    local dir = target - cur
-                    local horiz = Vector3.new(dir.X, 0, dir.Z)
-                    if horiz.Magnitude > 1.5 then
-                        horiz = horiz.Unit
-                        local newPos = cur + horiz * 18 * 0.033
-                        pcall(moveCharacter, bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), target)
-                    end
-                end
-            end
-        end
-        if playerIsWinner and gameState.playerChar then
-            local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local loser = losers[1]
-                if loser and loser.PrimaryPart then
-                    local target = loser.PrimaryPart.Position + Vector3.new(3, 0, -4)
-                    local dir = target - hrp.Position
-                    local horiz = Vector3.new(dir.X, 0, dir.Z)
-                    if horiz.Magnitude > 1.5 then
-                        hrp.CFrame = CFrame.new(hrp.Position + horiz.Unit * 16 * 0.033)
-                    end
-                end
-            end
-        end
-    end)
-    task.wait(hugDuration + 2)
-    if hugConn then hugConn:Disconnect() end
+    if conn then conn:Disconnect() end
+    
+    -- 8. Give Trophy Tool
+    if playerIsWinner then
+        createTrophyTool()
+    end
+    
     gameState.trophyActive = false
     task.wait(2)
     if gameState.podiumModel then gameState.podiumModel:Destroy(); gameState.podiumModel = nil end
     if gameState.trophyModel then gameState.trophyModel:Destroy(); gameState.trophyModel = nil end
+    if guard then guard:Destroy() end
 end
 
 local function createStadium()
@@ -870,18 +942,29 @@ local function getHomePos(bot,useBall)
     elseif role=="Defender" then local xs={-0.35,-0.12,0.12,0.35}; bx=xs[idx] or 0; bz=(idx==1 or idx==4) and -0.5 or -0.6; xw,zw=0.35,0.4
     elseif role=="Midfielder" then local xs={-0.30,-0.10,0.10,0.30}; bx=xs[idx] or 0; bz=(idx==1 or idx==4) and -0.10 or 0.0; xw,zw=0.35,0.5
     elseif role=="Striker" then bx=(idx==1) and -0.15 or 0.15; bz=0.35; xw,zw=0.3,0.55 end
+    
     local bZ,bX = 0,0
     if useBall and gameState.ball then
         bZ=math.clamp((gameState.ball.Position.Z-MAP_POS.Z)/(PITCH_LENGTH/2),-1,1)
         bX=math.clamp((gameState.ball.Position.X-MAP_POS.X)/(PITCH_WIDTH/2),-1,1)
     end
+    
     local tX,tZ
     if role=="Goalkeeper" then
         local gz=(team=="Red") and (MAP_POS.Z-PITCH_LENGTH/2+12) or (MAP_POS.Z+PITCH_LENGTH/2-12)
         tX=MAP_POS.X+math.clamp(bX,-0.5,0.5)*(GOAL_WIDTH/2); tZ=gz
     else
-        tZ=MAP_POS.Z+(bz*ad+bZ*zw)*(PITCH_LENGTH/2)
-        tX=MAP_POS.X+(bx+bX*xw)*(PITCH_WIDTH/2)
+        local finalBZ = bZ
+        if role == "Defender" then
+            -- Defender cannot go past the halfway line (Z = 0) when attacking
+            finalBZ = math.clamp(bZ * ad, -1, 0) * ad
+        elseif role == "Midfielder" then
+            -- Midfielder can push up slightly (up to 0.4)
+            finalBZ = math.clamp(bZ * ad, -1, 0.4) * ad
+        end
+        
+        tZ=MAP_POS.Z+(bz*ad+finalBZ*zw)*(PITCH_LENGTH/2)
+        tX=MAP_POS.X+(bx+finalBZ*xw)*(PITCH_WIDTH/2)
     end
     tX=math.clamp(tX,MAP_POS.X-PITCH_WIDTH/2+10,MAP_POS.X+PITCH_WIDTH/2-10)
     tZ=math.clamp(tZ,MAP_POS.Z-PITCH_LENGTH/2+5,MAP_POS.Z+PITCH_LENGTH/2-5)
@@ -1733,7 +1816,8 @@ local function runPenaltyShootout()
     gameState.inPenaltyShootout=false
     gameState.scoreRed=rs; gameState.scoreBlue=bs
     
-    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
+    local isGroup = (getCurrentStage() == "GROUP STAGE")
+    if not isGroup and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
         gameState.scoreRed += gameState.firstLegScoreRed
         gameState.scoreBlue += gameState.firstLegScoreBlue
     end
@@ -1834,8 +1918,9 @@ local function endMatch()
     if gameState.ball then gameState.ball.Anchored = true end
     pcall(playFinalWhistle)
     
-    -- Check Two Legged
-    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
+    local isGroup = (getCurrentStage() == "GROUP STAGE")
+    
+    if not isGroup and gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
         gameState.firstLegScoreRed = gameState.scoreRed
         gameState.firstLegScoreBlue = gameState.scoreBlue
         gameState.currentLeg = 2
@@ -2024,14 +2109,15 @@ local function startTimer()
                             gameState.gameActive = true
                         end)
                     else
-                        if not gameState.knockoutEnabled then
-                            -- Vòng bảng / Đá 1 lượt (Không loại trực tiếp) => End Match
+                        local isGroup = (getCurrentStage() == "GROUP STAGE")
+                        if isGroup then
+                            -- Group Stage: End Match
                             task.spawn(function()
                                 local ok, err = pcall(endMatch)
                                 if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                             end)
                         else
-                            -- Đá loại trực tiếp
+                            -- Knockout Stage
                             local totalRed = gameState.scoreRed
                             local totalBlue = gameState.scoreBlue
                             if gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
@@ -2040,17 +2126,14 @@ local function startTimer()
                             end
                             
                             if gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
-                                -- Lượt đi kết thúc -> End Match (để chuyển lượt về)
                                 task.spawn(function()
                                     local ok, err = pcall(endMatch)
                                     if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                                 end)
                             else
-                                -- Lượt về hoặc đá 1 lượt
                                 if not gameState.isExtraTime then
                                     if totalRed == totalBlue then
                                         if gameState.extraTimeEnabled then
-                                            -- Đá hiệp phụ
                                             task.wait(3)
                                             gameState.restartCountdown = HALF_BREAK
                                             while gameState.restartCountdown > 0 do
@@ -2066,13 +2149,11 @@ local function startTimer()
                                             gameState.gameActive = true
                                         else
                                             if gameState.penaltyEnabled then
-                                                -- Luân lưu
                                                 task.spawn(function()
                                                     local ok, err = pcall(runPenaltyShootout)
                                                     if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
                                                 end)
                                             else
-                                                -- Hòa (không đá hiệp phụ, không luân lưu)
                                                 task.spawn(function()
                                                     local ok, err = pcall(endMatch)
                                                     if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
@@ -2080,30 +2161,25 @@ local function startTimer()
                                             end
                                         end
                                     else
-                                        -- Có tỉ số -> End Match
                                         task.spawn(function()
                                             local ok, err = pcall(endMatch)
                                             if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                                         end)
                                     end
                                 else
-                                    -- Hết hiệp phụ
                                     if totalRed == totalBlue then
                                         if gameState.penaltyEnabled then
-                                            -- Luân lưu
                                             task.spawn(function()
                                                 local ok, err = pcall(runPenaltyShootout)
                                                 if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
                                             end)
                                         else
-                                            -- Hòa
                                             task.spawn(function()
                                                 local ok, err = pcall(endMatch)
                                                 if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                                             end)
                                         end
                                     else
-                                        -- Có tỉ số
                                         task.spawn(function()
                                             local ok, err = pcall(endMatch)
                                             if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
@@ -2221,14 +2297,13 @@ local function createSettingsUI()
     gameState.benchBtn = benchBtn
 
     msh(sc,144,"MATCH RULES",Color3.fromRGB(255,150,100))
-    mtg(sc,174,"Knockout Stage (Loại trực tiếp)", gameState.knockoutEnabled, function(st) gameState.knockoutEnabled = st; updateTournamentDisplay() end)
-    mtg(sc,212,"Extra Time (Hiệp phụ)", gameState.extraTimeEnabled, function(st) gameState.extraTimeEnabled = st end)
-    mtg(sc,250,"Penalty Shootout (Luân lưu)", gameState.penaltyEnabled, function(st) gameState.penaltyEnabled = st end)
-    mtg(sc,288,"Two-Legged Tie (Lượt đi/về)", gameState.twoLeggedEnabled, function(st) gameState.twoLeggedEnabled = st; gameState.currentLeg = 1; updateTournamentDisplay() end)
+    mtg(sc,174,"Extra Time", gameState.extraTimeEnabled, function(st) gameState.extraTimeEnabled = st end)
+    mtg(sc,212,"Penalty Shootout", gameState.penaltyEnabled, function(st) gameState.penaltyEnabled = st end)
+    mtg(sc,250,"Two-Legged Tie", gameState.twoLeggedEnabled, function(st) gameState.twoLeggedEnabled = st; gameState.currentLeg = 1; updateTournamentDisplay() end)
     
-    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,326)
+    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,288)
     flr.BackgroundTransparency=1; flr.Text="First Leg Score (Red - Blue)"; flr.TextColor3=Color3.fromRGB(200,200,200); flr.TextXAlignment=Enum.TextXAlignment.Left; flr.Font=Enum.Font.FredokaOne; flr.TextScaled=true
-    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,344); flrBox.BackgroundTransparency=1
+    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,306); flrBox.BackgroundTransparency=1
     local frb=Instance.new("TextBox",flrBox); frb.Size=UDim2.new(0.45,0,1,0); frb.Position=UDim2.new(0,0,0,0)
     frb.BackgroundColor3=Color3.fromRGB(45,45,60); frb.Text=tostring(gameState.firstLegScoreRed); frb.TextColor3=Color3.new(1,1,1); frb.TextScaled=true; frb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",frb).CornerRadius=UDim.new(0,8)
@@ -2238,8 +2313,8 @@ local function createSettingsUI()
     frb.FocusLost:Connect(function() gameState.firstLegScoreRed = tonumber(frb.Text) or 0; updateTournamentDisplay() end)
     fbb.FocusLost:Connect(function() gameState.firstLegScoreBlue = tonumber(fbb.Text) or 0; updateTournamentDisplay() end)
 
-    msh(sc,390,"PLAYER POSITION",Color3.fromRGB(100,255,200))
-    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,416); posFrame.BackgroundTransparency=1
+    msh(sc,352,"PLAYER POSITION",Color3.fromRGB(100,255,200))
+    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,378); posFrame.BackgroundTransparency=1
     local posList = {"Striker", "Midfielder", "Defender"}
     local posBtns = {}
     for i, posName in ipairs(posList) do
@@ -2256,8 +2331,8 @@ local function createSettingsUI()
         table.insert(posBtns, b)
     end
 
-    msh(sc,456,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
-    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,482); tr2.BackgroundTransparency=1
+    msh(sc,418,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
+    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,444); tr2.BackgroundTransparency=1
     local pt=Instance.new("TextButton",tr2); pt.Size=UDim2.new(0.49,-2,1,0); pt.Position=UDim2.new(0,0,0,0)
     pt.BackgroundColor3=Color3.fromRGB(150,30,200); pt.Text="PHYSICS: OFF"; pt.TextColor3=Color3.new(1,1,1); pt.TextScaled=true; pt.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pt).CornerRadius=UDim.new(0,10)
@@ -2277,10 +2352,10 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     
-    msh(sc,546,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    msh(sc,508,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 130)
-    tFrame.Position = UDim2.new(0, 12, 0, 572)
+    tFrame.Position = UDim2.new(0, 12, 0, 534)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2305,60 +2380,60 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,716,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,742)
+    msh(sc,678,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,704)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,742)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,704)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,786,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,812)
+    msh(sc,748,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,774)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,842)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,804)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,876,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,838,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,902,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,952,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,1002,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1052,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,864,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,914,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,964,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1014,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1110,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1072,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1136,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1186,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1236,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1286,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1098,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1148,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1198,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1248,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1344,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1366)
+    msh(sc,1306,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1328)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.6,0.13,0.35,0.05,0.75,0,0}; local pst={1,1,1,1,1,1,0,0}; local pvl={1,1,1,1,1,1,1,0.08}
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1368); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1330); rw1.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1402,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1438,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1364,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1400,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    msh(sc,1476,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1498)
+    msh(sc,1438,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1460)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1500); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1462); rw2.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1534,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1570,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,1496,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,1532,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
@@ -2373,11 +2448,11 @@ local function createSettingsUI()
         end); i2=i2+1 end
     end
     
-    msh(sc,1608,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1632)
+    msh(sc,1570,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1594)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1632)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1594)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
