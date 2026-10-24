@@ -4,7 +4,6 @@ local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local StarterGui = game:GetService("StarterGui")
 local player = Players.LocalPlayer
 
 local MAP_POS = Vector3.new(0, 1000, 0)
@@ -75,7 +74,7 @@ local gameState = {
     stoppageTimeActive=false, penaltyUI=nil, penaltyBallsRed={}, penaltyBallsBlue={},
     lastScorer=nil, lastScorerTeam=nil,
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
-    playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil,
+    playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil, hudFrame=nil,
     playerPosition="Striker", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
     extraTimeEnabled = true,
     penaltyEnabled = true,
@@ -83,13 +82,8 @@ local gameState = {
     firstLegScoreRed = 0,
     firstLegScoreBlue = 0,
     currentLeg = 1,
-    -- FOUL & CARDS
-    warnings = 0,
-    hasYellow = false,
-    hasRed = false,
-    slideCooldown = 0,
-    aiSlideCooldowns = {},
-    freeKickActive = false,
+    practiceModeEnabled = false,
+    hasTrophy = false,
 }
 
 local function getPlayerAchievement(count)
@@ -224,10 +218,6 @@ local function advanceTournament()
         gameState.currentMatchInStage = 1
         if gameState.currentStageIndex > #t.stages then gameState.currentStageIndex = 1; gameState.currentMatchInStage = 1 end
     end
-    
-    gameState.warnings = 0
-    gameState.hasYellow = false
-    gameState.hasRed = false
     updateTournamentDisplay()
 end
 
@@ -293,10 +283,6 @@ end
 local function hideGoalText() if gameState.goalTextLabel then gameState.goalTextLabel.Visible=false end end
 
 local function toggleBenchMode()
-    if gameState.hasRed then
-        StarterGui:SetCore("SendNotification", {Title="BANNED", Text="Bạn đã bị thẻ đỏ, không thể vào sân!", Duration=3})
-        return
-    end
     if gameState.inPenaltyShootout and gameState.isOnBench then return end
     gameState.isOnBench = not gameState.isOnBench
     local chr = gameState.playerChar
@@ -331,28 +317,32 @@ local function toggleBenchMode()
     end
 end
 
+-- FIXED: AI runs towards the moving player to celebrate, duration 10s
 local function startGoalCelebration(scorer, scoringTeam)
-    if gameState.goalCelebrationActive then return end
+    if gameState.goalCelebrationActive or gameState.practiceModeEnabled then return end
     gameState.goalCelebrationActive = true
     local teamList = (scoringTeam == "Red") and gameState.redTeam or gameState.blueTeam
+    
     local runners = {}
     for _, bot in ipairs(teamList) do
         if bot.PrimaryPart and bot ~= scorer then table.insert(runners, bot) end
     end
+    
     local startTime = tick()
-    local duration = 10 -- 10 Seconds
+    local duration = 10
     local runConn
     runConn = RunService.Heartbeat:Connect(function()
         if tick() - startTime > duration then if runConn then runConn:Disconnect() end; return end
         
-        local targetPos
+        -- Dynamically update scorer position so AI follows the moving player
+        local scorerPos
         if scorer == "player" then
             local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
-            targetPos = hrp and hrp.Position or MAP_POS
+            scorerPos = hrp and hrp.Position or MAP_POS
         elseif scorer and scorer.PrimaryPart then
-            targetPos = scorer.PrimaryPart.Position
+            scorerPos = scorer.PrimaryPart.Position
         else
-            targetPos = MAP_POS
+            scorerPos = MAP_POS
         end
 
         for idx, bot in ipairs(runners) do
@@ -360,17 +350,18 @@ local function startGoalCelebration(scorer, scoringTeam)
                 local cur = bot.PrimaryPart.Position
                 if bot.Role.Value == "Goalkeeper" and (tick()-startTime) < 1.2 then
                     local jump = math.abs(math.sin((tick()-startTime)*10))*3
-                    pcall(moveCharacter, bot, Vector3.new(cur.X, TORSO_Y+jump, cur.Z), targetPos)
+                    pcall(moveCharacter, bot, Vector3.new(cur.X, TORSO_Y+jump, cur.Z), scorerPos)
                 else
-                    local dir = targetPos - cur
+                    local dir = scorerPos - cur
                     local horiz = Vector3.new(dir.X,0,dir.Z)
                     if horiz.Magnitude > 4 then
                         horiz = horiz.Unit
                         local newPos = cur + horiz * 22 * 0.033
-                        pcall(moveCharacter, bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), targetPos)
+                        pcall(moveCharacter, bot, Vector3.new(newPos.X, TORSO_Y, newPos.Z), scorerPos)
                     else
                         local jump = math.abs(math.sin((tick()-startTime)*12 + idx))*2
-                        pcall(moveCharacter, bot, Vector3.new(cur.X, TORSO_Y+jump, cur.Z), targetPos)
+                        local offset = CFrame.Angles(0, (idx/#runners)*math.pi*2, 0) * Vector3.new(3.5, 0, 0)
+                        pcall(moveCharacter, bot, Vector3.new(cur.X + offset.X, TORSO_Y+jump, cur.Z + offset.Z), scorerPos)
                     end
                 end
             end
@@ -451,11 +442,16 @@ local function buildTrophy(tournamentType)
     return model
 end
 
+-- FIXED: Trophy tool is now saved and grip is adjusted
 local function createTrophyTool()
     local char = gameState.playerChar or player.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
+
+    local bp = player:FindFirstChild("Backpack")
+    for _, t in ipairs(char:GetChildren()) do if t.Name == "Trophy" then t:Destroy() end end
+    if bp then for _, t in ipairs(bp:GetChildren()) do if t.Name == "Trophy" then t:Destroy() end end end
 
     local tool = Instance.new("Tool")
     tool.Name = "Trophy"
@@ -494,12 +490,12 @@ local function createTrophyTool()
         p.Parent = tool
     end
     
-    -- Fixed Grip: Trophy points straight up
-    tool.Grip = CFrame.new(0, -0.5, -0.5) * CFrame.Angles(math.rad(90), 0, 0)
+    tool.Grip = CFrame.new(0, -1.25, 0) * CFrame.Angles(math.rad(90), 0, 0)
     
     tool.Parent = char
     task.wait(0.2)
     hum:EquipTool(tool)
+    gameState.hasTrophy = true
 end
 
 local function launchFirework(position)
@@ -592,6 +588,7 @@ local function startTrophyCeremony(winningTeam)
     local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
     local pedestalPos = podiumCenter + Vector3.new(-40, 3, 30)
     
+    -- 1. Build Podium
     local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
     gameState.podiumModel = podium
     local function mkStep(name, size, pos, color)
@@ -605,6 +602,7 @@ local function startTrophyCeremony(winningTeam)
     local carpet = mkStep("Carpet", Vector3.new(70, 0.2, 8), podiumCenter+Vector3.new(0,6.2,6), Color3.fromRGB(180,30,30))
     carpet.Material = Enum.Material.Fabric
     
+    -- 2. Pedestal & Guard & Display Trophy
     local pedestal = Instance.new("Part")
     pedestal.Size = Vector3.new(6, 6, 6)
     pedestal.Position = pedestalPos + Vector3.new(0, 3, 0)
@@ -620,6 +618,7 @@ local function startTrophyCeremony(winningTeam)
     
     local guard = createGuard(pedestalPos + Vector3.new(6, 0, 0))
     
+    -- 3. Losers walk past guard
     local loserStartPos = pedestalPos + Vector3.new(-20, 0, 0)
     local loserViewPos = podiumCenter + Vector3.new(0, 0, 35)
     
@@ -629,6 +628,7 @@ local function startTrophyCeremony(winningTeam)
     end
     task.wait(1)
     
+    -- Move to guard
     local stopAtGuard = {}
     for i, bot in ipairs(losers) do
         stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
@@ -651,8 +651,10 @@ local function startTrophyCeremony(winningTeam)
     task.wait(4)
     if conn then conn:Disconnect() end
     
+    -- Stand still for 3 seconds
     task.wait(3)
     
+    -- Walk to viewing area
     local viewTargets = {}
     for i, bot in ipairs(losers) do
         viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
@@ -676,6 +678,7 @@ local function startTrophyCeremony(winningTeam)
         pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y, target.Z), podiumCenter)
     end
     
+    -- 4. Winner representative goes to pedestal, grabs trophy, goes to podium
     local rep = winners[1]
     if playerIsWinner and gameState.playerChar then
         local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
@@ -712,9 +715,11 @@ local function startTrophyCeremony(winningTeam)
         if conn then conn:Disconnect() end
     end
     
+    -- Cúp gắn vào người đại diện
     local trophyHandPos = grabPos + Vector3.new(0, 5, 0)
     displayTrophy:PivotTo(CFrame.new(trophyHandPos))
     
+    -- 5. Representative walks to podium center
     local targetPodium = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
     local t3 = tick()
     conn = RunService.Heartbeat:Connect(function()
@@ -741,6 +746,7 @@ local function startTrophyCeremony(winningTeam)
     task.wait(3)
     if conn then conn:Disconnect() end
     
+    -- 6. Other winners walk to podium
     local otherWinners = {}
     for _, bot in ipairs(winners) do
         if bot ~= rep then table.insert(otherWinners, bot) end
@@ -783,6 +789,7 @@ local function startTrophyCeremony(winningTeam)
     task.wait(walkDuration + 0.5)
     if conn then conn:Disconnect() end
     
+    -- 7. Lift Trophy & Cheer
     local cheerStart = tick()
     local cheerDuration = 8
     conn = RunService.Heartbeat:Connect(function()
@@ -823,6 +830,7 @@ local function startTrophyCeremony(winningTeam)
     task.wait(cheerDuration - 8 + 2)
     if conn then conn:Disconnect() end
     
+    -- 8. Give Trophy Tool
     if playerIsWinner then
         if displayTrophy then 
             displayTrophy:Destroy() 
@@ -836,252 +844,6 @@ local function startTrophyCeremony(winningTeam)
     if gameState.podiumModel then gameState.podiumModel:Destroy(); gameState.podiumModel = nil end
     if gameState.trophyModel then gameState.trophyModel:Destroy(); gameState.trophyModel = nil end
     if guard then guard:Destroy() end
-end
-
--- ===== FOUL SYSTEM =====
-local function setupFreeKick(kickingTeam, pos)
-    gameState.freeKickActive = true
-    gameState.paused = true
-    if gameState.ball then
-        gameState.ball.Anchored = true
-        gameState.ball.CFrame = CFrame.new(pos + Vector3.new(0, 3, 0))
-    end
-    
-    local goalPos = (kickingTeam == "Red") and (MAP_POS.Z + PITCH_LENGTH/2) or (MAP_POS.Z - PITCH_LENGTH/2)
-    local distToGoal = (pos - Vector3.new(MAP_POS.X, pos.Y, goalPos)).Magnitude
-    local defendingTeam = (kickingTeam == "Red") and gameState.blueTeam or gameState.redTeam
-    
-    task.wait(1)
-    
-    if distToGoal < 200 then
-        -- Build Wall
-        local dirToGoal = (Vector3.new(MAP_POS.X, pos.Y, goalPos) - pos).Unit
-        local wallCenter = pos + dirToGoal * 25
-        local wallDefenders = {}
-        for _, bot in ipairs(defendingTeam) do
-            if bot.Role.Value ~= "Goalkeeper" and #wallDefenders < 4 then
-                table.insert(wallDefenders, bot)
-            end
-        end
-        for i, bot in ipairs(wallDefenders) do
-            local offsetX = (i - (#wallDefenders+1)/2) * 4
-            local wallPos = wallCenter + Vector3.new(offsetX, 0, 0)
-            pcall(moveCharacter, bot, Vector3.new(wallPos.X, TORSO_Y, wallPos.Z), pos)
-        end
-        
-        -- Shooter
-        local shooter = nil
-        if kickingTeam == gameState.playerTeam and not gameState.isOnBench and not gameState.hasRed then
-            shooter = gameState.playerChar
-            local hrp = shooter:FindFirstChild("HumanoidRootPart")
-            if hrp then hrp.CFrame = CFrame.new(pos + dirToGoal * -10, pos) end
-        else
-            for _, bot in ipairs((kickingTeam == "Red") and gameState.redTeam or gameState.blueTeam) do
-                if bot.Role.Value == "Striker" and not shooter then shooter = bot end
-            end
-            if shooter and shooter.PrimaryPart then
-                pcall(moveCharacter, shooter, pos + dirToGoal * -10, pos)
-            end
-        end
-        
-        task.wait(1.5)
-        if gameState.ball then
-            gameState.ball.Anchored = false
-            -- Kick: Curve (Cứa lòng) or Knuckle (Lá vàng rơi)
-            local isKnuckle = math.random(1, 2) == 1
-            local target = Vector3.new(MAP_POS.X + (math.random() - 0.5) * (GOAL_WIDTH - 10), MAP_POS.Y + GOAL_HEIGHT - 5, goalPos)
-            local kickDir = (target - gameState.ball.Position).Unit
-            
-            if isKnuckle then
-                applyKnuckleball(gameState.ball, kickDir, 250)
-            else
-                applyPowerShot(gameState.ball, kickDir, 300, 400)
-            end
-            
-            -- GK Save chance modification: Hard GK has 70% chance to save.
-            local gk = nil
-            for _, bot in ipairs(defendingTeam) do if bot.Role.Value == "Goalkeeper" then gk = bot end end
-            if gk and gk.PrimaryPart then
-                local gkDiff = getDiff(defendingTeam == gameState.redTeam and "Red" or "Blue").gkCatchMul
-                if gkDiff >= 1.5 then -- Hard difficulty
-                    if math.random() < 0.70 then
-                        -- Force GK to catch
-                        task.delay(0.4, function()
-                            if gameState.ball then
-                                gameState.ball.AssemblyLinearVelocity = Vector3.zero
-                                gameState.ball.AssemblyAngularVelocity = Vector3.zero
-                                gameState.ball.CFrame = CFrame.new(gk.PrimaryPart.Position + gk.PrimaryPart.CFrame.LookVector * 3)
-                                playNetSound()
-                                gameState.lastTouchTeam = defendingTeam == gameState.redTeam and "Red" or "Blue"
-                            end
-                        end)
-                    end
-                end
-            end
-        end
-    else
-        -- Long free kick, pass
-        task.wait(1)
-        if gameState.ball then
-            gameState.ball.Anchored = false
-            local targetBot = nil
-            for _, bot in ipairs((kickingTeam == "Red") and gameState.redTeam or gameState.blueTeam) do
-                if bot.Role.Value ~= "Goalkeeper" and bot.PrimaryPart then targetBot = bot break end
-            end
-            if targetBot then
-                applyLobPass(gameState.ball, targetBot.PrimaryPart.Position, 30)
-            else
-                gameState.ball.AssemblyLinearVelocity = Vector3.new(0, 50, (kickingTeam == "Red" and 1 or -1) * 100)
-            end
-        end
-    end
-    
-    task.wait(1)
-    gameState.freeKickActive = false
-    gameState.paused = false
-end
-
-local function triggerFoul(victimBot, foulPos, isPlayerFoul)
-    playWhistle()
-    local playerTeam = gameState.playerTeam
-    local oppTeam = (playerTeam == "Red") and "Blue" or "Red"
-    
-    if isPlayerFoul then
-        local ownGoalZ = (playerTeam == "Red") and (MAP_POS.Z - PITCH_LENGTH/2) or (MAP_POS.Z + PITCH_LENGTH/2)
-        local inBox = math.abs(foulPos.Z - ownGoalZ) < PENALTY_BOX_DEPTH and math.abs(foulPos.X - MAP_POS.X) < 100
-        
-        if inBox then
-            gameState.hasRed = true
-            pcall(function() StarterGui:SetCore("SendNotification", {Title="RED CARD", Text="Foul inside the box! You are sent off.", Duration=5}) end)
-            if not gameState.isOnBench then toggleBenchMode() end
-        else
-            gameState.warnings = gameState.warnings + 1
-            if gameState.warnings >= 2 then
-                if gameState.hasYellow then
-                    gameState.hasRed = true
-                    pcall(function() StarterGui:SetCore("SendNotification", {Title="RED CARD", Text="Second Yellow! You are sent off.", Duration=5}) end)
-                    if not gameState.isOnBench then toggleBenchMode() end
-                else
-                    gameState.hasYellow = true
-                    pcall(function() StarterGui:SetCore("SendNotification", {Title="YELLOW CARD", Text="You received a yellow card!", Duration=5}) end)
-                end
-            else
-                pcall(function() StarterGui:SetCore("SendNotification", {Title="WARNING", Text="Foul! Opponent gets a free kick.", Duration=5}) end)
-            end
-            setupFreeKick(oppTeam, foulPos)
-        end
-    else
-        -- AI fouled player
-        pcall(function() StarterGui:SetCore("SendNotification", {Title="FREE KICK", Text="You won a free kick!", Duration=5}) end)
-        setupFreeKick(playerTeam, foulPos)
-    end
-end
-
--- ===== AI SLIDE TACKLE =====
-local function aiSlideTackle(bot, targetPos)
-    local bid = bot:GetDebugId()
-    gameState.aiSlideCooldowns[bid] = tick() + 5
-    local bp = bot.PrimaryPart.Position
-    local look = (targetPos - bp).Unit
-    
-    local slideVel = Instance.new("BodyVelocity")
-    slideVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    slideVel.Velocity = Vector3.new(look.X, 0, look.Z) * 40
-    slideVel.Parent = bot.PrimaryPart
-    
-    local originalCF = bot.PrimaryPart.CFrame
-    local startT = tick()
-    local hasFouled = false
-    
-    task.spawn(function()
-        while tick() - startT < 0.6 do
-            local playerChar = gameState.playerChar
-            local hrp = playerChar and playerChar:FindFirstChild("HumanoidRootPart")
-            if hrp and not hasFouled then
-                local dist = (bot.PrimaryPart.Position - hrp.Position).Magnitude
-                if dist < 10 then
-                    hasFouled = true
-                    -- Make player fall
-                    local hum = playerChar:FindFirstChildOfClass("Humanoid")
-                    if hum then hum.PlatformStand = true end
-                    task.delay(1, function() if hum then hum.PlatformStand = false end end)
-                    
-                    triggerFoul(bot, hrp.Position, false)
-                    break
-                end
-            end
-            task.wait(0.05)
-        end
-    end)
-    
-    task.wait(0.6)
-    slideVel:Destroy()
-    if not hasFouled then
-        bot.PrimaryPart.CFrame = originalCF
-    end
-end
-
--- ===== PLAYER SLIDE TACKLE =====
-local function doSlideTackle()
-    if gameState.isOnBench or gameState.celebrating or gameState.inPenaltyShootout or gameState.freeKickActive or gameState.hasRed then return end
-    if tick() < gameState.slideCooldown then return end
-    gameState.slideCooldown = tick() + 3
-    
-    local char = gameState.playerChar
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then hum.PlatformStand = true end
-    
-    local look = hrp.CFrame.LookVector
-    local slideVel = Instance.new("BodyVelocity")
-    slideVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    slideVel.Velocity = Vector3.new(look.X, 0, look.Z) * 40
-    slideVel.Parent = hrp
-    
-    local originalCF = hrp.CFrame
-    local startT = tick()
-    
-    task.spawn(function()
-        while tick() - startT < 0.6 do
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(math.rad(-90), 0, 0)
-            task.wait(0.05)
-        end
-    end)
-    
-    local hitSomething = false
-    task.spawn(function()
-        local sT = tick()
-        while tick() - sT < 0.6 do
-            if hitSomething then break end
-            local pPos = hrp.Position
-            
-            -- Check ball
-            if gameState.ball and (pPos - gameState.ball.Position).Magnitude < 12 then
-                gameState.ball.AssemblyLinearVelocity = look * 80 + Vector3.new(0, 20, 0)
-                hitSomething = true
-                playBallKick(gameState.ball.Position, 0.8)
-                gameState.lastTouchTeam = gameState.playerTeam
-            end
-            
-            -- Check AI
-            local oppTeam = (gameState.playerTeam == "Red") and gameState.blueTeam or gameState.redTeam
-            for _, opp in ipairs(oppTeam) do
-                if opp.PrimaryPart and (pPos - opp.PrimaryPart.Position).Magnitude < 8 then
-                    hitSomething = true
-                    triggerFoul(opp, pPos, true)
-                    break
-                end
-            end
-            task.wait(0.05)
-        end
-    end)
-    
-    task.wait(0.6)
-    slideVel:Destroy()
-    if hum then hum.PlatformStand = false end
-    TweenService:Create(hrp, TweenInfo.new(0.3), {CFrame = originalCF}):Play()
 end
 
 local function createStadium()
@@ -1326,7 +1088,7 @@ local function findDirectionalPassTarget()
 end
 
 local function physicsDefyingShot()
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench or gameState.hasRed then return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
     local char=gameState.playerChar; if not char then return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent then return end
@@ -1369,7 +1131,7 @@ local function physicsDefyingShot()
 end
 
 local function activateSuperSkill()
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench or gameState.hasRed then return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
     if gameState.superSkillActive then return end
     local char=gameState.playerChar; if not char then return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
@@ -1492,7 +1254,7 @@ function findBestPassTarget(bot)
         end
     end
     local pc = gameState.playerChar
-    if pc and gameState.playerTeam == team and not gameState.isOnBench and not gameState.hasRed then
+    if pc and gameState.playerTeam == team and not gameState.isOnBench then
         local phrp = pc:FindFirstChild("HumanoidRootPart")
         if phrp then
             table.insert(candidates, {part=phrp, bot=nil, isPlayer=true})
@@ -1584,7 +1346,7 @@ local function goalkeeperPassBall(gk,ball,team)
     local cands={}; local tm=(team=="Red") and gameState.redTeam or gameState.blueTeam
     for _,t in ipairs(tm) do if t~=gk and t.PrimaryPart then table.insert(cands,{part=t.PrimaryPart,isPlayer=false}) end end
     local pc=gameState.playerChar
-    if pc and gameState.playerTeam==team and not gameState.isOnBench and not gameState.hasRed then
+    if pc and gameState.playerTeam==team and not gameState.isOnBench then
         local hrp=pc:FindFirstChild("HumanoidRootPart")
         if hrp then table.insert(cands,{part=hrp,isPlayer=true}) end
     end
@@ -1709,22 +1471,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
         return
     end
-    
-    -- AI Slide Tackle Logic
-    if gameState.playerDribbling and team ~= gameState.playerTeam then
-        local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local d = (hrp.Position - bp).Magnitude
-            local bid = bot:GetDebugId()
-            if d < 10 and tick() > (gameState.aiSlideCooldowns[bid] or 0) then
-                if math.random() < diff.interceptMul * 0.01 then
-                    task.spawn(aiSlideTackle, bot, hrp.Position)
-                    return
-                end
-            end
-        end
-    end
-
     local pd=gameState.playerDribbling and (gameState.playerTeam==team) and not gameState.isOnBench
     if pd then
         local pc=gameState.playerChar; local phrp=pc and pc:FindFirstChild("HumanoidRootPart")
@@ -1772,9 +1518,16 @@ end
 local function updateAILogic(dt)
     local ball=gameState.ball; if not ball or not ball.Parent then return end
     if gameState.restartCooldown or gameState.goalScored then return end
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.trophyActive or gameState.freeKickActive then return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.trophyActive then return end
     if gameState.goalCelebrationActive then return end
     if gameState.paused or gameState.restartCountdown>0 then return end
+    
+    if gameState.practiceModeEnabled then
+        for _, bot in ipairs(gameState.redTeam) do if bot.Role.Value == "Goalkeeper" then updateGoalkeeperAI(bot, dt) end end
+        for _, bot in ipairs(gameState.blueTeam) do if bot.Role.Value == "Goalkeeper" then updateGoalkeeperAI(bot, dt) end end
+        return
+    end
+
     local ab={}
     for _,b in ipairs(gameState.redTeam) do table.insert(ab,b) end
     for _,b in ipairs(gameState.blueTeam) do table.insert(ab,b) end
@@ -1808,7 +1561,7 @@ end
 
 local function checkInterception()
     local ball=gameState.ball; if not ball or not ball.Parent or gameState.gkHolding then return end
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown>0 or gameState.freeKickActive then return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown>0 then return end
     if gameState.playerSkillActive or gameState.superSkillActive then return end
     local speed=ball.AssemblyLinearVelocity.Magnitude
     local isD=gameState.playerDribbling
@@ -1832,7 +1585,7 @@ local function checkInterception()
 end
 
 local function doDribble()
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench or gameState.hasRed then return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
     local char=gameState.playerChar; if not char then return end
     local hrp=char:FindFirstChild("HumanoidRootPart"); local ball=gameState.ball
     if not hrp or not ball or not ball.Parent or (hrp.Position-ball.Position).Magnitude>20 then return end
@@ -1850,7 +1603,7 @@ local function doDribble()
 end
 
 local function updatePlayerDribble(dt)
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive or gameState.isOnBench or gameState.hasRed then 
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.superSkillActive or gameState.isOnBench then 
         gameState.playerDribbling=false; return 
     end
     if not gameState.playerDribbling then return end
@@ -1885,31 +1638,27 @@ local function resetPositions(concedingTeam)
     gameState.playerDribbling=false; gameState.gkHolding=false; gameState.gkHoldingTeam=nil
     gameState.playerSkillActive=false; gameState.superSkillActive=false; gameState.aiSkillActive={}
     if gameState.ball then gameState.ball.CanCollide=true end
-    for _,bot in ipairs(gameState.redTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); pcall(moveCharacter, bot, p, p+Vector3.new(0,0,1)) end end
-    for _,bot in ipairs(gameState.blueTeam) do if bot.PrimaryPart then local p=getHomePos(bot,false); pcall(moveCharacter, bot, p, p+Vector3.new(0,0,-1)) end end
+    
+    for _,bot in ipairs(gameState.redTeam) do 
+        if bot.PrimaryPart then 
+            local p=getHomePos(bot,false)
+            pcall(moveCharacter, bot, p, p+Vector3.new(0,0,1)) 
+        end 
+    end
+    for _,bot in ipairs(gameState.blueTeam) do 
+        if bot.PrimaryPart then 
+            local p=getHomePos(bot,false)
+            pcall(moveCharacter, bot, p, p+Vector3.new(0,0,-1)) 
+        end 
+    end
+    
     if gameState.ball then
         gameState.ball.CFrame=CFrame.new(MAP_POS+Vector3.new(0,5,0))
         gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
     end
     gameState.ballIsCurving=false; gameState.passCooldowns={}; gameState.aiDribbleState={}
-    gameState.freeKickActive = false
-    
-    -- Clean up Trophy Tool
-    local char = gameState.playerChar
-    if char then
-        for _, obj in ipairs(char:GetChildren()) do
-            if obj:IsA("Tool") and obj.Name == "Trophy" then obj:Destroy() end
-        end
-    end
-    local backpack = player:FindFirstChild("Backpack")
-    if backpack then
-        for _, obj in ipairs(backpack:GetChildren()) do
-            if obj:IsA("Tool") and obj.Name == "Trophy" then obj:Destroy() end
-        end
-    end
-
     local pc=gameState.playerChar
-    if pc and pc:FindFirstChild("HumanoidRootPart") and not gameState.isOnBench and not gameState.hasRed then
+    if pc and pc:FindFirstChild("HumanoidRootPart") and not gameState.isOnBench then
         local ad=(gameState.playerTeam=="Red") and 1 or -1
         local tX = MAP_POS.X; local tZ = MAP_POS.Z
         if gameState.playerPosition == "Striker" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
@@ -2020,7 +1769,7 @@ local function runPenaltyShootout()
     local rsC,bsC=0,0
     local function gsh(team)
         local ul=(team=="Red") and ru or bu
-        if team==gameState.playerTeam and not ul["player"] and not gameState.isOnBench and not gameState.hasRed then
+        if team==gameState.playerTeam and not ul["player"] and not gameState.isOnBench then
             local pc=gameState.playerChar; if pc and pc:FindFirstChild("HumanoidRootPart") then return {isPlayer=true,char=pc,key="player"} end
         end
         for _,bot in ipairs((team=="Red") and gameState.redTeam or gameState.blueTeam) do
@@ -2347,7 +2096,7 @@ local function endMatch()
 end
 
 local function onGoalScored(scoringTeam)
-    if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating then return end
+    if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating or gameState.practiceModeEnabled then return end
     gameState.goalScored=true; playNetSound()
     if scoringTeam=="Red" then gameState.scoreRed=gameState.scoreRed+1 else gameState.scoreBlue=gameState.scoreBlue+1 end
     updatePlayerAchievement(scoringTeam)
@@ -2368,7 +2117,7 @@ end
 local function checkRules()
     local ball=gameState.ball
     if not ball or not ball.Parent or gameState.restartCooldown or not gameState.gameActive or gameState.goalScored then return end
-    if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown>0 or gameState.freeKickActive then return end
+    if gameState.inPenaltyShootout or gameState.celebrating or gameState.paused or gameState.restartCountdown>0 then return end
     local bp=ball.Position
     if math.abs(bp.Z-MAP_POS.Z)>PITCH_LENGTH/2+3 then
         local ww=math.abs(bp.X-MAP_POS.X)<GOAL_WIDTH/2
@@ -2387,7 +2136,7 @@ local function startTimer()
             task.wait(1)
             if gameState.gameActive and not gameState.paused and not gameState.gkHolding
                and not gameState.goalScored and not gameState.inPenaltyShootout and not gameState.celebrating
-               and not gameState.goalCelebrationActive and not gameState.trophyActive and not gameState.freeKickActive then
+               and not gameState.goalCelebrationActive and not gameState.trophyActive and not gameState.practiceModeEnabled then
                 
                 gameState.timeLeft = gameState.timeLeft - 1
                 
@@ -2503,6 +2252,41 @@ local function skipMatch()
     gameState.stoppageTimeActive = true
 end
 
+local function setPracticeMode(enabled)
+    gameState.practiceModeEnabled = enabled
+    
+    local function toggleBots(teamList)
+        for _, bot in ipairs(teamList) do
+            if bot.Role.Value ~= "Goalkeeper" then
+                if enabled then
+                    pcall(moveCharacter, bot, Vector3.new(0, -500, 0), Vector3.new(0, -500, 1))
+                    for _, p in ipairs(bot:GetChildren()) do
+                        if p:IsA("BasePart") then p.Transparency = 1 end
+                    end
+                else
+                    for _, p in ipairs(bot:GetChildren()) do
+                        if p:IsA("BasePart") then p.Transparency = 0 end
+                    end
+                end
+            end
+        end
+    end
+    toggleBots(gameState.redTeam)
+    toggleBots(gameState.blueTeam)
+    
+    if gameState.hudFrame then gameState.hudFrame.Visible = not enabled end
+    
+    if gameState.ball then
+        gameState.ball.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 5, 0))
+        gameState.ball.AssemblyLinearVelocity = Vector3.zero
+        gameState.ball.AssemblyAngularVelocity = Vector3.zero
+    end
+    
+    if not enabled then
+        resetPositions(nil)
+    end
+end
+
 local function createSettingsUI()
     if gameState.settingsUI then gameState.settingsUI:Destroy() end
     local gui=Instance.new("ScreenGui"); gui.Name="SettingsUI"; gui.ResetOnSpawn=false; gui.Parent=player.PlayerGui
@@ -2527,7 +2311,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2000)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2200)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2601,10 +2385,11 @@ local function createSettingsUI()
     mtg(sc,174,"Extra Time", gameState.extraTimeEnabled, function(st) gameState.extraTimeEnabled = st end)
     mtg(sc,212,"Penalty Shootout", gameState.penaltyEnabled, function(st) gameState.penaltyEnabled = st end)
     mtg(sc,250,"Two-Legged Tie", gameState.twoLeggedEnabled, function(st) gameState.twoLeggedEnabled = st; gameState.currentLeg = 1; updateTournamentDisplay() end)
+    mtg(sc,288,"Practice Mode", gameState.practiceModeEnabled, function(st) setPracticeMode(st) end)
     
-    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,288)
+    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,326)
     flr.BackgroundTransparency=1; flr.Text="First Leg Score (Red - Blue)"; flr.TextColor3=Color3.fromRGB(200,200,200); flr.TextXAlignment=Enum.TextXAlignment.Left; flr.Font=Enum.Font.FredokaOne; flr.TextScaled=true
-    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,306); flrBox.BackgroundTransparency=1
+    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,344); flrBox.BackgroundTransparency=1
     local frb=Instance.new("TextBox",flrBox); frb.Size=UDim2.new(0.45,0,1,0); frb.Position=UDim2.new(0,0,0,0)
     frb.BackgroundColor3=Color3.fromRGB(45,45,60); frb.Text=tostring(gameState.firstLegScoreRed); frb.TextColor3=Color3.new(1,1,1); frb.TextScaled=true; frb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",frb).CornerRadius=UDim.new(0,8)
@@ -2614,8 +2399,8 @@ local function createSettingsUI()
     frb.FocusLost:Connect(function() gameState.firstLegScoreRed = tonumber(frb.Text) or 0; updateTournamentDisplay() end)
     fbb.FocusLost:Connect(function() gameState.firstLegScoreBlue = tonumber(fbb.Text) or 0; updateTournamentDisplay() end)
 
-    msh(sc,352,"PLAYER POSITION",Color3.fromRGB(100,255,200))
-    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,378); posFrame.BackgroundTransparency=1
+    msh(sc,390,"PLAYER POSITION",Color3.fromRGB(100,255,200))
+    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,416); posFrame.BackgroundTransparency=1
     local posList = {"Striker", "Midfielder", "Defender"}
     local posBtns = {}
     for i, posName in ipairs(posList) do
@@ -2632,8 +2417,8 @@ local function createSettingsUI()
         table.insert(posBtns, b)
     end
 
-    msh(sc,418,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
-    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,444); tr2.BackgroundTransparency=1
+    msh(sc,456,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
+    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,482); tr2.BackgroundTransparency=1
     local pt=Instance.new("TextButton",tr2); pt.Size=UDim2.new(0.49,-2,1,0); pt.Position=UDim2.new(0,0,0,0)
     pt.BackgroundColor3=Color3.fromRGB(150,30,200); pt.Text="PHYSICS: OFF"; pt.TextColor3=Color3.new(1,1,1); pt.TextScaled=true; pt.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pt).CornerRadius=UDim.new(0,10)
@@ -2653,10 +2438,10 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     
-    msh(sc,508,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    msh(sc,546,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 130)
-    tFrame.Position = UDim2.new(0, 12, 0, 534)
+    tFrame.Position = UDim2.new(0, 12, 0, 572)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2681,60 +2466,60 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,678,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,704)
+    msh(sc,716,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,742)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,704)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,742)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,748,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,774)
+    msh(sc,786,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,812)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,804)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,842)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,838,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,876,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,864,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,914,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,964,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1014,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,902,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,952,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1002,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1052,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1072,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1110,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1098,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1148,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1198,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1248,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1136,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1186,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1236,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1286,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1306,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1328)
+    msh(sc,1344,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1366)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.6,0.13,0.35,0.05,0.75,0,0}; local pst={1,1,1,1,1,1,0,0}; local pvl={1,1,1,1,1,1,1,0.08}
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1330); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1368); rw1.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1364,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1400,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1402,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1438,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    msh(sc,1438,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1460)
+    msh(sc,1476,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1498)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1462); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1500); rw2.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1496,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1532,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,1534,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,1570,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
@@ -2749,11 +2534,11 @@ local function createSettingsUI()
         end); i2=i2+1 end
     end
     
-    msh(sc,1570,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1594)
+    msh(sc,1608,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1632)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1594)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1632)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
@@ -2808,6 +2593,7 @@ local function createGameUI()
     local brd=Instance.new("Frame",gui); brd.Size=UDim2.new(0,240,0,88); brd.Position=UDim2.new(0,10,0,10)
     brd.BackgroundColor3=Color3.fromRGB(15,15,20); brd.BackgroundTransparency=0.2; brd.BorderSizePixel=0
     Instance.new("UICorner",brd).CornerRadius=UDim.new(0,10)
+    gameState.hudFrame = brd
     local bS=Instance.new("UIStroke",brd); bS.Color=Color3.fromRGB(255,200,100); bS.Thickness=2
     local tlb=Instance.new("TextLabel",brd); tlb.Size=UDim2.new(1,-12,0,16); tlb.Position=UDim2.new(0,6,0,4)
     tlb.BackgroundTransparency=1; tlb.Text=gameState.tournamentType; tlb.TextColor3=Color3.fromRGB(255,215,0)
@@ -2866,15 +2652,14 @@ local function createGameUI()
     local knb=mkB("KnuckleBtn","KNUCKLE\n(Hold)",Color3.fromRGB(255,100,0),UDim2.new(0.8,-50,0.8,-158))
     local drb=mkB("DribbleBtn","DRIBBLE",Color3.fromRGB(0,150,255),UDim2.new(0.8,-50,0.8,-204))
     local skb=mkB("SkillBtn","SKILL",Color3.fromRGB(180,0,220),UDim2.new(0.8,-50,0.8,-250))
-    local slb=mkB("SlideBtn","SLIDE",Color3.fromRGB(150,50,50),UDim2.new(0.8,-50,0.8,-296))
-    local phb=mkB("PhysicsBtn","PHYSICS",Color3.fromRGB(150,30,200),UDim2.new(0.8,-50,0.8,-342),UDim2.new(0,100,0,42))
+    local phb=mkB("PhysicsBtn","PHYSICS",Color3.fromRGB(150,30,200),UDim2.new(0.8,-50,0.8,-296),UDim2.new(0,100,0,42))
     phb.Visible=false; gameState.physicsShotLabel=phb
-    local spb=mkB("SuperBtn","SUPER",Color3.fromRGB(200,100,20),UDim2.new(0.8,-50,0.8,-388),UDim2.new(0,100,0,42))
+    local spb=mkB("SuperBtn","SUPER",Color3.fromRGB(200,100,20),UDim2.new(0.8,-50,0.8,-342),UDim2.new(0,100,0,42))
     spb.Visible=false; gameState.superSkillLabel=spb
     local swb=mkB("SwitchTeamBtn","SWITCH",Color3.fromRGB(200,100,200),UDim2.new(0.2,-50,0.8,-20))
     local srb=mkB("SprintBtn","SPRINT",Color3.fromRGB(60,60,60),UDim2.new(0.2,-50,0.8,-66))
     
-    gameState.actionButtons = {shb, psb, lbb, knb, drb, skb, slb, phb, spb}
+    gameState.actionButtons = {shb, psb, lbb, knb, drb, skb, phb, spb}
     gameState.switchTeamBtn = swb
 
     local function gnb() local c=gameState.playerChar; if not c then return false end
@@ -2884,7 +2669,7 @@ local function createGameUI()
     local function sdb() gameState.playerDribbling=false end
 
     shb.MouseButton1Down:Connect(function()
-        if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench or gameState.hasRed then return end
+        if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench then return end
         local n=gnb(); if not n then return end
         sdb(); gameState.shootCharging=true; gameState.shootChargePower=0
         gameState.chargingBall=gameState.ball; gameState.chargingOriginalPos=gameState.ball.Position
@@ -2946,7 +2731,7 @@ local function createGameUI()
     local passCharging = false
     local passChargePower = 0
     psb.MouseButton1Down:Connect(function()
-        if gameState.isOnBench or gameState.inPenaltyShootout or gameState.celebrating or gameState.hasRed then return end
+        if gameState.isOnBench or gameState.inPenaltyShootout or gameState.celebrating then return end
         local n=gnb(); if not n then return end
         sdb()
         passCharging = true
@@ -2985,7 +2770,7 @@ local function createGameUI()
     end)
 
     lbb.MouseButton1Click:Connect(function()
-        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench or gameState.hasRed then return end
+        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         local n=gnb()
         if n then
             sdb()
@@ -3003,7 +2788,7 @@ local function createGameUI()
     end)
 
     knb.MouseButton1Down:Connect(function()
-        if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench or gameState.hasRed then return end
+        if not canPlayerTouchBall() or gameState.celebrating or gameState.inPenaltyShootout or gameState.isOnBench then return end
         local n=gnb(); if not n then return end
         sdb(); gameState.knuckleCharging=true; gameState.knuckleChargePower=0
         gameState.chargingBall=gameState.ball; gameState.chargingOriginalPos=gameState.ball.Position
@@ -3034,11 +2819,11 @@ local function createGameUI()
         gameState.knuckleChargePower=0; gameState.chargingBall=nil
     end)
     drb.MouseButton1Click:Connect(function()
-        if tick()-(gameState.lastDribbleTime or 0)<0.3 or gameState.isOnBench or gameState.hasRed then return end
+        if tick()-(gameState.lastDribbleTime or 0)<0.3 or gameState.isOnBench then return end
         gameState.lastDribbleTime=tick(); doDribble()
     end)
     skb.MouseButton1Click:Connect(function()
-        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench or gameState.hasRed then return end
+        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         local c=gameState.playerChar; if not c then return end
         local h=c:FindFirstChild("HumanoidRootPart"); local b=gameState.ball
         if not h or not b or not b.Parent or (h.Position-b.Position).Magnitude>20 then return end
@@ -3050,9 +2835,8 @@ local function createGameUI()
         playBallKick(b.Position,0.85)
         task.delay(2.5,function() gameState.playerSkillActive=false end)
     end)
-    slb.MouseButton1Click:Connect(doSlideTackle)
     swb.MouseButton1Click:Connect(function()
-        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench or gameState.hasRed then return end
+        if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         gameState.playerTeam=(gameState.playerTeam=="Red") and "Blue" or "Red"
         gameState.playerDribbling=false; updatePlayerAppearance()
         local pc=gameState.playerChar
@@ -3100,6 +2884,10 @@ local function autoStart()
     player.CharacterAdded:Connect(function(nc)
         gameState.playerChar=nc; gameState.sprinting=false; gameState.playerDribbling=false
         task.wait(0.5); updatePlayerAppearance()
+        if gameState.hasTrophy then
+            task.wait(1)
+            createTrophyTool()
+        end
     end)
     refreshDiffStats()
     createStadium(); createBall()
@@ -3126,13 +2914,19 @@ local function autoStart()
                 end
             end
         else createBall() end
-        
-        if (gameState.paused or gameState.restartCountdown>0) and not gameState.inPenaltyShootout and not gameState.freeKickActive then
+        if (gameState.paused or gameState.restartCountdown>0) and not gameState.inPenaltyShootout then
             if gameState.ball and not gameState.ball.Anchored then
                 gameState.ball.Anchored=true; gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
             end
         end
         if not gameState.paused and gameState.restartCountdown<=0 and not gameState.celebrating and not gameState.inPenaltyShootout
-           and not gameState.goalScored and not gameState.restartCooldown and not gameState.freeKickActive then
+           and not gameState.goalScored and not gameState.restartCooldown then
             if not gameState.gameActive then gameState.gameActive=true end
-            if gameState.ball and gameState.ball.Anchored then game
+            if gameState.ball and gameState.ball.Anchored then gameState.ball.Anchored=false end
+        end
+        updatePlayerDribble(dt); updateAILogic(dt); checkRules()
+        if tick()-gameState.lastInterceptCheck>0.1 then gameState.lastInterceptCheck=tick(); checkInterception() end
+    end)
+end
+
+autoStart()
