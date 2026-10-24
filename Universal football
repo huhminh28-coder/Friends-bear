@@ -17,8 +17,8 @@ local HALF_TIME = 180
 local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
-local NORMAL_WALKSPEED = 30
-local SPRINT_WALKSPEED = 60
+local NORMAL_WALKSPEED = 16
+local SPRINT_WALKSPEED = 40
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
 local NET_SOUND = "rbxassetid://5568887127"
@@ -76,6 +76,14 @@ local gameState = {
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
     playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil,
     playerPosition="Striker", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
+    -- NEW RULE SETTINGS --
+    knockoutEnabled = true,
+    extraTimeEnabled = true,
+    penaltyEnabled = true,
+    twoLeggedEnabled = false,
+    firstLegScoreRed = 0,
+    firstLegScoreBlue = 0,
+    currentLeg = 1,
 }
 
 local function getPlayerAchievement(count)
@@ -174,12 +182,35 @@ local function updateTournamentDisplay()
     local s,tm = getCurrentStage()
     gameState.tournamentLbl.Text = gameState.tournamentType
     gameState.stageLbl.Text = s
-    gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm
-    gameState.scoreLbl.Text = gameState.teamRedName.." "..gameState.scoreRed.." - "..gameState.scoreBlue.." "..gameState.teamBlueName
+    local legText = ""
+    if gameState.knockoutEnabled and gameState.twoLeggedEnabled then
+        legText = " (LEG " .. gameState.currentLeg .. ")"
+    end
+    gameState.matchLbl.Text = "MATCH "..gameState.currentMatchInStage.."/"..tm..legText
+    
+    local dispRed = gameState.scoreRed
+    local dispBlue = gameState.scoreBlue
+    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
+        dispRed = dispRed + gameState.firstLegScoreRed
+        dispBlue = dispBlue + gameState.firstLegScoreBlue
+        gameState.scoreLbl.Text = gameState.teamRedName.." "..dispRed.." - "..dispBlue.." "..gameState.teamBlueName.." (Agg: "..gameState.firstLegScoreRed.."-"..gameState.firstLegScoreBlue..")"
+    else
+        gameState.scoreLbl.Text = gameState.teamRedName.." "..dispRed.." - "..dispBlue.." "..gameState.teamBlueName
+    end
 end
 
 local function advanceTournament()
     local t = TOURNAMENTS[gameState.tournamentType]; if not t then return end
+    -- Nếu đá lượt về, không tăng trận
+    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
+        updateTournamentDisplay()
+        return
+    end
+
+    gameState.currentLeg = 1
+    gameState.firstLegScoreRed = 0
+    gameState.firstLegScoreBlue = 0
+
     gameState.currentMatchInStage = gameState.currentMatchInStage + 1
     local totalMatches = t.matchesPerStage[gameState.currentStageIndex] or 1
     if gameState.currentMatchInStage > totalMatches then
@@ -1701,7 +1732,13 @@ local function runPenaltyShootout()
     hideSuddenDeath()
     gameState.inPenaltyShootout=false
     gameState.scoreRed=rs; gameState.scoreBlue=bs
-    local winner=(rs>bs) and "Red" or "Blue"
+    
+    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
+        gameState.scoreRed += gameState.firstLegScoreRed
+        gameState.scoreBlue += gameState.firstLegScoreBlue
+    end
+
+    local winner=(gameState.scoreRed>gameState.scoreBlue) and "Red" or "Blue"
     local wasFinal = isFinalStage()
     if wasFinal then
         startTrophyCeremony(winner)
@@ -1796,6 +1833,63 @@ local function endMatch()
     gameState.gameActive = false
     if gameState.ball then gameState.ball.Anchored = true end
     pcall(playFinalWhistle)
+    
+    -- Check Two Legged
+    if gameState.knockoutEnabled and gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
+        gameState.firstLegScoreRed = gameState.scoreRed
+        gameState.firstLegScoreBlue = gameState.scoreBlue
+        gameState.currentLeg = 2
+        gameState.scoreRed = 0
+        gameState.scoreBlue = 0
+        gameState.currentHalf = 1
+        gameState.timeLeft = HALF_TIME
+        gameState.isExtraTime = false
+        gameState.lastTouchTeam = nil
+        gameState.goalScored = false
+        gameState.gkHoldCooldowns = {}
+        gameState.passCooldowns = {}
+        gameState.playerDribbling = false
+        gameState.aiDribbleState = {}
+        gameState.stoppageTimeActive = false
+        gameState.paused = false
+        gameState.celebrating = false
+        gameState.trophyActive = false
+        gameState.goalCelebrationActive = false
+        gameState.gkHolding = false
+        gameState.gkHoldingTeam = nil
+        gameState.playerSkillActive = false
+        gameState.superSkillActive = false
+        resetPlayerAchievement()
+        if gameState.ball then gameState.ball.Anchored = false end
+        resetPositions("Red")
+        updateTournamentDisplay()
+        
+        gameState.restartCountdown = FULL_BREAK
+        while gameState.restartCountdown > 0 do
+            task.wait(1)
+            gameState.restartCountdown = gameState.restartCountdown - 1
+        end
+        
+        task.delay(0.3, function()
+            local pc = gameState.playerChar
+            if pc then
+                local hrp = pc:FindFirstChild("HumanoidRootPart")
+                local hum = pc:FindFirstChildOfClass("Humanoid")
+                if hrp and not gameState.isOnBench then
+                    local zo = (gameState.playerTeam == "Red") and -150 or 150
+                    hrp.CFrame = CFrame.new(MAP_POS + Vector3.new(0, 15, zo))
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                end
+                if workspace.CurrentCamera and hum then
+                    workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+                    workspace.CurrentCamera.CameraSubject = hum
+                end
+            end
+        end)
+        gameState.gameActive = true
+        return
+    end
+
     local winner = nil
     if gameState.scoreRed > gameState.scoreBlue then winner = "Red"
     elseif gameState.scoreBlue > gameState.scoreRed then winner = "Blue" end
@@ -1899,7 +1993,6 @@ local function checkRules()
     end
 end
 
--- ⭐ LOGIC LUÂN LƯU (FIX: BỔ SUNG HIỆP 2)
 local function startTimer()
     task.spawn(function()
         while true do
@@ -1916,7 +2009,6 @@ local function startTimer()
                     gameState.gameActive = false
                     gameState.playerDribbling = false
                     
-                    -- ⭐ HIỆP 1 KẾT THÚC → NGHỈ GIỮA HIỆP → SANG HIỆP 2
                     if gameState.currentHalf == 1 and not gameState.isExtraTime then
                         task.spawn(function()
                             gameState.restartCountdown = HALF_BREAK
@@ -1932,54 +2024,91 @@ local function startTimer()
                             gameState.gameActive = true
                         end)
                     else
-                        local isGroup = (getCurrentStage() == "GROUP STAGE")
-                        
-                        if isGroup then
-                            -- VÒNG BẢNG: Hết hiệp 2 là kết thúc (có thể hòa)
+                        if not gameState.knockoutEnabled then
+                            -- Vòng bảng / Đá 1 lượt (Không loại trực tiếp) => End Match
                             task.spawn(function()
                                 local ok, err = pcall(endMatch)
                                 if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                             end)
                         else
-                            -- KNOCKOUT
-                            if not gameState.isExtraTime then
-                                -- Hết hiệp 2
-                                if gameState.scoreRed == gameState.scoreBlue then
-                                    -- Hòa -> Đá hiệp phụ
-                                    task.wait(3)
-                                    gameState.restartCountdown = HALF_BREAK
-                                    while gameState.restartCountdown > 0 do
-                                        task.wait(1)
-                                        gameState.restartCountdown = gameState.restartCountdown - 1
-                                    end
-                                    gameState.isExtraTime = true
-                                    gameState.currentHalf = 3
-                                    gameState.timeLeft = EXTRA_TIME
-                                    gameState.stoppageTimeActive = false
-                                    resetPositions("Red")
-                                    gameState.paused = false
-                                    gameState.gameActive = true
-                                else
-                                    -- Có tỉ số -> Kết thúc
-                                    task.spawn(function()
-                                        local ok, err = pcall(endMatch)
-                                        if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
-                                    end)
-                                end
+                            -- Đá loại trực tiếp
+                            local totalRed = gameState.scoreRed
+                            local totalBlue = gameState.scoreBlue
+                            if gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
+                                totalRed = totalRed + gameState.firstLegScoreRed
+                                totalBlue = totalBlue + gameState.firstLegScoreBlue
+                            end
+                            
+                            if gameState.twoLeggedEnabled and gameState.currentLeg == 1 then
+                                -- Lượt đi kết thúc -> End Match (để chuyển lượt về)
+                                task.spawn(function()
+                                    local ok, err = pcall(endMatch)
+                                    if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                end)
                             else
-                                -- Hết hiệp phụ
-                                if gameState.scoreRed == gameState.scoreBlue then
-                                    -- Hòa -> LUÂN LƯU
-                                    task.spawn(function()
-                                        local ok, err = pcall(runPenaltyShootout)
-                                        if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
-                                    end)
+                                -- Lượt về hoặc đá 1 lượt
+                                if not gameState.isExtraTime then
+                                    if totalRed == totalBlue then
+                                        if gameState.extraTimeEnabled then
+                                            -- Đá hiệp phụ
+                                            task.wait(3)
+                                            gameState.restartCountdown = HALF_BREAK
+                                            while gameState.restartCountdown > 0 do
+                                                task.wait(1)
+                                                gameState.restartCountdown = gameState.restartCountdown - 1
+                                            end
+                                            gameState.isExtraTime = true
+                                            gameState.currentHalf = 3
+                                            gameState.timeLeft = EXTRA_TIME
+                                            gameState.stoppageTimeActive = false
+                                            resetPositions("Red")
+                                            gameState.paused = false
+                                            gameState.gameActive = true
+                                        else
+                                            if gameState.penaltyEnabled then
+                                                -- Luân lưu
+                                                task.spawn(function()
+                                                    local ok, err = pcall(runPenaltyShootout)
+                                                    if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
+                                                end)
+                                            else
+                                                -- Hòa (không đá hiệp phụ, không luân lưu)
+                                                task.spawn(function()
+                                                    local ok, err = pcall(endMatch)
+                                                    if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                                end)
+                                            end
+                                        end
+                                    else
+                                        -- Có tỉ số -> End Match
+                                        task.spawn(function()
+                                            local ok, err = pcall(endMatch)
+                                            if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                        end)
+                                    end
                                 else
-                                    -- Có tỉ số -> Kết thúc
-                                    task.spawn(function()
-                                        local ok, err = pcall(endMatch)
-                                        if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
-                                    end)
+                                    -- Hết hiệp phụ
+                                    if totalRed == totalBlue then
+                                        if gameState.penaltyEnabled then
+                                            -- Luân lưu
+                                            task.spawn(function()
+                                                local ok, err = pcall(runPenaltyShootout)
+                                                if not ok then warn("[Timer] runPenaltyShootout error: "..tostring(err)) end
+                                            end)
+                                        else
+                                            -- Hòa
+                                            task.spawn(function()
+                                                local ok, err = pcall(endMatch)
+                                                if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                            end)
+                                        end
+                                    else
+                                        -- Có tỉ số
+                                        task.spawn(function()
+                                            local ok, err = pcall(endMatch)
+                                            if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
+                                        end)
+                                    end
                                 end
                             end
                         end
@@ -2021,7 +2150,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,1600)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2000)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2063,6 +2192,20 @@ local function createSettingsUI()
         end
         return bt
     end
+    local function mtg(parent,y,label,cd,onC)
+        local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-70,0,30); l.Position=UDim2.new(0,12,0,y)
+        l.BackgroundTransparency=1; l.Text=label; l.TextColor3=Color3.fromRGB(200,200,200); l.TextXAlignment=Enum.TextXAlignment.Left
+        l.Font=Enum.Font.FredokaOne; l.TextScaled=true
+        local b=Instance.new("TextButton",parent); b.Size=UDim2.new(0,50,0,24); b.Position=UDim2.new(1,-62,0,y+3)
+        b.BackgroundColor3=cd and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+        b.Text=cd and "ON" or "OFF"; b.TextColor3=Color3.new(1,1,1); b.TextScaled=true; b.Font=Enum.Font.FredokaOne
+        Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
+        local state=cd
+        b.MouseButton1Click:Connect(function()
+            state=not state; onC(state); b.Text=state and "ON" or "OFF"; b.BackgroundColor3=state and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+        end)
+        return b
+    end
     
     msh(sc,6,"MATCH CONTROLS",Color3.fromRGB(255,255,100))
     local skb=Instance.new("TextButton",sc); skb.Size=UDim2.new(1,-24,0,44); skb.Position=UDim2.new(0,12,0,32)
@@ -2077,8 +2220,26 @@ local function createSettingsUI()
     benchBtn.MouseButton1Click:Connect(function() toggleBenchMode(); panel.Visible=false; gameState.settingsOpen=false end)
     gameState.benchBtn = benchBtn
 
-    msh(sc,144,"PLAYER POSITION",Color3.fromRGB(100,255,200))
-    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,170); posFrame.BackgroundTransparency=1
+    msh(sc,144,"MATCH RULES",Color3.fromRGB(255,150,100))
+    mtg(sc,174,"Knockout Stage (Loại trực tiếp)", gameState.knockoutEnabled, function(st) gameState.knockoutEnabled = st; updateTournamentDisplay() end)
+    mtg(sc,212,"Extra Time (Hiệp phụ)", gameState.extraTimeEnabled, function(st) gameState.extraTimeEnabled = st end)
+    mtg(sc,250,"Penalty Shootout (Luân lưu)", gameState.penaltyEnabled, function(st) gameState.penaltyEnabled = st end)
+    mtg(sc,288,"Two-Legged Tie (Lượt đi/về)", gameState.twoLeggedEnabled, function(st) gameState.twoLeggedEnabled = st; gameState.currentLeg = 1; updateTournamentDisplay() end)
+    
+    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,326)
+    flr.BackgroundTransparency=1; flr.Text="First Leg Score (Red - Blue)"; flr.TextColor3=Color3.fromRGB(200,200,200); flr.TextXAlignment=Enum.TextXAlignment.Left; flr.Font=Enum.Font.FredokaOne; flr.TextScaled=true
+    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,344); flrBox.BackgroundTransparency=1
+    local frb=Instance.new("TextBox",flrBox); frb.Size=UDim2.new(0.45,0,1,0); frb.Position=UDim2.new(0,0,0,0)
+    frb.BackgroundColor3=Color3.fromRGB(45,45,60); frb.Text=tostring(gameState.firstLegScoreRed); frb.TextColor3=Color3.new(1,1,1); frb.TextScaled=true; frb.Font=Enum.Font.FredokaOne
+    Instance.new("UICorner",frb).CornerRadius=UDim.new(0,8)
+    local fbb=Instance.new("TextBox",flrBox); fbb.Size=UDim2.new(0.45,0,1,0); fbb.Position=UDim2.new(0.55,0,0,0)
+    fbb.BackgroundColor3=Color3.fromRGB(45,45,60); fbb.Text=tostring(gameState.firstLegScoreBlue); fbb.TextColor3=Color3.new(1,1,1); fbb.TextScaled=true; fbb.Font=Enum.Font.FredokaOne
+    Instance.new("UICorner",fbb).CornerRadius=UDim.new(0,8)
+    frb.FocusLost:Connect(function() gameState.firstLegScoreRed = tonumber(frb.Text) or 0; updateTournamentDisplay() end)
+    fbb.FocusLost:Connect(function() gameState.firstLegScoreBlue = tonumber(fbb.Text) or 0; updateTournamentDisplay() end)
+
+    msh(sc,390,"PLAYER POSITION",Color3.fromRGB(100,255,200))
+    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,416); posFrame.BackgroundTransparency=1
     local posList = {"Striker", "Midfielder", "Defender"}
     local posBtns = {}
     for i, posName in ipairs(posList) do
@@ -2095,8 +2256,8 @@ local function createSettingsUI()
         table.insert(posBtns, b)
     end
 
-    msh(sc,210,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
-    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,236); tr2.BackgroundTransparency=1
+    msh(sc,456,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
+    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,482); tr2.BackgroundTransparency=1
     local pt=Instance.new("TextButton",tr2); pt.Size=UDim2.new(0.49,-2,1,0); pt.Position=UDim2.new(0,0,0,0)
     pt.BackgroundColor3=Color3.fromRGB(150,30,200); pt.Text="PHYSICS: OFF"; pt.TextColor3=Color3.new(1,1,1); pt.TextScaled=true; pt.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pt).CornerRadius=UDim.new(0,10)
@@ -2116,10 +2277,10 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     
-    msh(sc,300,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    msh(sc,546,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 130)
-    tFrame.Position = UDim2.new(0, 12, 0, 326)
+    tFrame.Position = UDim2.new(0, 12, 0, 572)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2137,66 +2298,67 @@ local function createSettingsUI()
         Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
         b.MouseButton1Click:Connect(function()
             gameState.tournamentType=name; gameState.currentStageIndex=1; gameState.currentMatchInStage=1
+            gameState.currentLeg = 1; gameState.firstLegScoreRed = 0; gameState.firstLegScoreBlue = 0
             for j,bb2 in ipairs(tbt) do bb2.BackgroundColor3=(tn[j]==name) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end
             updateTournamentDisplay()
         end)
         tbt[i]=b
     end
 
-    msh(sc,470,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,496)
+    msh(sc,716,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,742)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,496)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,742)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,540,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,566)
+    msh(sc,786,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,812)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,596)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,842)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,630,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,876,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,656,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,706,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,756,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,806,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,902,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,952,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1002,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1052,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,864,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1110,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,890,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,940,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,990,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1040,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1136,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1186,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1236,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1286,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1098,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1120)
+    msh(sc,1344,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1366)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.6,0.13,0.35,0.05,0.75,0,0}; local pst={1,1,1,1,1,1,0,0}; local pvl={1,1,1,1,1,1,1,0.08}
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1122); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1368); rw1.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1156,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1192,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1402,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1438,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    msh(sc,1230,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1252)
+    msh(sc,1476,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1498)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1254); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1500); rw2.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1288,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1324,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,1534,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,1570,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
@@ -2211,11 +2373,11 @@ local function createSettingsUI()
         end); i2=i2+1 end
     end
     
-    msh(sc,1362,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1386)
+    msh(sc,1608,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1632)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1386)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1632)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
@@ -2252,6 +2414,7 @@ local function createSettingsUI()
             pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR); pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB)
             srs(sR); srv(vR); sbs(sB); sbv(vB)
             srB.Text=tostring(gameState.scoreRed); sbB.Text=tostring(gameState.scoreBlue)
+            frb.Text=tostring(gameState.firstLegScoreRed); fbb.Text=tostring(gameState.firstLegScoreBlue)
             if gameState.physicsShotEnabled then pt.Text="PHYSICS: ON"; pt.BackgroundColor3=Color3.fromRGB(80,200,100)
             else pt.Text="PHYSICS: OFF"; pt.BackgroundColor3=Color3.fromRGB(150,30,200) end
             if gameState.superSkillEnabled then st2.Text="SUPER: ON"; st2.BackgroundColor3=Color3.fromRGB(80,200,100)
