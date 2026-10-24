@@ -177,6 +177,7 @@ local function isFinalStage()
     return gameState.currentStageIndex >= #t.stages
 end
 
+-- FIXED: Tỉ số gốc chỉ hiển thị tỉ số trận hiện tại, Agg hiển thị tổng 2 lượt
 local function updateTournamentDisplay()
     if not gameState.tournamentLbl then return end
     local s,tm = getCurrentStage()
@@ -190,10 +191,11 @@ local function updateTournamentDisplay()
     
     local dispRed = gameState.scoreRed
     local dispBlue = gameState.scoreBlue
+    
     if s ~= "GROUP STAGE" and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
-        dispRed = dispRed + gameState.firstLegScoreRed
-        dispBlue = dispBlue + gameState.firstLegScoreBlue
-        gameState.scoreLbl.Text = gameState.teamRedName.." "..dispRed.." - "..dispBlue.." "..gameState.teamBlueName.." (Agg: "..gameState.firstLegScoreRed.."-"..gameState.firstLegScoreBlue..")"
+        local aggRed = dispRed + gameState.firstLegScoreRed
+        local aggBlue = dispBlue + gameState.firstLegScoreBlue
+        gameState.scoreLbl.Text = gameState.teamRedName.." "..dispRed.." - "..dispBlue.." "..gameState.teamBlueName.." (Agg: "..aggRed.."-"..aggBlue..")"
     else
         gameState.scoreLbl.Text = gameState.teamRedName.." "..dispRed.." - "..dispBlue.." "..gameState.teamBlueName
     end
@@ -317,7 +319,6 @@ local function toggleBenchMode()
     end
 end
 
--- FIXED: AI runs towards the moving player to celebrate, duration 10s
 local function startGoalCelebration(scorer, scoringTeam)
     if gameState.goalCelebrationActive or gameState.practiceModeEnabled then return end
     gameState.goalCelebrationActive = true
@@ -334,7 +335,6 @@ local function startGoalCelebration(scorer, scoringTeam)
     runConn = RunService.Heartbeat:Connect(function()
         if tick() - startTime > duration then if runConn then runConn:Disconnect() end; return end
         
-        -- Dynamically update scorer position so AI follows the moving player
         local scorerPos
         if scorer == "player" then
             local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
@@ -442,7 +442,6 @@ local function buildTrophy(tournamentType)
     return model
 end
 
--- FIXED: Trophy tool is now saved and grip is adjusted
 local function createTrophyTool()
     local char = gameState.playerChar or player.Character
     if not char then return end
@@ -588,7 +587,6 @@ local function startTrophyCeremony(winningTeam)
     local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
     local pedestalPos = podiumCenter + Vector3.new(-40, 3, 30)
     
-    -- 1. Build Podium
     local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
     gameState.podiumModel = podium
     local function mkStep(name, size, pos, color)
@@ -602,7 +600,6 @@ local function startTrophyCeremony(winningTeam)
     local carpet = mkStep("Carpet", Vector3.new(70, 0.2, 8), podiumCenter+Vector3.new(0,6.2,6), Color3.fromRGB(180,30,30))
     carpet.Material = Enum.Material.Fabric
     
-    -- 2. Pedestal & Guard & Display Trophy
     local pedestal = Instance.new("Part")
     pedestal.Size = Vector3.new(6, 6, 6)
     pedestal.Position = pedestalPos + Vector3.new(0, 3, 0)
@@ -618,7 +615,6 @@ local function startTrophyCeremony(winningTeam)
     
     local guard = createGuard(pedestalPos + Vector3.new(6, 0, 0))
     
-    -- 3. Losers walk past guard
     local loserStartPos = pedestalPos + Vector3.new(-20, 0, 0)
     local loserViewPos = podiumCenter + Vector3.new(0, 0, 35)
     
@@ -628,7 +624,6 @@ local function startTrophyCeremony(winningTeam)
     end
     task.wait(1)
     
-    -- Move to guard
     local stopAtGuard = {}
     for i, bot in ipairs(losers) do
         stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
@@ -650,11 +645,8 @@ local function startTrophyCeremony(winningTeam)
     end)
     task.wait(4)
     if conn then conn:Disconnect() end
-    
-    -- Stand still for 3 seconds
     task.wait(3)
     
-    -- Walk to viewing area
     local viewTargets = {}
     for i, bot in ipairs(losers) do
         viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
@@ -678,7 +670,6 @@ local function startTrophyCeremony(winningTeam)
         pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y, target.Z), podiumCenter)
     end
     
-    -- 4. Winner representative goes to pedestal, grabs trophy, goes to podium
     local rep = winners[1]
     if playerIsWinner and gameState.playerChar then
         local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
@@ -715,11 +706,9 @@ local function startTrophyCeremony(winningTeam)
         if conn then conn:Disconnect() end
     end
     
-    -- Cúp gắn vào người đại diện
     local trophyHandPos = grabPos + Vector3.new(0, 5, 0)
     displayTrophy:PivotTo(CFrame.new(trophyHandPos))
     
-    -- 5. Representative walks to podium center
     local targetPodium = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
     local t3 = tick()
     conn = RunService.Heartbeat:Connect(function()
@@ -746,7 +735,6 @@ local function startTrophyCeremony(winningTeam)
     task.wait(3)
     if conn then conn:Disconnect() end
     
-    -- 6. Other winners walk to podium
     local otherWinners = {}
     for _, bot in ipairs(winners) do
         if bot ~= rep then table.insert(otherWinners, bot) end
@@ -789,7 +777,6 @@ local function startTrophyCeremony(winningTeam)
     task.wait(walkDuration + 0.5)
     if conn then conn:Disconnect() end
     
-    -- 7. Lift Trophy & Cheer
     local cheerStart = tick()
     local cheerDuration = 8
     conn = RunService.Heartbeat:Connect(function()
@@ -830,7 +817,6 @@ local function startTrophyCeremony(winningTeam)
     task.wait(cheerDuration - 8 + 2)
     if conn then conn:Disconnect() end
     
-    -- 8. Give Trophy Tool
     if playerIsWinner then
         if displayTrophy then 
             displayTrophy:Destroy() 
@@ -1869,12 +1855,14 @@ local function runPenaltyShootout()
     gameState.scoreRed=rs; gameState.scoreBlue=bs
     
     local isGroup = (getCurrentStage() == "GROUP STAGE")
+    local totalRed = gameState.scoreRed
+    local totalBlue = gameState.scoreBlue
     if not isGroup and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
-        gameState.scoreRed += gameState.firstLegScoreRed
-        gameState.scoreBlue += gameState.firstLegScoreBlue
+        totalRed = totalRed + gameState.firstLegScoreRed
+        totalBlue = totalBlue + gameState.firstLegScoreBlue
     end
 
-    local winner=(gameState.scoreRed>gameState.scoreBlue) and "Red" or "Blue"
+    local winner=(totalRed>totalBlue) and "Red" or "Blue"
     local wasFinal = isFinalStage()
     if wasFinal then
         startTrophyCeremony(winner)
@@ -1964,6 +1952,7 @@ local function startCelebration(winningTeam)
     end)
 end
 
+-- FIXED: So sánh tổng tỉ số 2 lượt để tìm đội thắng
 local function endMatch()
     gameState.paused = true
     gameState.gameActive = false
@@ -2027,9 +2016,17 @@ local function endMatch()
         return
     end
 
+    local totalRed = gameState.scoreRed
+    local totalBlue = gameState.scoreBlue
+    if not isGroup and gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
+        totalRed = totalRed + gameState.firstLegScoreRed
+        totalBlue = totalBlue + gameState.firstLegScoreBlue
+    end
+
     local winner = nil
-    if gameState.scoreRed > gameState.scoreBlue then winner = "Red"
-    elseif gameState.scoreBlue > gameState.scoreRed then winner = "Blue" end
+    if totalRed > totalBlue then winner = "Red"
+    elseif totalBlue > totalRed then winner = "Blue" end
+
     local wasFinal = isFinalStage()
     if winner then
         task.wait(2)
