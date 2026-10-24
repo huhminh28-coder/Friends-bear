@@ -986,32 +986,38 @@ local function aiSlideTackle(bot, targetPos)
     
     local slideVel = Instance.new("BodyVelocity")
     slideVel.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    slideVel.Velocity = Vector3.new(look.X, 0, look.Z) * 30
+    slideVel.Velocity = Vector3.new(look.X, 0, look.Z) * 40
     slideVel.Parent = bot.PrimaryPart
     
     local originalCF = bot.PrimaryPart.CFrame
     local startT = tick()
+    local hasFouled = false
     
-    -- Slide visual
     task.spawn(function()
-        while tick() - startT < 0.5 do
-            pcall(moveCharacter, bot, bot.PrimaryPart.Position, bot.PrimaryPart.Position + look)
-            bot.PrimaryPart.CFrame = bot.PrimaryPart.CFrame * CFrame.Angles(math.rad(-90), 0, 0)
+        while tick() - startT < 0.6 do
+            local playerChar = gameState.playerChar
+            local hrp = playerChar and playerChar:FindFirstChild("HumanoidRootPart")
+            if hrp and not hasFouled then
+                local dist = (bot.PrimaryPart.Position - hrp.Position).Magnitude
+                if dist < 10 then
+                    hasFouled = true
+                    -- Make player fall
+                    local hum = playerChar:FindFirstChildOfClass("Humanoid")
+                    if hum then hum.PlatformStand = true end
+                    task.delay(1, function() if hum then hum.PlatformStand = false end end)
+                    
+                    triggerFoul(bot, hrp.Position, false)
+                    break
+                end
+            end
             task.wait(0.05)
         end
     end)
     
     task.wait(0.6)
     slideVel:Destroy()
-    bot.PrimaryPart.CFrame = originalCF
-    
-    local dist = (bp - targetPos).Magnitude
-    if dist < 8 then
-        local playerChar = gameState.playerChar
-        local hrp = playerChar and playerChar:FindFirstChild("HumanoidRootPart")
-        if gameState.playerDribbling and hrp and (hrp.Position - bp).Magnitude < 10 then
-            triggerFoul(bot, hrp.Position, false)
-        end
+    if not hasFouled then
+        bot.PrimaryPart.CFrame = originalCF
     end
 end
 
@@ -1064,9 +1070,6 @@ local function doSlideTackle()
             for _, opp in ipairs(oppTeam) do
                 if opp.PrimaryPart and (pPos - opp.PrimaryPart.Position).Magnitude < 8 then
                     hitSomething = true
-                    -- AI falls
-                    pcall(moveCharacter, opp, opp.PrimaryPart.Position, pPos)
-                    opp.PrimaryPart.CFrame = opp.PrimaryPart.CFrame * CFrame.Angles(math.rad(-90), 0, 0)
                     triggerFoul(opp, pPos, true)
                     break
                 end
@@ -1714,7 +1717,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
             local d = (hrp.Position - bp).Magnitude
             local bid = bot:GetDebugId()
             if d < 10 and tick() > (gameState.aiSlideCooldowns[bid] or 0) then
-                if math.random() < diff.interceptMul * 0.05 then -- Chance based on difficulty
+                if math.random() < diff.interceptMul * 0.01 then
                     task.spawn(aiSlideTackle, bot, hrp.Position)
                     return
                 end
@@ -3123,7 +3126,8 @@ local function autoStart()
                 end
             end
         else createBall() end
-        if (gameState.paused or gameState.restartCountdown>0) and not gameState.inPenaltyShootout then
+        
+        if (gameState.paused or gameState.restartCountdown>0) and not gameState.inPenaltyShootout and not gameState.freeKickActive then
             if gameState.ball and not gameState.ball.Anchored then
                 gameState.ball.Anchored=true; gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
             end
@@ -3131,11 +3135,4 @@ local function autoStart()
         if not gameState.paused and gameState.restartCountdown<=0 and not gameState.celebrating and not gameState.inPenaltyShootout
            and not gameState.goalScored and not gameState.restartCooldown and not gameState.freeKickActive then
             if not gameState.gameActive then gameState.gameActive=true end
-            if gameState.ball and gameState.ball.Anchored then gameState.ball.Anchored=false end
-        end
-        updatePlayerDribble(dt); updateAILogic(dt); checkRules()
-        if tick()-gameState.lastInterceptCheck>0.1 then gameState.lastInterceptCheck=tick(); checkInterception() end
-    end)
-end
-
-autoStart()
+            if gameState.ball and gameState.ball.Anchored then game
