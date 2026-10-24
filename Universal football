@@ -435,6 +435,11 @@ local function buildTrophy(tournamentType)
 end
 
 local function createTrophyTool()
+    local char = gameState.playerChar or player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+
     local tool = Instance.new("Tool")
     tool.Name = "Trophy"
     tool.RequiresHandle = true
@@ -443,27 +448,41 @@ local function createTrophyTool()
     local model = buildTrophy(gameState.tournamentType)
     local handle = model.PrimaryPart
     if not handle then return end
+    handle.Name = "Handle"
     
     local scale = 0.35
-    handle.Size = handle.Size * scale
+    local parts = {}
+    local originalCFrames = {}
+    
     for _, p in ipairs(model:GetChildren()) do
         if p:IsA("BasePart") then
-            p.Size = p.Size * scale
-            if p ~= handle then
-                local w = Instance.new("Weld")
-                w.Part0 = handle
-                w.Part1 = p
-                w.C0 = handle.CFrame:Inverse() * p.CFrame
-                w.Parent = handle
-                p.Anchored = false
-                p.CanCollide = false
-                p.Parent = tool
-            else
-                p.Parent = tool
-            end
+            table.insert(parts, p)
+            originalCFrames[p] = p.CFrame
         end
     end
-    tool.Parent = player.Backpack
+    
+    for _, p in ipairs(parts) do
+        p.Size = p.Size * scale
+        p.Anchored = false
+        p.CanCollide = false
+        p.Massless = true
+        
+        if p ~= handle then
+            local w = Instance.new("Weld")
+            w.Part0 = handle
+            w.Part1 = p
+            w.C0 = originalCFrames[handle]:Inverse() * originalCFrames[p]
+            w.Parent = handle
+        end
+        p.Parent = tool
+    end
+    
+    -- Điều chỉnh góc cầm để cúp hướng lên trên
+    tool.Grip = CFrame.new(0, -1.5, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+    
+    tool.Parent = char
+    task.wait(0.2)
+    hum:EquipTool(tool)
 end
 
 local function launchFirework(position)
@@ -801,6 +820,12 @@ local function startTrophyCeremony(winningTeam)
     
     -- 8. Give Trophy Tool
     if playerIsWinner then
+        -- Ẩn cúp ảo trên đầu đại diện đi
+        if displayTrophy then 
+            displayTrophy:Destroy() 
+            gameState.trophyModel = nil 
+        end
+        -- Đưa tool cúp thật vào tay người chơi
         createTrophyTool()
     end
     
@@ -956,10 +981,8 @@ local function getHomePos(bot,useBall)
     else
         local finalBZ = bZ
         if role == "Defender" then
-            -- Defender cannot go past the halfway line (Z = 0) when attacking
             finalBZ = math.clamp(bZ * ad, -1, 0) * ad
         elseif role == "Midfielder" then
-            -- Midfielder can push up slightly (up to 0.4)
             finalBZ = math.clamp(bZ * ad, -1, 0.4) * ad
         end
         
@@ -2111,13 +2134,11 @@ local function startTimer()
                     else
                         local isGroup = (getCurrentStage() == "GROUP STAGE")
                         if isGroup then
-                            -- Group Stage: End Match
                             task.spawn(function()
                                 local ok, err = pcall(endMatch)
                                 if not ok then warn("[Timer] endMatch error: "..tostring(err)) end
                             end)
                         else
-                            -- Knockout Stage
                             local totalRed = gameState.scoreRed
                             local totalBlue = gameState.scoreBlue
                             if gameState.twoLeggedEnabled and gameState.currentLeg == 2 then
