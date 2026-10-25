@@ -1,4 +1,4 @@
--- World Cup 2026 | Advanced Edition | English (SINGLE LEG & POSITION PROBABILITY)
+-- World Cup 2026 | Advanced Edition | English
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
@@ -39,14 +39,17 @@ local DIFFICULTY_PER_CATEGORY = {
     pass = {[1]={passMul=0.6},[2]={passMul=1.0},[3]={passMul=1.4}},
 }
 
+-- CẬP NHẬT: Các giải VĐQG đều có Vòng 32 đội
 local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
     ["Euro"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
     ["Nations League"]={stages={"GROUP STAGE","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1}},
-    ["Bundesliga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
-    ["La Liga"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
-    ["Serie A"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Premier League"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["Bundesliga"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["La Liga"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["Serie A"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["FIFA Club World Cup"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
 }
 
 local gameState = {
@@ -177,7 +180,6 @@ local function isFinalStage()
     return gameState.currentStageIndex >= #t.stages
 end
 
--- FIXED: Tỉ số gốc chỉ hiển thị tỉ số trận hiện tại, Agg hiển thị tổng 2 lượt
 local function updateTournamentDisplay()
     if not gameState.tournamentLbl then return end
     local s,tm = getCurrentStage()
@@ -377,11 +379,13 @@ local function buildTrophy(tournamentType)
     local pc, sc, shape
     if tournamentType == "World Cup" then pc=Color3.fromRGB(255,200,60); sc=Color3.fromRGB(180,140,30); shape="WC"
     elseif tournamentType == "Champions League" then pc=Color3.fromRGB(215,220,230); sc=Color3.fromRGB(150,155,165); shape="CL"
-    elseif tournamentType == "Europa League" then pc=Color3.fromRGB(230,230,230); sc=Color3.fromRGB(200,100,20); shape="EL"
+    elseif tournamentType == "Euro" then pc=Color3.fromRGB(220,220,220); sc=Color3.fromRGB(150,150,150); shape="EU"
     elseif tournamentType == "Nations League" then pc=Color3.fromRGB(240,240,240); sc=Color3.fromRGB(50,50,50); shape="NL"
+    elseif tournamentType == "Premier League" then pc=Color3.fromRGB(255,215,0); sc=Color3.fromRGB(20,80,50); shape="PL"
     elseif tournamentType == "Bundesliga" then pc=Color3.fromRGB(220,220,220); sc=Color3.fromRGB(150,150,150); shape="BL"
     elseif tournamentType == "La Liga" then pc=Color3.fromRGB(240,240,240); sc=Color3.fromRGB(180,180,180); shape="LL"
     elseif tournamentType == "Serie A" then pc=Color3.fromRGB(20,50,150); sc=Color3.fromRGB(255,215,0); shape="SA"
+    elseif tournamentType == "FIFA Club World Cup" then pc=Color3.fromRGB(255,215,0); sc=Color3.fromRGB(80,80,80); shape="CWC"
     else pc=Color3.fromRGB(255,215,0); sc=Color3.fromRGB(180,140,30); shape="GEN" end
     
     local function mk(name, size, cframe, color, material, shapeType)
@@ -391,7 +395,28 @@ local function buildTrophy(tournamentType)
         p.Anchored=true; p.CanCollide=false; p.Parent=model; return p
     end
 
-    if shape=="NL" then
+    if shape=="EU" then
+        mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), Color3.fromRGB(40,40,40), Enum.Material.Marble)
+        mk("Stem", Vector3.new(1.2,1.5,1.2), CFrame.new(0,1.25,0), sc, Enum.Material.Metal)
+        mk("Body", Vector3.new(2.5,3,2.5), CFrame.new(0,3.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        mk("Top", Vector3.new(1.5,1.5,1.5), CFrame.new(0,5.5,0), pc, Enum.Material.Metal, Enum.PartType.Ball)
+    elseif shape=="PL" then
+        mk("Base", Vector3.new(4,0.8,4), CFrame.new(0,0.4,0), sc, Enum.Material.Marble)
+        mk("Stem", Vector3.new(1,1.5,1), CFrame.new(0,1.5,0), pc, Enum.Material.Metal)
+        for i = -1, 1 do
+            mk("Pillar"..i, Vector3.new(0.4,2.5,0.4), CFrame.new(i*1.2,3,0) * CFrame.Angles(0,0,math.rad(-i*15)), pc, Enum.Material.Metal)
+        end
+        mk("CrownBase", Vector3.new(3.5,0.5,3.5), CFrame.new(0,4.2,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        mk("Ball", Vector3.new(1.8,1.8,1.8), CFrame.new(0,5.5,0), Color3.fromRGB(255,255,255), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+    elseif shape=="CWC" then
+        mk("Base", Vector3.new(4,0.5,4), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
+        mk("Stem", Vector3.new(1,2,1), CFrame.new(0,1.5,0), pc, Enum.Material.Metal)
+        for i = 1, 4 do
+            local ang = (i-1) * math.pi/2
+            mk("Wave"..i, Vector3.new(0.4,3,0.4), CFrame.new(math.cos(ang)*0.8, 3.5, math.sin(ang)*0.8) * CFrame.Angles(math.rad(15), ang, math.rad(15)), pc, Enum.Material.Metal)
+        end
+        mk("Globe", Vector3.new(2.2,2.2,2.2), CFrame.new(0,5.5,0), Color3.fromRGB(255,255,255), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+    elseif shape=="NL" then
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(0.8,1.5,0.8), CFrame.new(0,1.25,0), pc, Enum.Material.Metal)
         mk("Cup", Vector3.new(2.5,3,2.5), CFrame.new(0,3.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -425,8 +450,6 @@ local function buildTrophy(tournamentType)
             mk("Globe", Vector3.new(1.6,1.6,1.6), CFrame.new(0,3,0), pc, Enum.Material.Neon, Enum.PartType.Ball)
         elseif shape=="CL" then
             mk("Cup", Vector3.new(2,2.5,2), CFrame.new(0,3,0), pc, Enum.Material.Metal, Enum.PartType.Ball)
-        elseif shape=="EL" then
-            mk("Cup", Vector3.new(2,2,2), CFrame.new(0,2.8,0), pc, Enum.Material.Metal, Enum.PartType.Ball)
         end
     end
     
@@ -1952,7 +1975,6 @@ local function startCelebration(winningTeam)
     end)
 end
 
--- FIXED: So sánh tổng tỉ số 2 lượt để tìm đội thắng
 local function endMatch()
     gameState.paused = true
     gameState.gameActive = false
@@ -2437,7 +2459,7 @@ local function createSettingsUI()
     
     msh(sc,546,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
-    tFrame.Size = UDim2.new(1, -24, 0, 130)
+    tFrame.Size = UDim2.new(1, -24, 0, 180)
     tFrame.Position = UDim2.new(0, 12, 0, 572)
     tFrame.BackgroundTransparency = 1
     
@@ -2446,7 +2468,7 @@ local function createSettingsUI()
     tGrid.CellPadding = UDim2.new(0, 4, 0, 4)
     tGrid.SortOrder = Enum.SortOrder.LayoutOrder
     
-    local tn={"World Cup","Champions League","Europa League","Nations League","Bundesliga","La Liga","Serie A"}
+    local tn={"World Cup","Champions League","Euro","Nations League","Premier League","Bundesliga","La Liga","Serie A","FIFA Club World Cup"}
     local tbt={}
     for i,name in ipairs(tn) do
         local b=Instance.new("TextButton",tFrame)
@@ -2463,60 +2485,60 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,716,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,742)
+    msh(sc,766,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,792)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,742)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,792)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,786,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,812)
+    msh(sc,836,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,862)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,842)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,892)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,876,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,926,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,902,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,952,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,1002,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1052,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,952,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,1002,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1052,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1102,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1110,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1160,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1136,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1186,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1236,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1286,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1186,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1236,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1286,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1336,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1344,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1366)
+    msh(sc,1394,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1416)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.6,0.13,0.35,0.05,0.75,0,0}; local pst={1,1,1,1,1,1,0,0}; local pvl={1,1,1,1,1,1,1,0.08}
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1368); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1418); rw1.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1402,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1438,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1452,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1488,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    msh(sc,1476,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1498)
+    msh(sc,1526,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1548)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1500); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1550); rw2.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1534,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1570,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,1584,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,1620,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
@@ -2531,11 +2553,11 @@ local function createSettingsUI()
         end); i2=i2+1 end
     end
     
-    msh(sc,1608,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1632)
+    msh(sc,1658,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1682)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1632)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1682)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
