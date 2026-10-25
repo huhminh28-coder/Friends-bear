@@ -39,7 +39,6 @@ local DIFFICULTY_PER_CATEGORY = {
     pass = {[1]={passMul=0.6},[2]={passMul=1.0},[3]={passMul=1.4}},
 }
 
--- CẬP NHẬT: Các giải VĐQG đều có Vòng 32 đội
 local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
@@ -602,6 +601,7 @@ end
 
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -1929,6 +1929,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
@@ -2117,6 +2118,7 @@ end
 local function onGoalScored(scoringTeam)
     if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating or gameState.practiceModeEnabled then return end
     gameState.goalScored=true; playNetSound()
+    playSoundOnce("rbxassetid://74804502437744", 5, 4) -- Âm thanh ghi bàn
     if scoringTeam=="Red" then gameState.scoreRed=gameState.scoreRed+1 else gameState.scoreBlue=gameState.scoreBlue+1 end
     updatePlayerAchievement(scoringTeam)
     showGoalText()
