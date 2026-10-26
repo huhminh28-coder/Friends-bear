@@ -2118,7 +2118,6 @@ end
 local function onGoalScored(scoringTeam)
     if gameState.goalScored or gameState.inPenaltyShootout or gameState.celebrating or gameState.practiceModeEnabled then return end
     gameState.goalScored=true; playNetSound()
-    playSoundOnce("rbxassetid://74804502437744", 5, 4) -- Âm thanh ghi bàn
     if scoringTeam=="Red" then gameState.scoreRed=gameState.scoreRed+1 else gameState.scoreBlue=gameState.scoreBlue+1 end
     updatePlayerAchievement(scoringTeam)
     showGoalText()
