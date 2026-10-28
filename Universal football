@@ -93,6 +93,8 @@ local gameState = {
     currentLeg = 1,
     practiceModeEnabled = false,
     hasTrophy = false,
+    skillBallActive = 0,
+    skillBallOwner = nil,
 }
 
 local function getPlayerAchievement(count)
@@ -670,7 +672,7 @@ end
 
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    playSoundOnce("rbxassetid://132079977802654", 5, 6)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -1266,33 +1268,37 @@ end
 
 local function useSkill(bot,team)
     local ball=gameState.ball; if not ball or not ball.Parent or not bot.PrimaryPart then return false end
-    local bp=bot.PrimaryPart.Position; local fwd=(team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
+    local bp=bot.PrimaryPart.Position
+    local fwd=(team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
     
-    ball.CanCollide = false
-    ball.AssemblyLinearVelocity = fwd * 80 + Vector3.new(0, 5, 0)
+    ball.CFrame=CFrame.new(bp+fwd*3+Vector3.new(0,2,0))
+    ball.AssemblyLinearVelocity=fwd*90 + Vector3.new(0,8,0)
+    ball.AssemblyAngularVelocity=Vector3.zero
     
-    gameState.lastTouchTeam = team
-    gameState.lastScorer = bot
-    gameState.lastScorerTeam = team
-    gameState.aiSkillActive[bot:GetDebugId()] = tick() + 1.5
-    playBallKick(ball.Position, 0.85)
+    gameState.lastTouchTeam=team
+    gameState.lastScorer=bot
+    gameState.lastScorerTeam=team
     
-    local oppTeam = (team == "Red") and gameState.blueTeam or gameState.redTeam
-    for _, opp in ipairs(oppTeam) do
-        if opp.PrimaryPart and (opp.PrimaryPart.Position - ball.Position).Magnitude < 12 then
-            local interceptChance = 0.1 + (getDiff(opp.Team.Value).interceptMul * 0.2)
-            if math.random() < interceptChance then
-                ball.CanCollide = true
-                ball.AssemblyLinearVelocity = -fwd * 50 + Vector3.new(0, 10, 0)
-                gameState.lastTouchTeam = opp.Team.Value
-                return true
-            end
-        end
-    end
+    local bid=bot:GetDebugId()
+    gameState.aiSkillActive[bid]=tick()+1.5
+    gameState.skillBallActive=tick()+0.7
+    gameState.skillBallOwner=bot
     
-    task.delay(0.5, function()
-        if ball and ball.Parent then ball.CanCollide = true end
-    end)
+    playBallKick(ball.Position,1.2)
+    
+    local att = Instance.new("Attachment", bot.PrimaryPart)
+    local pe = Instance.new("ParticleEmitter", att)
+    pe.Texture = "rbxassetid://296874871"
+    pe.Color = ColorSequence.new((team=="Red") and Color3.fromRGB(255,100,100) or Color3.fromRGB(100,100,255))
+    pe.LightEmission = 1
+    pe.Rate = 0
+    pe.Lifetime = NumberRange.new(0.3, 0.6)
+    pe.Speed = NumberRange.new(8, 15)
+    pe.SpreadAngle = Vector2.new(180,180)
+    pe.Size = NumberSequence.new(0.8)
+    pe:Emit(25)
+    task.delay(1, function() if att then att:Destroy() end end)
+    
     return true
 end
 
@@ -1306,11 +1312,7 @@ local function aiDribble(bot)
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local nod=math.huge
     for _,opp in ipairs(ol) do if opp.PrimaryPart then local d=(opp.PrimaryPart.Position-bp).Magnitude; if d<nod then nod=d end end end
-    
-    if nod < 15 and math.random() < diff.skillChance and not gameState.aiSkillActive[bid] then 
-        if useSkill(bot,team) then return true end 
-    end
-    
+    if nod<12 and math.random()<diff.skillChance and not gameState.aiSkillActive[bid] then if useSkill(bot,team) then return true end end
     local bs=gameState.aiDribbleState[bid]
     if not bs or not bs.active or dtb>8 then
         local tp=bp+(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-bp).Unit*5
@@ -1324,24 +1326,18 @@ local function aiDribble(bot)
     gameState.lastTouchTeam=team; playBallTouchSound(); gameState.aiDribbleState[bid]={active=true}; return true
 end
 
-local function aiShootBall(bot)
+local function aiShootBall(bot, shotMult)
+    shotMult = shotMult or 1.0
     local ball=gameState.ball; if not ball or not ball.Parent then return end
     local team=bot.Team.Value; local diff=getDiff(team)
     local agz=(team=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local dtg=(bot.PrimaryPart.Position-Vector3.new(MAP_POS.X,MAP_POS.Y,agz)).Magnitude
     gameState.lastTouchTeam=team; gameState.lastScorer=bot; gameState.lastScorerTeam=team
     playBallTouchSound()
-    
-    local isStriker = (bot.Role.Value == "Striker")
-    local accuracyMod = isStriker and 1.0 or 0.6
     local st=math.random(1,100)
-    
     local tx=MAP_POS.X+((math.random(1,2)==1) and -1 or 1)*(GOAL_WIDTH/2-5)
-    if not isStriker then
-        tx = tx + (math.random() - 0.5) * 20
-    end
-    local ty=GOAL_HEIGHT-6; local ap=Vector3.new(tx,MAP_POS.Y+ty,agz); local bp=diff.shotMul * accuracyMod
-    
+    local ty=GOAL_HEIGHT-6; local ap=Vector3.new(tx,MAP_POS.Y+ty,agz)
+    local bp=diff.shotMul * shotMult
     if dtg>250 then
         if st<=60 then applyPowerShot(ball,(ap-ball.Position).Unit,math.random(280,380)*bp,math.random(-150,150))
         elseif st<=85 then applyKnuckleball(ball,(ap-ball.Position).Unit,math.random(380,480)*bp)
@@ -1373,9 +1369,6 @@ function findBestPassTarget(bot)
             table.insert(candidates, {part=phrp, bot=nil, isPlayer=true})
         end
     end
-    
-    local isStriker = (bot.Role.Value == "Striker")
-    
     for _,c in ipairs(candidates) do
         local tp = c.part.Position
         local dtb = (tp - ball.Position).Magnitude
@@ -1390,8 +1383,6 @@ function findBestPassTarget(bot)
             end
             if no < 25 then score = score - 200
             elseif no > 60 then score = score + 100 end
-            
-            if isStriker and no < 40 then score = score - 150 end
             
             if c.isPlayer then
                 local chance = 50
@@ -1426,50 +1417,58 @@ local function handleBallTouch(bot)
     if gameState.gkHolding then return end
     if gameState.playerSkillActive and bot.Role.Value~="Goalkeeper" then return end
     local ball=gameState.ball; if not ball or not ball.Parent then return end
-    local team=bot.Team.Value; local diff=getDiff(team)
+    local team=bot.Team.Value; local role=bot.Role.Value; local diff=getDiff(team)
     local agz=(team=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local bp=bot.PrimaryPart.Position; local dtg=math.abs(bp.Z-agz)
     local bid=bot:GetDebugId(); local csn=tick()>(gameState.passCooldowns[bid] or 0)
     local dtb=(bp-ball.Position).Magnitude
     
-    if dtb<15 and dtg>200 and math.random()<0.5 then
-        if aiDribble(bot) then gameState.passCooldowns[bid]=tick()+0.8 return end
+    local shotMult = 1.0
+    local passMult = 1.0
+    if role == "Striker" then shotMult = 1.35; passMult = 0.7
+    elseif role == "Midfielder" then shotMult = 0.7; passMult = 1.35
+    elseif role == "Defender" then shotMult = 0.5; passMult = 0.9 end
+    
+    -- Check opponent phía trước
+    local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
+    local nearestOppDist = math.huge
+    local fwdDir = (team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
+    for _,opp in ipairs(ol) do
+        if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
+            local toOpp = opp.PrimaryPart.Position - bp
+            local horizToOpp = Vector3.new(toOpp.X, 0, toOpp.Z)
+            local d = horizToOpp.Magnitude
+            if d < 20 and horizToOpp.Unit:Dot(fwdDir) > 0.5 then
+                if d < nearestOppDist then nearestOppDist = d end
+            end
+        end
     end
     
-    local isStriker = (bot.Role.Value == "Striker")
-    local isMidfielder = (bot.Role.Value == "Midfielder")
-    
-    local shootThreshold = isStriker and 350 or 200
-    if dtg < shootThreshold and csn then
-        local t, pt = findBestPassTarget(bot)
-        if isMidfielder and t and math.random() < 0.7 then
-            local tp
-            if t == "PLAYER" then
-                local pc = gameState.playerChar
-                local phrp = pc and pc:FindFirstChild("HumanoidRootPart")
-                if phrp then tp = phrp.Position end
-            elseif t.PrimaryPart then
-                tp = t.PrimaryPart.Position
-            end
-            if tp then
-                if pt=="ThroughBall" then local td=Vector3.new(0,0,(team=="Red") and 1 or -1); applyGroundPass(ball,tp+td*40,20*diff.passMul)
-                elseif pt=="Short" then applyGroundPass(ball,tp,0)
-                elseif pt=="Medium" then applyGroundPass(ball,tp,20*diff.passMul)
-                else applyLobPass(ball,tp,20*diff.passMul) end
-                gameState.passCooldowns[bid]=tick()+1.5
+    -- Priority 1: Skill xuyên qua (Midfielder/Striker)
+    if nearestOppDist < 18 and (role == "Midfielder" or role == "Striker") and not gameState.aiSkillActive[bid] then
+        if math.random() < diff.skillChance * 2 then
+            if useSkill(bot, team) then
+                gameState.passCooldowns[bid]=tick()+1.0
                 return
             end
-        else
-            aiShootBall(bot)
+        end
+    end
+    
+    -- Priority 2: Sút (Striker ưu tiên)
+    if dtg < 320 and csn then
+        local shootProb = 0.75 * shotMult
+        if dtg < 150 then shootProb = 0.9 * shotMult end
+        if nearestOppDist < 8 and dtg > 100 then shootProb = shootProb * 0.5 end
+        if math.random() < math.min(shootProb, 1.0) then
+            aiShootBall(bot, shotMult)
             gameState.passCooldowns[bid]=tick()+1.0
             return
         end
     end
     
-    gameState.lastTouchTeam=team; gameState.lastScorer=bot; gameState.lastScorerTeam=team
-    playBallTouchSound()
-    local t,pt=findBestPassTarget(bot); local pm=diff.passMul
-    if t then
+    -- Priority 3: Chuyền (Midfielder ưu tiên)
+    local t,pt=findBestPassTarget(bot)
+    if t and csn then
         local tp
         if t == "PLAYER" then
             local pc = gameState.playerChar
@@ -1479,16 +1478,33 @@ local function handleBallTouch(bot)
             tp = t.PrimaryPart.Position
         end
         if tp then
-            if pt=="ThroughBall" then local td=Vector3.new(0,0,(team=="Red") and 1 or -1); applyGroundPass(ball,tp+td*40,20*pm)
-            elseif pt=="Short" then applyGroundPass(ball,tp,0)
-            elseif pt=="Medium" then applyGroundPass(ball,tp,20*pm)
-            else applyLobPass(ball,tp,20*pm) end
-            gameState.passCooldowns[bid]=tick()+1.5
-            return
+            local passProb = 0.75 * passMult
+            if math.random() < math.min(passProb, 1.0) then
+                if pt=="ThroughBall" then
+                    local td=Vector3.new(0,0,(team=="Red") and 1 or -1)
+                    applyGroundPass(ball,tp+td*40,20*passMult)
+                elseif pt=="Short" then
+                    applyGroundPass(ball,tp,0)
+                elseif pt=="Medium" then
+                    applyGroundPass(ball,tp,20*passMult)
+                else
+                    applyLobPass(ball,tp,20*passMult)
+                end
+                gameState.passCooldowns[bid]=tick()+1.5
+                return
+            end
         end
     end
+    
+    -- Priority 4: Dribble
+    if dtb<15 and dtg>200 then
+        if aiDribble(bot) then gameState.passCooldowns[bid]=tick()+0.8 return end
+    end
+    
+    -- Fallback: clear
     local d=(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-ball.Position).Unit
-    ball.AssemblyLinearVelocity=d*100*pm; gameState.passCooldowns[bid]=tick()+0.8
+    ball.AssemblyLinearVelocity=d*100*diff.passMul
+    gameState.passCooldowns[bid]=tick()+0.8
 end
 
 local function goalkeeperPassBall(gk,ball,team)
@@ -1610,7 +1626,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
     local ogz=(team=="Red") and (MAP_POS.Z-PITCH_LENGTH/2) or (MAP_POS.Z+PITCH_LENGTH/2)
     local thb=gameState.lastTouchTeam==team
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
-    
     if gameState.playerSkillActive or gameState.superSkillActive then
         local t=getHomePos(bot,false); local d=t-bp
         if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
@@ -1621,7 +1636,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
         return
     end
-    
     local pd=gameState.playerDribbling and (gameState.playerTeam==team) and not gameState.isOnBench
     if pd then
         local pc=gameState.playerChar; local phrp=pc and pc:FindFirstChild("HumanoidRootPart")
@@ -1636,37 +1650,8 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
             return
         end
     end
-    
-    local target = getHomePos(bot, true)
-    
-    if role == "Defender" then
-        local ballInHome = math.abs(ball.Position.Z - ogz) < 200
-        if ballInHome and (bp - ball.Position).Magnitude < 80 then
-            target = ball.Position
-        else
-            local markTarget = nil
-            local minD = math.huge
-            for _, opp in ipairs(ol) do
-                if opp.PrimaryPart and (opp.Role.Value == "Striker" or opp.Role.Value == "Midfielder") then
-                    local d = (opp.PrimaryPart.Position - ogz).Magnitude
-                    if d < minD then minD = d; markTarget = opp end
-                end
-            end
-            if markTarget and minD < 150 then
-                local op = markTarget.PrimaryPart.Position
-                local markDist = 8 - (diff.interceptMul * 2)
-                local dirToOpp = (op - bp).Unit
-                target = op - dirToOpp * math.max(3, markDist)
-            end
-        end
-        local bv = ball.AssemblyLinearVelocity
-        local toGoal = Vector3.new(MAP_POS.X, TORSO_Y, ogz) - ball.Position
-        if bv.Magnitude > 150 and bv:Dot(toGoal.Unit) > 0.4 then
-            local blockPos = ball.Position + bv * 0.2
-            target = Vector3.new(blockPos.X, TORSO_Y, blockPos.Z)
-            aspd = aspd * 1.5
-        end
-    elseif bot==closestBot then
+    local target
+    if bot==closestBot then
         target=ball.Position+ball.AssemblyLinearVelocity*0.3
         if (bp-ball.Position).Magnitude<12 then handleBallTouch(bot); gameState.lastActionTime=tick() end
     elseif role=="Striker" then
@@ -1680,18 +1665,33 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         if role=="Midfielder" then target=Vector3.new(ball.Position.X+math.random(-40,40),MAP_POS.Y+5,math.max(ball.Position.Z,(ball.Position.Z+agz)/2))
         else target=Vector3.new(MAP_POS.X+((bot:GetAttribute("FormationIndex") or 2)-2.5)*50,MAP_POS.Y+5,math.max(MAP_POS.Z-30,ball.Position.Z-80)) end
     else
-        if role=="Midfielder" then
+        if role=="Defender" then
+            local no,md=nil,math.huge
+            for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
+                local d=math.abs(opp.PrimaryPart.Position.Z-ogz); if d<md then md=d; no=opp end
+            end end
+            if no then local op=no.PrimaryPart.Position; local mp=(op+Vector3.new(MAP_POS.X,MAP_POS.Y,ogz))/2; target=Vector3.new(mp.X,MAP_POS.Y+5,mp.Z)
+            else target=getHomePos(bot,true) end
+        elseif role=="Midfielder" then
             target=((bp-ball.Position).Magnitude<120) and (ball.Position+ball.AssemblyLinearVelocity*0.2) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5,MAP_POS.Y+5,(ball.Position.Z+ogz)/2)
         end
     end
     
-    local d=target-bp
-    if d.Magnitude>1 then 
-        local np=bp+d.Unit*aspd*dt
-        pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) 
-    else
-        pcall(moveCharacter, bot, bp, Vector3.new(ball.Position.X,bp.Y,ball.Position.Z))
+    -- CB (Defender) luôn ở sân nhà
+    if role == "Defender" then
+        if team == "Red" then
+            if target.Z > MAP_POS.Z - 20 then
+                target = Vector3.new(target.X, target.Y, MAP_POS.Z - 20)
+            end
+        else
+            if target.Z < MAP_POS.Z + 20 then
+                target = Vector3.new(target.X, target.Y, MAP_POS.Z + 20)
+            end
+        end
     end
+    
+    local d=target-bp
+    if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) end
 end
 
 local function updateAILogic(dt)
@@ -1720,12 +1720,14 @@ local function updateAILogic(dt)
         if bot.Role.Value=="Goalkeeper" then updateGoalkeeperAI(bot,dt)
         else
             local pd=gameState.playerDribbling and (gameState.playerTeam==bot.Team.Value) and not gameState.isOnBench
+            local isSt=bot.Role.Value=="Striker"
             local sc=bot==cb and not ct and not pd
             if gameState.playerSkillActive or gameState.superSkillActive then sc=false end
+            if isSt and (bot.PrimaryPart.Position-ball.Position).Magnitude>60 then sc=false end
             if gameState.gkHolding then sc=false end
             if sc then
                 local d=ball.Position-bot.PrimaryPart.Position
-                if d.Magnitude>1 then
+                if d.Magnitude>3 then
                     local diff=getDiff(bot.Team.Value)
                     local np=bot.PrimaryPart.Position+d.Unit*AI_SPEED*diff.speedMul*dt
                     local ld=Vector3.new(d.X,0,d.Z); if ld.Magnitude<0.1 then ld=Vector3.new(0,0,1) end
@@ -1744,19 +1746,36 @@ local function checkInterception()
     local isD=gameState.playerDribbling
     if speed<20 and not isD then return end
     if not gameState.lastTouchTeam then return end
+    
+    local isSkillBall = gameState.skillBallActive and tick() < gameState.skillBallActive
+    
     local otn=(gameState.lastTouchTeam=="Red") and "Blue" or "Red"
     local ol=(gameState.lastTouchTeam=="Red") and gameState.blueTeam or gameState.redTeam
     local diff=getDiff(otn)
+    
     for _,bot in ipairs(ol) do if bot.PrimaryPart then
         local d=(bot.PrimaryPart.Position-ball.Position).Magnitude
         local chance=0.5*diff.interceptMul
-        if isD then chance=(d>8 and 0.05 or 0.35)*diff.interceptMul
-        else if speed>400 then chance=0.15*diff.interceptMul elseif speed>300 then chance=0.25*diff.interceptMul elseif speed>200 then chance=0.35*diff.interceptMul end end
+        if isD then chance=(d>8 and 0.05 or 0.35)*diff.interceptMul end
+        
+        if isSkillBall then
+            chance = 0.08 * diff.interceptMul
+        else
+            if speed>400 then chance=chance*0.3
+            elseif speed>300 then chance=chance*0.5
+            elseif speed>200 then chance=chance*0.7 end
+        end
+        
         if d<14 and math.random()<chance then
             local dir=(bot.PrimaryPart.Position-ball.Position).Unit
             if gameState.playerDribbling then gameState.playerDribbling=false end
             ball.AssemblyLinearVelocity=dir*speed*0.5+Vector3.new(math.random(-20,20),30,math.random(-20,20))
-            gameState.ballIsCurving=false; gameState.lastTouchTeam=otn; playBallTouchSound(); return
+            gameState.ballIsCurving=false; gameState.lastTouchTeam=otn; playBallTouchSound()
+            if isSkillBall then
+                gameState.skillBallActive = 0
+                gameState.skillBallOwner = nil
+            end
+            return
         end
     end end
 end
@@ -1814,6 +1833,8 @@ local function resetPositions(concedingTeam)
     if gameState.ball then gameState.ball.Anchored=false end
     gameState.playerDribbling=false; gameState.gkHolding=false; gameState.gkHoldingTeam=nil
     gameState.playerSkillActive=false; gameState.superSkillActive=false; gameState.aiSkillActive={}
+    gameState.skillBallActive = 0
+    gameState.skillBallOwner = nil
     if gameState.ball then gameState.ball.CanCollide=true end
     
     for _,bot in ipairs(gameState.redTeam) do 
@@ -2097,7 +2118,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
@@ -2959,6 +2980,32 @@ local function createGameUI()
 
     lbb.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
+        
+        -- Thử phá skill ball của AI
+        if gameState.skillBallActive and tick() < gameState.skillBallActive and gameState.ball then
+            local char = gameState.playerChar
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = (hrp.Position - gameState.ball.Position).Magnitude
+                    if d < 20 then
+                        local oppTeam = (gameState.playerTeam == "Red") and "Blue" or "Red"
+                        local oppDiff = getDiff(oppTeam)
+                        local breakChance = 0.5 / oppDiff.interceptMul
+                        if math.random() < breakChance then
+                            local dir = Vector3.new(0,0, (gameState.playerTeam=="Red") and -1 or 1)
+                            gameState.ball.AssemblyLinearVelocity = dir * 150 + Vector3.new(0, 120, 0)
+                            gameState.lastTouchTeam = gameState.playerTeam
+                            gameState.skillBallActive = 0
+                            gameState.skillBallOwner = nil
+                            playBallTouchSound()
+                            return
+                        end
+                    end
+                end
+            end
+        end
+        
         local n=gnb()
         if n then
             sdb()
@@ -3006,10 +3053,39 @@ local function createGameUI()
         end
         gameState.knuckleChargePower=0; gameState.chargingBall=nil
     end)
+    
     drb.MouseButton1Click:Connect(function()
         if tick()-(gameState.lastDribbleTime or 0)<0.3 or gameState.isOnBench then return end
-        gameState.lastDribbleTime=tick(); doDribble()
+        gameState.lastDribbleTime=tick()
+        
+        -- Thử phá skill ball của AI
+        if gameState.skillBallActive and tick() < gameState.skillBallActive and gameState.ball then
+            local char = gameState.playerChar
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local d = (hrp.Position - gameState.ball.Position).Magnitude
+                    if d < 15 then
+                        local oppTeam = (gameState.playerTeam == "Red") and "Blue" or "Red"
+                        local oppDiff = getDiff(oppTeam)
+                        local breakChance = 0.6 / oppDiff.interceptMul
+                        if math.random() < breakChance then
+                            local dir = (hrp.Position - gameState.ball.Position).Unit
+                            gameState.ball.AssemblyLinearVelocity = dir * 80 + Vector3.new(0, 30, 0)
+                            gameState.lastTouchTeam = gameState.playerTeam
+                            gameState.skillBallActive = 0
+                            gameState.skillBallOwner = nil
+                            playBallTouchSound()
+                            return
+                        end
+                    end
+                end
+            end
+        end
+        
+        doDribble()
     end)
+    
     skb.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         local c=gameState.playerChar; if not c then return end
