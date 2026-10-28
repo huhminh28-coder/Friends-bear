@@ -672,7 +672,7 @@ end
 
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -1666,12 +1666,49 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         else target=Vector3.new(MAP_POS.X+((bot:GetAttribute("FormationIndex") or 2)-2.5)*50,MAP_POS.Y+5,math.max(MAP_POS.Z-30,ball.Position.Z-80)) end
     else
         if role=="Defender" then
-            local no,md=nil,math.huge
-            for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
-                local d=math.abs(opp.PrimaryPart.Position.Z-ogz); if d<md then md=d; no=opp end
-            end end
-            if no then local op=no.PrimaryPart.Position; local mp=(op+Vector3.new(MAP_POS.X,MAP_POS.Y,ogz))/2; target=Vector3.new(mp.X,MAP_POS.Y+5,mp.Z)
-            else target=getHomePos(bot,true) end
+            local distToBall = (bp - ball.Position).Magnitude
+            local ballInOwnHalf = (ball.Position.Z - MAP_POS.Z) * ad < 0
+            
+            local inBox = false
+            if team == "Red" then
+                inBox = ball.Position.Z < MAP_POS.Z - PITCH_LENGTH/2 + PENALTY_BOX_DEPTH and math.abs(ball.Position.X - MAP_POS.X) < 150
+            else
+                inBox = ball.Position.Z > MAP_POS.Z + PITCH_LENGTH/2 - PENALTY_BOX_DEPTH and math.abs(ball.Position.X - MAP_POS.X) < 150
+            end
+
+            if inBox or distToBall < 25 then
+                target = ball.Position
+                if distToBall < 15 then
+                    handleBallTouch(bot)
+                    gameState.lastActionTime = tick()
+                end
+            elseif ballInOwnHalf then
+                local mostDangerous = nil
+                local minDistToGoal = math.huge
+                local myGoal = Vector3.new(MAP_POS.X, TORSO_Y, ogz)
+                for _, opp in ipairs(ol) do
+                    if opp.PrimaryPart and opp.Role.Value ~= "Goalkeeper" then
+                        local distToGoal = (opp.PrimaryPart.Position - myGoal).Magnitude
+                        if distToGoal < minDistToGoal then
+                            minDistToGoal = distToGoal
+                            mostDangerous = opp
+                        end
+                    end
+                end
+
+                if mostDangerous and mostDangerous.PrimaryPart then
+                    local oppPos = mostDangerous.PrimaryPart.Position
+                    local dirToGoal = (myGoal - oppPos).Unit
+                    local fi = bot:GetAttribute("FormationIndex") or 1
+                    local sideOffset = Vector3.new((fi == 1 or fi == 2) and -3 or 3, 0, 0)
+                    target = oppPos + dirToGoal * 6 + sideOffset
+                else
+                    target = getHomePos(bot, true)
+                end
+            else
+                target = getHomePos(bot, true)
+                target = Vector3.new(target.X * 0.7 + ball.Position.X * 0.3, target.Y, target.Z)
+            end
         elseif role=="Midfielder" then
             target=((bp-ball.Position).Magnitude<120) and (ball.Position+ball.AssemblyLinearVelocity*0.2) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5,MAP_POS.Y+5,(ball.Position.Z+ogz)/2)
         end
@@ -1727,7 +1764,10 @@ local function updateAILogic(dt)
             if gameState.gkHolding then sc=false end
             if sc then
                 local d=ball.Position-bot.PrimaryPart.Position
-                if d.Magnitude>3 then
+                if d.Magnitude < 12 then
+                    handleBallTouch(bot)
+                    gameState.lastActionTime = tick()
+                elseif d.Magnitude>3 then
                     local diff=getDiff(bot.Team.Value)
                     local np=bot.PrimaryPart.Position+d.Unit*AI_SPEED*diff.speedMul*dt
                     local ld=Vector3.new(d.X,0,d.Z); if ld.Magnitude<0.1 then ld=Vector3.new(0,0,1) end
@@ -2118,7 +2158,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
