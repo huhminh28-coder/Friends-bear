@@ -39,6 +39,7 @@ local DIFFICULTY_PER_CATEGORY = {
     pass = {[1]={passMul=0.6},[2]={passMul=1.0},[3]={passMul=1.4}},
 }
 
+-- TẤT CẢ CÁC GIẢI ĐỀU CÓ VÒNG BẢNG 5 TRẬN
 local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
@@ -49,13 +50,13 @@ local TOURNAMENTS = {
     ["La Liga"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Serie A"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["FIFA Club World Cup"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
-    ["DFB-Pokal"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
-    ["FA Cup"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
-    ["Carabao Cup"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
-    ["Copa del Rey"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
-    ["Coppa Italia"]={stages={"ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1}},
-    ["Coupe de France"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
-    ["Supercopa de España"]={stages={"SEMI-FINALS","FINAL"},matchesPerStage={1,1}},
+    ["DFB-Pokal"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["FA Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["Carabao Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["Copa del Rey"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["Coppa Italia"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Coupe de France"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
+    ["Supercopa de España"]={stages={"GROUP STAGE","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1}},
 }
 
 local gameState = {
@@ -95,6 +96,7 @@ local gameState = {
     hasTrophy = false,
     skillBallActive = 0,
     skillBallOwner = nil,
+    weatherType = "Normal",
 }
 
 local function getPlayerAchievement(count)
@@ -672,7 +674,7 @@ end
 
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    playSoundOnce("rbxassetid://132079977802654", 5, 6)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -1007,6 +1009,103 @@ local function createStadium()
     end
 end
 
+local function setWeather(weatherType)
+    gameState.weatherType = weatherType
+    Lighting.Ambient = Color3.fromRGB(70, 65, 35)
+    Lighting.OutdoorAmbient = Color3.fromRGB(70, 65, 35)
+    Lighting.Brightness = 1
+    Lighting.FogEnd = 1000
+    Lighting.FogColor = Color3.fromRGB(192, 192, 192)
+    
+    local oldFx = workspace:FindFirstChild("WeatherFX")
+    if oldFx then oldFx:Destroy() end
+    local fx = Instance.new("Folder", workspace)
+    fx.Name = "WeatherFX"
+
+    local stadium = workspace:FindFirstChild("WC2026Stadium")
+    local pitch = stadium and stadium:FindFirstChild("Pitch")
+    local pitchBase = stadium and stadium:FindFirstChild("PitchBase")
+    
+    local ball = gameState.ball
+    if ball then
+        if weatherType == "Rain" then
+            ball.CustomPhysicalProperties = PhysicalProperties.new(0.9, 0.1, 0.8, 1, 1)
+        elseif weatherType == "Snow" then
+            ball.CustomPhysicalProperties = PhysicalProperties.new(1.2, 0.05, 0.9, 1, 1)
+        else
+            ball.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5, 1, 1)
+        end
+    end
+
+    if weatherType == "Rain" then
+        Lighting.Ambient = Color3.fromRGB(40, 40, 50)
+        Lighting.OutdoorAmbient = Color3.fromRGB(40, 40, 50)
+        Lighting.Brightness = 0.5
+        Lighting.FogEnd = 300
+        Lighting.FogColor = Color3.fromRGB(100, 100, 120)
+        if pitch then pitch.Color = Color3.fromRGB(0, 120, 0) end
+        if pitchBase then pitchBase.Color = Color3.fromRGB(20, 60, 20) end
+        
+        local rain = Instance.new("ParticleEmitter")
+        rain.Texture = "rbxassetid://241876428"
+        rain.Rate = 500
+        rain.Lifetime = NumberRange.new(0.5, 1)
+        rain.Speed = NumberRange.new(80, 120)
+        rain.SpreadAngle = Vector2.new(10, 10)
+        rain.Size = NumberSequence.new(0.5)
+        rain.Transparency = NumberSequence.new(0.5)
+        rain.Acceleration = Vector3.new(0, -200, 0)
+        
+        local rainPart = Instance.new("Part", fx)
+        rainPart.Anchored = true
+        rainPart.CanCollide = false
+        rainPart.Transparency = 1
+        rainPart.Size = Vector3.new(600, 1, 800)
+        rainPart.Position = MAP_POS + Vector3.new(0, 100, 0)
+        rain.Parent = rainPart
+        
+    elseif weatherType == "Snow" then
+        Lighting.Ambient = Color3.fromRGB(180, 180, 200)
+        Lighting.OutdoorAmbient = Color3.fromRGB(180, 180, 200)
+        Lighting.Brightness = 2
+        Lighting.FogEnd = 200
+        Lighting.FogColor = Color3.fromRGB(240, 240, 250)
+        if pitch then pitch.Color = Color3.fromRGB(230, 230, 230) end
+        if pitchBase then pitchBase.Color = Color3.fromRGB(200, 200, 200) end
+        
+        local snow = Instance.new("ParticleEmitter")
+        snow.Texture = "rbxassetid://132367533"
+        snow.Rate = 300
+        snow.Lifetime = NumberRange.new(3, 5)
+        snow.Speed = NumberRange.new(10, 20)
+        snow.SpreadAngle = Vector2.new(30, 30)
+        snow.Size = NumberSequence.new(1.5)
+        snow.Transparency = NumberSequence.new(0.2)
+        snow.Acceleration = Vector3.new(5, -10, 5)
+        
+        local snowPart = Instance.new("Part", fx)
+        snowPart.Anchored = true
+        snowPart.CanCollide = false
+        snowPart.Transparency = 1
+        snowPart.Size = Vector3.new(600, 1, 800)
+        snowPart.Position = MAP_POS + Vector3.new(0, 100, 0)
+        snow.Parent = snowPart
+    else
+        if pitch then pitch.Color = Color3.fromRGB(0, 180, 0) end
+        if pitchBase then pitchBase.Color = Color3.fromRGB(40, 90, 40) end
+    end
+    
+    local pc = gameState.playerChar
+    if pc then
+        local hum = pc:FindFirstChildOfClass("Humanoid")
+        if hum then
+            if weatherType == "Rain" then hum.WalkSpeed = 12
+            elseif weatherType == "Snow" then hum.WalkSpeed = 10
+            else hum.WalkSpeed = NORMAL_WALKSPEED end
+        end
+    end
+end
+
 local function createBall()
     if gameState.ball and gameState.ball.Parent then gameState.ball:Destroy() end
     local ball = Instance.new("Part")
@@ -1090,8 +1189,15 @@ local function playBallTouchSound()
     if gameState.ball then playBallKick(gameState.ball.Position,math.random(90,110)/100) end
 end
 
+local function getYBoost()
+    if gameState.weatherType == "Rain" then return 0.6
+    elseif gameState.weatherType == "Snow" then return 0.3 end
+    return 1.0
+end
+
 local function applyKnuckleball(ball,direction,power)
-    ball.AssemblyLinearVelocity=direction*power+Vector3.new(0,40,0)
+    local yBoost = getYBoost()
+    ball.AssemblyLinearVelocity=direction*power+Vector3.new(0,40*yBoost,0)
     gameState.ballIsCurving=true
     local st=tick()
     local perp=Vector3.new(-direction.Z,0,direction.X).Unit
@@ -1106,7 +1212,8 @@ local function applyKnuckleball(ball,direction,power)
 end
 
 local function applyPowerShot(ball,direction,power,spin)
-    ball.AssemblyLinearVelocity=direction*power+Vector3.new(0,20,0)
+    local yBoost = getYBoost()
+    ball.AssemblyLinearVelocity=direction*power+Vector3.new(0,20*yBoost,0)
     if spin and spin>0 then
         local st=tick(); local sr=spin/800; local conn
         conn=RunService.Heartbeat:Connect(function(dt)
@@ -1119,9 +1226,10 @@ local function applyPowerShot(ball,direction,power,spin)
 end
 
 local function applyLobPass(ball,targetPos,powerBase)
+    local yBoost = getYBoost()
     local dir=targetPos-ball.Position; local hd=Vector3.new(dir.X,0,dir.Z); local d=hd.Magnitude
     if d<1 then return end; hd=hd.Unit
-    ball.AssemblyLinearVelocity=hd*math.clamp(d*1.35+(powerBase or 0),100,240)+Vector3.new(0,math.clamp(d*0.10+8,12,35),0)
+    ball.AssemblyLinearVelocity=hd*math.clamp(d*1.35+(powerBase or 0),100,240)+Vector3.new(0,math.clamp(d*0.10+8,12,35)*yBoost,0)
 end
 
 local function applyGroundPass(ball,targetPos,powerBase)
@@ -1328,6 +1436,7 @@ end
 
 local function aiShootBall(bot, shotMult)
     shotMult = shotMult or 1.0
+    local yBoost = getYBoost()
     local ball=gameState.ball; if not ball or not ball.Parent then return end
     local team=bot.Team.Value; local diff=getDiff(team)
     local agz=(team=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
@@ -1341,11 +1450,11 @@ local function aiShootBall(bot, shotMult)
     if dtg>250 then
         if st<=60 then applyPowerShot(ball,(ap-ball.Position).Unit,math.random(280,380)*bp,math.random(-150,150))
         elseif st<=85 then applyKnuckleball(ball,(ap-ball.Position).Unit,math.random(380,480)*bp)
-        else ball.AssemblyLinearVelocity=(ap-ball.Position).Unit*180*bp+Vector3.new(0,100,0) end
+        else ball.AssemblyLinearVelocity=(ap-ball.Position).Unit*180*bp+Vector3.new(0,100*yBoost,0) end
     else
         if st<=50 then applyPowerShot(ball,(ap-ball.Position).Unit,math.random(280,380)*bp,math.random(-200,200))
         elseif st<=85 then applyKnuckleball(ball,(ap-ball.Position).Unit,math.random(420,550)*bp)
-        else ball.AssemblyLinearVelocity=(ap-ball.Position).Unit*150*bp+Vector3.new(0,80,0) end
+        else ball.AssemblyLinearVelocity=(ap-ball.Position).Unit*150*bp+Vector3.new(0,80*yBoost,0) end
     end
 end
 
@@ -1429,7 +1538,6 @@ local function handleBallTouch(bot)
     elseif role == "Midfielder" then shotMult = 0.7; passMult = 1.35
     elseif role == "Defender" then shotMult = 0.5; passMult = 0.9 end
     
-    -- Check opponent phía trước
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local nearestOppDist = math.huge
     local fwdDir = (team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
@@ -1444,7 +1552,6 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 1: Skill xuyên qua (Midfielder/Striker)
     if nearestOppDist < 18 and (role == "Midfielder" or role == "Striker") and not gameState.aiSkillActive[bid] then
         if math.random() < diff.skillChance * 2 then
             if useSkill(bot, team) then
@@ -1454,7 +1561,6 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 2: Sút (Striker ưu tiên)
     if dtg < 320 and csn then
         local shootProb = 0.75 * shotMult
         if dtg < 150 then shootProb = 0.9 * shotMult end
@@ -1466,7 +1572,6 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 3: Chuyền (Midfielder ưu tiên)
     local t,pt=findBestPassTarget(bot)
     if t and csn then
         local tp
@@ -1496,12 +1601,10 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 4: Dribble
     if dtb<15 and dtg>200 then
         if aiDribble(bot) then gameState.passCooldowns[bid]=tick()+0.8 return end
     end
     
-    -- Fallback: clear
     local d=(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-ball.Position).Unit
     ball.AssemblyLinearVelocity=d*100*diff.passMul
     gameState.passCooldowns[bid]=tick()+0.8
@@ -1666,55 +1769,17 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         else target=Vector3.new(MAP_POS.X+((bot:GetAttribute("FormationIndex") or 2)-2.5)*50,MAP_POS.Y+5,math.max(MAP_POS.Z-30,ball.Position.Z-80)) end
     else
         if role=="Defender" then
-            local distToBall = (bp - ball.Position).Magnitude
-            local ballInOwnHalf = (ball.Position.Z - MAP_POS.Z) * ad < 0
-            
-            local inBox = false
-            if team == "Red" then
-                inBox = ball.Position.Z < MAP_POS.Z - PITCH_LENGTH/2 + PENALTY_BOX_DEPTH and math.abs(ball.Position.X - MAP_POS.X) < 150
-            else
-                inBox = ball.Position.Z > MAP_POS.Z + PITCH_LENGTH/2 - PENALTY_BOX_DEPTH and math.abs(ball.Position.X - MAP_POS.X) < 150
-            end
-
-            if inBox or distToBall < 25 then
-                target = ball.Position
-                if distToBall < 15 then
-                    handleBallTouch(bot)
-                    gameState.lastActionTime = tick()
-                end
-            elseif ballInOwnHalf then
-                local mostDangerous = nil
-                local minDistToGoal = math.huge
-                local myGoal = Vector3.new(MAP_POS.X, TORSO_Y, ogz)
-                for _, opp in ipairs(ol) do
-                    if opp.PrimaryPart and opp.Role.Value ~= "Goalkeeper" then
-                        local distToGoal = (opp.PrimaryPart.Position - myGoal).Magnitude
-                        if distToGoal < minDistToGoal then
-                            minDistToGoal = distToGoal
-                            mostDangerous = opp
-                        end
-                    end
-                end
-
-                if mostDangerous and mostDangerous.PrimaryPart then
-                    local oppPos = mostDangerous.PrimaryPart.Position
-                    local dirToGoal = (myGoal - oppPos).Unit
-                    local fi = bot:GetAttribute("FormationIndex") or 1
-                    local sideOffset = Vector3.new((fi == 1 or fi == 2) and -3 or 3, 0, 0)
-                    target = oppPos + dirToGoal * 6 + sideOffset
-                else
-                    target = getHomePos(bot, true)
-                end
-            else
-                target = getHomePos(bot, true)
-                target = Vector3.new(target.X * 0.7 + ball.Position.X * 0.3, target.Y, target.Z)
-            end
+            local no,md=nil,math.huge
+            for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
+                local d=math.abs(opp.PrimaryPart.Position.Z-ogz); if d<md then md=d; no=opp end
+            end end
+            if no then local op=no.PrimaryPart.Position; local mp=(op+Vector3.new(MAP_POS.X,MAP_POS.Y,ogz))/2; target=Vector3.new(mp.X,MAP_POS.Y+5,mp.Z)
+            else target=getHomePos(bot,true) end
         elseif role=="Midfielder" then
             target=((bp-ball.Position).Magnitude<120) and (ball.Position+ball.AssemblyLinearVelocity*0.2) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5,MAP_POS.Y+5,(ball.Position.Z+ogz)/2)
         end
     end
     
-    -- CB (Defender) luôn ở sân nhà
     if role == "Defender" then
         if team == "Red" then
             if target.Z > MAP_POS.Z - 20 then
@@ -1727,8 +1792,17 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         end
     end
     
+    local slipX, slipZ = 0, 0
+    if gameState.weatherType == "Rain" then
+        slipX = math.random(-15, 15) / 10
+        slipZ = math.random(-15, 15) / 10
+    elseif gameState.weatherType == "Snow" then
+        slipX = math.random(-30, 30) / 10
+        slipZ = math.random(-30, 30) / 10
+    end
+    
     local d=target-bp
-    if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) end
+    if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt + Vector3.new(slipX, 0, slipZ); pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) end
 end
 
 local function updateAILogic(dt)
@@ -1764,10 +1838,7 @@ local function updateAILogic(dt)
             if gameState.gkHolding then sc=false end
             if sc then
                 local d=ball.Position-bot.PrimaryPart.Position
-                if d.Magnitude < 12 then
-                    handleBallTouch(bot)
-                    gameState.lastActionTime = tick()
-                elseif d.Magnitude>3 then
+                if d.Magnitude>3 then
                     local diff=getDiff(bot.Team.Value)
                     local np=bot.PrimaryPart.Position+d.Unit*AI_SPEED*diff.speedMul*dt
                     local ld=Vector3.new(d.X,0,d.Z); if ld.Magnitude<0.1 then ld=Vector3.new(0,0,1) end
@@ -2158,7 +2229,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
@@ -2560,7 +2631,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2600)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2800)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2636,9 +2707,29 @@ local function createSettingsUI()
     mtg(sc,250,"Two-Legged Tie", gameState.twoLeggedEnabled, function(st) gameState.twoLeggedEnabled = st; gameState.currentLeg = 1; updateTournamentDisplay() end)
     mtg(sc,288,"Practice Mode", gameState.practiceModeEnabled, function(st) setPracticeMode(st) end)
     
-    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,326)
+    -- WEATHER SELECTION
+    msh(sc,326,"WEATHER",Color3.fromRGB(200,200,255))
+    local wFrame=Instance.new("Frame",sc); wFrame.Size=UDim2.new(1,-24,0,30); wFrame.Position=UDim2.new(0,12,0,352); wFrame.BackgroundTransparency=1
+    local wList={"Normal","Rain","Snow"}
+    local wBtns={}
+    for i,wName in ipairs(wList) do
+        local b=Instance.new("TextButton",wFrame); b.Size=UDim2.new(0.32,-4,1,0); b.Position=UDim2.new((i-1)*0.34,0,0,0)
+        b.BackgroundColor3=(gameState.weatherType==wName) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+        b.Text=wName; b.TextColor3=Color3.new(1,1,1); b.TextScaled=true; b.Font=Enum.Font.FredokaOne
+        Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
+        b.MouseButton1Click:Connect(function()
+            gameState.weatherType=wName
+            for j,btn in ipairs(wBtns) do
+                btn.BackgroundColor3=(j==i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+            end
+            setWeather(wName)
+        end)
+        table.insert(wBtns,b)
+    end
+
+    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,400)
     flr.BackgroundTransparency=1; flr.Text="First Leg Score (Red - Blue)"; flr.TextColor3=Color3.fromRGB(200,200,200); flr.TextXAlignment=Enum.TextXAlignment.Left; flr.Font=Enum.Font.FredokaOne; flr.TextScaled=true
-    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,344); flrBox.BackgroundTransparency=1
+    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,418); flrBox.BackgroundTransparency=1
     local frb=Instance.new("TextBox",flrBox); frb.Size=UDim2.new(0.45,0,1,0); frb.Position=UDim2.new(0,0,0,0)
     frb.BackgroundColor3=Color3.fromRGB(45,45,60); frb.Text=tostring(gameState.firstLegScoreRed); frb.TextColor3=Color3.new(1,1,1); frb.TextScaled=true; frb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",frb).CornerRadius=UDim.new(0,8)
@@ -2648,8 +2739,8 @@ local function createSettingsUI()
     frb.FocusLost:Connect(function() gameState.firstLegScoreRed = tonumber(frb.Text) or 0; updateTournamentDisplay() end)
     fbb.FocusLost:Connect(function() gameState.firstLegScoreBlue = tonumber(fbb.Text) or 0; updateTournamentDisplay() end)
 
-    msh(sc,390,"PLAYER POSITION",Color3.fromRGB(100,255,200))
-    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,416); posFrame.BackgroundTransparency=1
+    msh(sc,466,"PLAYER POSITION",Color3.fromRGB(100,255,200))
+    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,492); posFrame.BackgroundTransparency=1
     local posList = {"Striker", "Midfielder", "Defender"}
     local posBtns = {}
     for i, posName in ipairs(posList) do
@@ -2666,8 +2757,8 @@ local function createSettingsUI()
         table.insert(posBtns, b)
     end
 
-    msh(sc,456,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
-    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,482); tr2.BackgroundTransparency=1
+    msh(sc,532,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
+    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,558); tr2.BackgroundTransparency=1
     local pt=Instance.new("TextButton",tr2); pt.Size=UDim2.new(0.49,-2,1,0); pt.Position=UDim2.new(0,0,0,0)
     pt.BackgroundColor3=Color3.fromRGB(150,30,200); pt.Text="PHYSICS: OFF"; pt.TextColor3=Color3.new(1,1,1); pt.TextScaled=true; pt.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pt).CornerRadius=UDim.new(0,10)
@@ -2687,10 +2778,10 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     
-    msh(sc,546,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    msh(sc,622,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 260)
-    tFrame.Position = UDim2.new(0, 12, 0, 572)
+    tFrame.Position = UDim2.new(0, 12, 0, 648)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2715,60 +2806,60 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,846,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,872)
+    msh(sc,922,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,948)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,872)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,948)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,916,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,942)
+    msh(sc,992,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,1018)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,972)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,1048)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,1006,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,1082,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,1032,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,1082,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,1132,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1182,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,1108,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,1158,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1208,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1258,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1240,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1316,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1266,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1316,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1366,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1416,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1342,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1392,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1442,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1492,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1474,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1496)
+    msh(sc,1550,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1572)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.6,0.13,0.35,0.05,0.75,0,0}; local pst={1,1,1,1,1,1,0,0}; local pvl={1,1,1,1,1,1,1,0.08}
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1498); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,24); rw1.Position=UDim2.new(0,12,0,1574); rw1.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1532,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1568,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1608,"Red Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1644,"Red Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    msh(sc,1606,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1628)
+    msh(sc,1682,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1704)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1630); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,24); rw2.Position=UDim2.new(0,12,0,1706); rw2.BackgroundTransparency=1
     for i=1,8 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,1,0); b.Position=UDim2.new((i-1)*0.125,0,0,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1664,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1700,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,1740,"Blue Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,1776,"Blue Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
@@ -2783,11 +2874,11 @@ local function createSettingsUI()
         end); i2=i2+1 end
     end
     
-    msh(sc,1738,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1762)
+    msh(sc,1814,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,1838)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1762)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,1838)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
@@ -2954,8 +3045,9 @@ local function createGameUI()
             local targetY=MAP_POS.Y+GOAL_HEIGHT-2
             local target=Vector3.new(targetX,targetY,agz)
             local dir=(target-b.Position).Unit
+            local yBoost = getYBoost()
             local shotPower=580+gameState.shootChargePower*0.6
-            b.AssemblyLinearVelocity=dir*shotPower+Vector3.new(0,35,0)
+            b.AssemblyLinearVelocity=dir*shotPower+Vector3.new(0,35*yBoost,0)
             b.AssemblyAngularVelocity=Vector3.new(math.random(-100,100),math.random(-100,100),math.random(-100,100))
             local curveSign=-sign
             local st=tick()
@@ -3013,7 +3105,7 @@ local function createGameUI()
                 local cam = workspace.CurrentCamera
                 local lookDir = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
                 local horiz = Vector3.new(lookDir.X, 0, lookDir.Z).Unit
-                gameState.ball.AssemblyLinearVelocity = horiz * (60 + passChargePower * 40) + Vector3.new(0, 40 + passChargePower * 30, 0)
+                gameState.ball.AssemblyLinearVelocity = horiz * (60 + passChargePower * 40) + Vector3.new(0, (40 + passChargePower * 30)*getYBoost(), 0)
             end
         end
     end)
@@ -3021,7 +3113,6 @@ local function createGameUI()
     lbb.MouseButton1Click:Connect(function()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         
-        -- Thử phá skill ball của AI
         if gameState.skillBallActive and tick() < gameState.skillBallActive and gameState.ball then
             local char = gameState.playerChar
             if char then
@@ -3034,7 +3125,7 @@ local function createGameUI()
                         local breakChance = 0.5 / oppDiff.interceptMul
                         if math.random() < breakChance then
                             local dir = Vector3.new(0,0, (gameState.playerTeam=="Red") and -1 or 1)
-                            gameState.ball.AssemblyLinearVelocity = dir * 150 + Vector3.new(0, 120, 0)
+                            gameState.ball.AssemblyLinearVelocity = dir * 150 + Vector3.new(0, 120*getYBoost(), 0)
                             gameState.lastTouchTeam = gameState.playerTeam
                             gameState.skillBallActive = 0
                             gameState.skillBallOwner = nil
@@ -3057,7 +3148,7 @@ local function createGameUI()
             local lookDir = cam and cam.CFrame.LookVector or hrp.CFrame.LookVector
             local horiz = Vector3.new(lookDir.X, 0, lookDir.Z).Unit
             
-            gameState.ball.AssemblyLinearVelocity = horiz * 150 + Vector3.new(0, 120, 0)
+            gameState.ball.AssemblyLinearVelocity = horiz * 150 + Vector3.new(0, 120*getYBoost(), 0)
             gameState.ball.AssemblyAngularVelocity = Vector3.new(math.random(-50,50), math.random(-50,50), math.random(-50,50))
         end
     end)
@@ -3098,7 +3189,6 @@ local function createGameUI()
         if tick()-(gameState.lastDribbleTime or 0)<0.3 or gameState.isOnBench then return end
         gameState.lastDribbleTime=tick()
         
-        -- Thử phá skill ball của AI
         if gameState.skillBallActive and tick() < gameState.skillBallActive and gameState.ball then
             local char = gameState.playerChar
             if char then
@@ -3134,7 +3224,7 @@ local function createGameUI()
         gameState.playerSkillActive=true; gameState.playerDribbling=false
         local f=h.CFrame.LookVector; local fl=Vector3.new(f.X,0,f.Z).Unit
         b.CFrame=CFrame.new(h.Position+fl*3+Vector3.new(0,2,0))
-        b.AssemblyLinearVelocity=Vector3.new(fl.X*45,68,fl.Z*45)
+        b.AssemblyLinearVelocity=Vector3.new(fl.X*45,68*getYBoost(),fl.Z*45)
         gameState.lastTouchTeam=gameState.playerTeam; gameState.lastScorer="player"; gameState.lastScorerTeam=gameState.playerTeam
         playBallKick(b.Position,0.85)
         task.delay(2.5,function() gameState.playerSkillActive=false end)
@@ -3195,6 +3285,7 @@ local function autoStart()
     end)
     refreshDiffStats()
     createStadium(); createBall()
+    setWeather("Normal")
     createAIPlayer("Red","Goalkeeper",1)
     for i=1,4 do createAIPlayer("Red","Defender",i) end
     for i=1,4 do createAIPlayer("Red","Midfielder",i) end
@@ -3205,6 +3296,7 @@ local function autoStart()
     for i=1,2 do createAIPlayer("Blue","Striker",i) end
     resetPositions("Red"); gameState.gameActive=true
     createGameUI(); createSettingsUI(); startTimer(); updateTournamentDisplay()
+    
     RunService.Heartbeat:Connect(function(dt)
         if gameState.ball then
             if not gameState.ball.Parent then createBall()
@@ -3230,6 +3322,25 @@ local function autoStart()
         end
         updatePlayerDribble(dt); updateAILogic(dt); checkRules()
         if tick()-gameState.lastInterceptCheck>0.1 then gameState.lastInterceptCheck=tick(); checkInterception() end
+
+        -- Trơn trượt cho người chơi khi trời mưa/tuyết
+        if gameState.weatherType ~= "Normal" and gameState.gameActive and not gameState.paused then
+            local char = gameState.playerChar
+            if char then
+                local hrp = char:FindFirstChild("HumanoidRootPart")
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hrp and hum and hum.MoveDirection.Magnitude > 0 then
+                    local slipChance = (gameState.weatherType == "Rain") and 0.03 or 0.08
+                    if math.random() < slipChance then
+                        local force = Instance.new("BodyVelocity")
+                        force.MaxForce = Vector3.new(50000, 0, 50000)
+                        force.Velocity = Vector3.new(math.random(-8,8), 0, math.random(-8,8))
+                        force.Parent = hrp
+                        task.delay(0.3, function() if force then force:Destroy() end end)
+                    end
+                end
+            end
+        end
     end)
 end
 
