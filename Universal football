@@ -39,7 +39,6 @@ local DIFFICULTY_PER_CATEGORY = {
     pass = {[1]={passMul=0.6},[2]={passMul=1.0},[3]={passMul=1.4}},
 }
 
--- CẬP NHẬT: Thêm các giải cúp quốc gia
 local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
@@ -50,7 +49,6 @@ local TOURNAMENTS = {
     ["La Liga"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Serie A"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["FIFA Club World Cup"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
-    -- NEW DOMESTIC CUPS
     ["DFB-Pokal"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
     ["FA Cup"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
     ["Carabao Cup"]={stages={"ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={1,1,1,1,1}},
@@ -382,7 +380,6 @@ local function startGoalCelebration(scorer, scoringTeam)
     gameState.goalCelebrationActive = false
 end
 
--- CẬP NHẬT: Hình dáng cúp chi tiết theo từng giải
 local function buildTrophy(tournamentType)
     local model = Instance.new("Model"); model.Name = "Trophy"
     local pc, sc, shape
@@ -395,7 +392,6 @@ local function buildTrophy(tournamentType)
     elseif tournamentType == "La Liga" then pc=Color3.fromRGB(240,240,240); sc=Color3.fromRGB(180,180,180); shape="LL"
     elseif tournamentType == "Serie A" then pc=Color3.fromRGB(20,50,150); sc=Color3.fromRGB(255,215,0); shape="SA"
     elseif tournamentType == "FIFA Club World Cup" then pc=Color3.fromRGB(255,215,0); sc=Color3.fromRGB(80,80,80); shape="CWC"
-    -- NEW CUPS
     elseif tournamentType == "DFB-Pokal" then pc=Color3.fromRGB(255,200,50); sc=Color3.fromRGB(180,140,30); shape="DFB"
     elseif tournamentType == "FA Cup" then pc=Color3.fromRGB(220,220,230); sc=Color3.fromRGB(150,155,165); shape="FA"
     elseif tournamentType == "Carabao Cup" then pc=Color3.fromRGB(230,230,240); sc=Color3.fromRGB(150,150,160); shape="CAR"
@@ -413,7 +409,6 @@ local function buildTrophy(tournamentType)
     end
 
     if shape=="DFB" then
-        -- DFB-Pokal: Cúp vàng cổ điển, chân đế cao, thân trụ, có nắp
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(1.2,2,1.2), CFrame.new(0,1.5,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(3,3,3), CFrame.new(0,4,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -421,7 +416,6 @@ local function buildTrophy(tournamentType)
         mk("Lid", Vector3.new(2.5,0.5,2.5), CFrame.new(0,5.9,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
         mk("Top", Vector3.new(0.8,0.8,0.8), CFrame.new(0,6.3,0), pc, Enum.Material.Metal, Enum.PartType.Ball)
     elseif shape=="FA" then
-        -- FA Cup: Cúp bạc cổ điển, thân bầu dục, có tay cầm
         mk("Base", Vector3.new(3.5,0.8,3.5), CFrame.new(0,0.4,0), Color3.fromRGB(80,50,30), Enum.Material.Wood)
         mk("Stem", Vector3.new(1,1.5,1), CFrame.new(0,1.5,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(3,2.5,3), CFrame.new(0,3.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -431,7 +425,6 @@ local function buildTrophy(tournamentType)
             h.CFrame = CFrame.new(side*1.8,3.8,0) * CFrame.Angles(0,0,math.rad(side*20))
         end
     elseif shape=="CAR" then
-        -- Carabao Cup: Cúp có 3 tay cầm, hình bình
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(1,1,1), CFrame.new(0,1,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(2.5,2.5,2.5), CFrame.new(0,2.8,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -442,7 +435,6 @@ local function buildTrophy(tournamentType)
             h.CFrame = CFrame.new(math.cos(ang)*1.5, 3.2, math.sin(ang)*1.5) * CFrame.Angles(0, -ang, math.rad(20))
         end
     elseif shape=="CDR" then
-        -- Copa del Rey: Cúp bạc 2 tay cầm, có quốc huy vàng
         mk("Base", Vector3.new(3.5,0.8,3.5), CFrame.new(0,0.4,0), Color3.fromRGB(30,30,30), Enum.Material.Marble)
         mk("Stem", Vector3.new(1,1.5,1), CFrame.new(0,1.5,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(3,2.5,3), CFrame.new(0,3.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -453,7 +445,6 @@ local function buildTrophy(tournamentType)
         end
         mk("Crest", Vector3.new(0.8,1,0.2), CFrame.new(0,3.5,-1.6), Color3.fromRGB(255,215,0), Enum.Material.Neon)
     elseif shape=="CI" then
-        -- Coppa Italia: Bình gốm La Mã, vàng, có tay cầm
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(1,1.5,1), CFrame.new(0,1.25,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(2.8,3,2.8), CFrame.new(0,3.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -463,13 +454,11 @@ local function buildTrophy(tournamentType)
             h.CFrame = CFrame.new(side*1.6,3.5,0) * CFrame.Angles(0,0,math.rad(side*20))
         end
     elseif shape=="CDF" then
-        -- Coupe de France: Hình con thuyền, bạc
         mk("Base", Vector3.new(3.5,0.5,3.5), CFrame.new(0,0.25,0), Color3.fromRGB(150,30,30), Enum.Material.Marble)
         mk("Hull", Vector3.new(3,1,1.5), CFrame.new(0,1.5,0), pc, Enum.Material.Metal)
         mk("Sail", Vector3.new(0.2,3,2), CFrame.new(0,3,0), pc, Enum.Material.Metal)
         mk("Mast", Vector3.new(0.3,4,0.3), CFrame.new(0,3,0), sc, Enum.Material.Metal)
     elseif shape=="SC" then
-        -- Supercopa de España: Cúp nhỏ gọn
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(1,1,1), CFrame.new(0,1,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(2.5,2,2.5), CFrame.new(0,2.5,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -681,7 +670,7 @@ end
 
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -1278,10 +1267,35 @@ end
 local function useSkill(bot,team)
     local ball=gameState.ball; if not ball or not ball.Parent or not bot.PrimaryPart then return false end
     local bp=bot.PrimaryPart.Position; local fwd=(team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
-    ball.AssemblyLinearVelocity=Vector3.new(fwd.X*45,68,fwd.Z*45)
-    ball.CFrame=CFrame.new(bp+fwd*3+Vector3.new(0,2,0))
-    gameState.lastTouchTeam=team; gameState.aiSkillActive[bot:GetDebugId()]=tick()+2
-    playBallKick(ball.Position,0.85); return true
+    
+    -- Nutmeg: Tạm thời tắt CanCollide cho bóng để đi xuyên qua người
+    ball.CanCollide = false
+    ball.AssemblyLinearVelocity = fwd * 80 + Vector3.new(0, 5, 0)
+    
+    gameState.lastTouchTeam = team
+    gameState.lastScorer = bot
+    gameState.lastScorerTeam = team
+    gameState.aiSkillActive[bot:GetDebugId()] = tick() + 1.5
+    playBallKick(ball.Position, 0.85)
+    
+    -- Người chơi/AI đối phương có thể phá bóng (dựa vào độ khó)
+    local oppTeam = (team == "Red") and gameState.blueTeam or gameState.redTeam
+    for _, opp in ipairs(oppTeam) do
+        if opp.PrimaryPart and (opp.PrimaryPart.Position - ball.Position).Magnitude < 12 then
+            local interceptChance = 0.1 + (getDiff(opp.Team.Value).interceptMul * 0.2)
+            if math.random() < interceptChance then
+                ball.CanCollide = true
+                ball.AssemblyLinearVelocity = -fwd * 50 + Vector3.new(0, 10, 0)
+                gameState.lastTouchTeam = opp.Team.Value
+                return true
+            end
+        end
+    end
+    
+    task.delay(0.5, function()
+        if ball and ball.Parent then ball.CanCollide = true end
+    end)
+    return true
 end
 
 local function aiDribble(bot)
@@ -1294,7 +1308,12 @@ local function aiDribble(bot)
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local nod=math.huge
     for _,opp in ipairs(ol) do if opp.PrimaryPart then local d=(opp.PrimaryPart.Position-bp).Magnitude; if d<nod then nod=d end end end
-    if nod<12 and math.random()<diff.skillChance and not gameState.aiSkillActive[bid] then if useSkill(bot,team) then return true end end
+    
+    -- Dùng skill nutmeg nếu có đối thủ chắn trước mặt
+    if nod < 15 and math.random() < diff.skillChance and not gameState.aiSkillActive[bid] then 
+        if useSkill(bot,team) then return true end 
+    end
+    
     local bs=gameState.aiDribbleState[bid]
     if not bs or not bs.active or dtb>8 then
         local tp=bp+(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-bp).Unit*5
@@ -1315,9 +1334,19 @@ local function aiShootBall(bot)
     local dtg=(bot.PrimaryPart.Position-Vector3.new(MAP_POS.X,MAP_POS.Y,agz)).Magnitude
     gameState.lastTouchTeam=team; gameState.lastScorer=bot; gameState.lastScorerTeam=team
     playBallTouchSound()
+    
+    -- Striker sút chính xác hơn, Midfielder sút kém chính xác hơn
+    local isStriker = (bot.Role.Value == "Striker")
+    local accuracyMod = isStriker and 1.0 or 0.6
     local st=math.random(1,100)
+    
     local tx=MAP_POS.X+((math.random(1,2)==1) and -1 or 1)*(GOAL_WIDTH/2-5)
-    local ty=GOAL_HEIGHT-6; local ap=Vector3.new(tx,MAP_POS.Y+ty,agz); local bp=diff.shotMul
+    -- Nếu là Midfielder, target có thể bị lệch nhiều hơn
+    if not isStriker then
+        tx = tx + (math.random() - 0.5) * 20
+    end
+    local ty=GOAL_HEIGHT-6; local ap=Vector3.new(tx,MAP_POS.Y+ty,agz); local bp=diff.shotMul * accuracyMod
+    
     if dtg>250 then
         if st<=60 then applyPowerShot(ball,(ap-ball.Position).Unit,math.random(280,380)*bp,math.random(-150,150))
         elseif st<=85 then applyKnuckleball(ball,(ap-ball.Position).Unit,math.random(380,480)*bp)
@@ -1349,6 +1378,10 @@ function findBestPassTarget(bot)
             table.insert(candidates, {part=phrp, bot=nil, isPlayer=true})
         end
     end
+    
+    -- Striker chuyền kém hơn Midfielder (dễ chọn mục tiêu bị kèm)
+    local isStriker = (bot.Role.Value == "Striker")
+    
     for _,c in ipairs(candidates) do
         local tp = c.part.Position
         local dtb = (tp - ball.Position).Magnitude
@@ -1363,6 +1396,8 @@ function findBestPassTarget(bot)
             end
             if no < 25 then score = score - 200
             elseif no > 60 then score = score + 100 end
+            
+            if isStriker and no < 40 then score = score - 150 end -- Striker dễ chuyền vào chỗ bị kèm
             
             if c.isPlayer then
                 local chance = 50
@@ -1402,10 +1437,43 @@ local function handleBallTouch(bot)
     local bp=bot.PrimaryPart.Position; local dtg=math.abs(bp.Z-agz)
     local bid=bot:GetDebugId(); local csn=tick()>(gameState.passCooldowns[bid] or 0)
     local dtb=(bp-ball.Position).Magnitude
+    
     if dtb<15 and dtg>200 and math.random()<0.5 then
         if aiDribble(bot) then gameState.passCooldowns[bid]=tick()+0.8 return end
     end
-    if dtg<400 and csn then aiShootBall(bot); gameState.passCooldowns[bid]=tick()+1.0; return end
+    
+    local isStriker = (bot.Role.Value == "Striker")
+    local isMidfielder = (bot.Role.Value == "Midfielder")
+    
+    -- Striker ưu tiên sút, Midfielder ưu tiên chuyền
+    local shootThreshold = isStriker and 350 or 200
+    if dtg < shootThreshold and csn then
+        local t, pt = findBestPassTarget(bot)
+        -- Midfielder 70% sẽ chuyền nếu có đồng đội
+        if isMidfielder and t and math.random() < 0.7 then
+            local tp
+            if t == "PLAYER" then
+                local pc = gameState.playerChar
+                local phrp = pc and pc:FindFirstChild("HumanoidRootPart")
+                if phrp then tp = phrp.Position end
+            elseif t.PrimaryPart then
+                tp = t.PrimaryPart.Position
+            end
+            if tp then
+                if pt=="ThroughBall" then local td=Vector3.new(0,0,(team=="Red") and 1 or -1); applyGroundPass(ball,tp+td*40,20*diff.passMul)
+                elseif pt=="Short" then applyGroundPass(ball,tp,0)
+                elseif pt=="Medium" then applyGroundPass(ball,tp,20*diff.passMul)
+                else applyLobPass(ball,tp,20*diff.passMul) end
+                gameState.passCooldowns[bid]=tick()+1.5
+                return
+            end
+        else
+            aiShootBall(bot)
+            gameState.passCooldowns[bid]=tick()+1.0
+            return
+        end
+    end
+    
     gameState.lastTouchTeam=team; gameState.lastScorer=bot; gameState.lastScorerTeam=team
     playBallTouchSound()
     local t,pt=findBestPassTarget(bot); local pm=diff.passMul
@@ -1574,8 +1642,41 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
             return
         end
     end
+    
     local target
-    if bot==closestBot then
+    if role == "Defender" then
+        -- Hậu vệ luôn ở sân nhà, bám tiền đạo đối phương hoặc chặn sút
+        local markTarget = nil
+        local minD = math.huge
+        for _, opp in ipairs(ol) do
+            if opp.PrimaryPart and (opp.Role.Value == "Striker" or opp.Role.Value == "Midfielder") then
+                local d = (opp.PrimaryPart.Position - bp).Magnitude
+                if d < minD then minD = d; markTarget = opp end
+            end
+        end
+        
+        if markTarget and minD < 120 then
+            -- Bám theo tiền đạo
+            local op = markTarget.PrimaryPart.Position
+            -- Giữ cự ly phòng ngự tùy độ khó
+            local markDist = 5 + (diff.interceptMul * 2)
+            local dirToOpp = (op - bp).Unit
+            target = op - dirToOpp * markDist
+            target = Vector3.new(target.X, TORSO_Y, math.clamp(target.Z, ogz, MAP_POS.Z + (ogz-MAP_POS.Z)*0.4))
+        else
+            target = getHomePos(bot, true)
+        end
+        
+        -- Chặn sút: Nếu bóng đang bay về phía khung thành nhà với vận tốc cao
+        local bv = ball.AssemblyLinearVelocity
+        local toGoal = Vector3.new(MAP_POS.X, TORSO_Y, ogz) - ball.Position
+        if bv.Magnitude > 150 and bv:Dot(toGoal.Unit) > 0.4 then
+            local blockPos = ball.Position + bv * 0.2
+            target = Vector3.new(blockPos.X, TORSO_Y, blockPos.Z)
+            -- Tăng tốc lao ra chặn
+            aspd = aspd * 1.5
+        end
+    elseif bot==closestBot then
         target=ball.Position+ball.AssemblyLinearVelocity*0.3
         if (bp-ball.Position).Magnitude<12 then handleBallTouch(bot); gameState.lastActionTime=tick() end
     elseif role=="Striker" then
@@ -1590,12 +1691,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         else target=Vector3.new(MAP_POS.X+((bot:GetAttribute("FormationIndex") or 2)-2.5)*50,MAP_POS.Y+5,math.max(MAP_POS.Z-30,ball.Position.Z-80)) end
     else
         if role=="Defender" then
-            local no,md=nil,math.huge
-            for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
-                local d=math.abs(opp.PrimaryPart.Position.Z-ogz); if d<md then md=d; no=opp end
-            end end
-            if no then local op=no.PrimaryPart.Position; local mp=(op+Vector3.new(MAP_POS.X,MAP_POS.Y,ogz))/2; target=Vector3.new(mp.X,MAP_POS.Y+5,mp.Z)
-            else target=getHomePos(bot,true) end
+            target=getHomePos(bot,true)
         elseif role=="Midfielder" then
             target=((bp-ball.Position).Magnitude<120) and (ball.Position+ball.AssemblyLinearVelocity*0.2) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5,MAP_POS.Y+5,(ball.Position.Z+ogz)/2)
         end
@@ -2009,7 +2105,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
