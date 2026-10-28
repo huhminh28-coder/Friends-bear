@@ -1268,7 +1268,6 @@ local function useSkill(bot,team)
     local ball=gameState.ball; if not ball or not ball.Parent or not bot.PrimaryPart then return false end
     local bp=bot.PrimaryPart.Position; local fwd=(team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
     
-    -- Nutmeg: Tạm thời tắt CanCollide cho bóng để đi xuyên qua người
     ball.CanCollide = false
     ball.AssemblyLinearVelocity = fwd * 80 + Vector3.new(0, 5, 0)
     
@@ -1278,7 +1277,6 @@ local function useSkill(bot,team)
     gameState.aiSkillActive[bot:GetDebugId()] = tick() + 1.5
     playBallKick(ball.Position, 0.85)
     
-    -- Người chơi/AI đối phương có thể phá bóng (dựa vào độ khó)
     local oppTeam = (team == "Red") and gameState.blueTeam or gameState.redTeam
     for _, opp in ipairs(oppTeam) do
         if opp.PrimaryPart and (opp.PrimaryPart.Position - ball.Position).Magnitude < 12 then
@@ -1309,7 +1307,6 @@ local function aiDribble(bot)
     local nod=math.huge
     for _,opp in ipairs(ol) do if opp.PrimaryPart then local d=(opp.PrimaryPart.Position-bp).Magnitude; if d<nod then nod=d end end end
     
-    -- Dùng skill nutmeg nếu có đối thủ chắn trước mặt
     if nod < 15 and math.random() < diff.skillChance and not gameState.aiSkillActive[bid] then 
         if useSkill(bot,team) then return true end 
     end
@@ -1335,13 +1332,11 @@ local function aiShootBall(bot)
     gameState.lastTouchTeam=team; gameState.lastScorer=bot; gameState.lastScorerTeam=team
     playBallTouchSound()
     
-    -- Striker sút chính xác hơn, Midfielder sút kém chính xác hơn
     local isStriker = (bot.Role.Value == "Striker")
     local accuracyMod = isStriker and 1.0 or 0.6
     local st=math.random(1,100)
     
     local tx=MAP_POS.X+((math.random(1,2)==1) and -1 or 1)*(GOAL_WIDTH/2-5)
-    -- Nếu là Midfielder, target có thể bị lệch nhiều hơn
     if not isStriker then
         tx = tx + (math.random() - 0.5) * 20
     end
@@ -1379,7 +1374,6 @@ function findBestPassTarget(bot)
         end
     end
     
-    -- Striker chuyền kém hơn Midfielder (dễ chọn mục tiêu bị kèm)
     local isStriker = (bot.Role.Value == "Striker")
     
     for _,c in ipairs(candidates) do
@@ -1397,7 +1391,7 @@ function findBestPassTarget(bot)
             if no < 25 then score = score - 200
             elseif no > 60 then score = score + 100 end
             
-            if isStriker and no < 40 then score = score - 150 end -- Striker dễ chuyền vào chỗ bị kèm
+            if isStriker and no < 40 then score = score - 150 end
             
             if c.isPlayer then
                 local chance = 50
@@ -1445,11 +1439,9 @@ local function handleBallTouch(bot)
     local isStriker = (bot.Role.Value == "Striker")
     local isMidfielder = (bot.Role.Value == "Midfielder")
     
-    -- Striker ưu tiên sút, Midfielder ưu tiên chuyền
     local shootThreshold = isStriker and 350 or 200
     if dtg < shootThreshold and csn then
         local t, pt = findBestPassTarget(bot)
-        -- Midfielder 70% sẽ chuyền nếu có đồng đội
         if isMidfielder and t and math.random() < 0.7 then
             local tp
             if t == "PLAYER" then
@@ -1618,6 +1610,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
     local ogz=(team=="Red") and (MAP_POS.Z-PITCH_LENGTH/2) or (MAP_POS.Z+PITCH_LENGTH/2)
     local thb=gameState.lastTouchTeam==team
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
+    
     if gameState.playerSkillActive or gameState.superSkillActive then
         local t=getHomePos(bot,false); local d=t-bp
         if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
@@ -1628,6 +1621,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(np.X,np.Y,np.Z+d.Unit.Z)) end
         return
     end
+    
     local pd=gameState.playerDribbling and (gameState.playerTeam==team) and not gameState.isOnBench
     if pd then
         local pc=gameState.playerChar; local phrp=pc and pc:FindFirstChild("HumanoidRootPart")
@@ -1643,37 +1637,33 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         end
     end
     
-    local target
+    local target = getHomePos(bot, true)
+    
     if role == "Defender" then
-        -- Hậu vệ luôn ở sân nhà, bám tiền đạo đối phương hoặc chặn sút
-        local markTarget = nil
-        local minD = math.huge
-        for _, opp in ipairs(ol) do
-            if opp.PrimaryPart and (opp.Role.Value == "Striker" or opp.Role.Value == "Midfielder") then
-                local d = (opp.PrimaryPart.Position - bp).Magnitude
-                if d < minD then minD = d; markTarget = opp end
+        local ballInHome = math.abs(ball.Position.Z - ogz) < 200
+        if ballInHome and (bp - ball.Position).Magnitude < 80 then
+            target = ball.Position
+        else
+            local markTarget = nil
+            local minD = math.huge
+            for _, opp in ipairs(ol) do
+                if opp.PrimaryPart and (opp.Role.Value == "Striker" or opp.Role.Value == "Midfielder") then
+                    local d = (opp.PrimaryPart.Position - ogz).Magnitude
+                    if d < minD then minD = d; markTarget = opp end
+                end
+            end
+            if markTarget and minD < 150 then
+                local op = markTarget.PrimaryPart.Position
+                local markDist = 8 - (diff.interceptMul * 2)
+                local dirToOpp = (op - bp).Unit
+                target = op - dirToOpp * math.max(3, markDist)
             end
         end
-        
-        if markTarget and minD < 120 then
-            -- Bám theo tiền đạo
-            local op = markTarget.PrimaryPart.Position
-            -- Giữ cự ly phòng ngự tùy độ khó
-            local markDist = 5 + (diff.interceptMul * 2)
-            local dirToOpp = (op - bp).Unit
-            target = op - dirToOpp * markDist
-            target = Vector3.new(target.X, TORSO_Y, math.clamp(target.Z, ogz, MAP_POS.Z + (ogz-MAP_POS.Z)*0.4))
-        else
-            target = getHomePos(bot, true)
-        end
-        
-        -- Chặn sút: Nếu bóng đang bay về phía khung thành nhà với vận tốc cao
         local bv = ball.AssemblyLinearVelocity
         local toGoal = Vector3.new(MAP_POS.X, TORSO_Y, ogz) - ball.Position
         if bv.Magnitude > 150 and bv:Dot(toGoal.Unit) > 0.4 then
             local blockPos = ball.Position + bv * 0.2
             target = Vector3.new(blockPos.X, TORSO_Y, blockPos.Z)
-            -- Tăng tốc lao ra chặn
             aspd = aspd * 1.5
         end
     elseif bot==closestBot then
@@ -1690,14 +1680,18 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         if role=="Midfielder" then target=Vector3.new(ball.Position.X+math.random(-40,40),MAP_POS.Y+5,math.max(ball.Position.Z,(ball.Position.Z+agz)/2))
         else target=Vector3.new(MAP_POS.X+((bot:GetAttribute("FormationIndex") or 2)-2.5)*50,MAP_POS.Y+5,math.max(MAP_POS.Z-30,ball.Position.Z-80)) end
     else
-        if role=="Defender" then
-            target=getHomePos(bot,true)
-        elseif role=="Midfielder" then
+        if role=="Midfielder" then
             target=((bp-ball.Position).Magnitude<120) and (ball.Position+ball.AssemblyLinearVelocity*0.2) or Vector3.new(ball.Position.X*0.5+MAP_POS.X*0.5,MAP_POS.Y+5,(ball.Position.Z+ogz)/2)
         end
     end
+    
     local d=target-bp
-    if d.Magnitude>3 then local np=bp+d.Unit*aspd*dt; pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) end
+    if d.Magnitude>1 then 
+        local np=bp+d.Unit*aspd*dt
+        pcall(moveCharacter, bot, Vector3.new(np.X,TORSO_Y,np.Z), Vector3.new(ball.Position.X,np.Y,ball.Position.Z)) 
+    else
+        pcall(moveCharacter, bot, bp, Vector3.new(ball.Position.X,bp.Y,ball.Position.Z))
+    end
 end
 
 local function updateAILogic(dt)
@@ -1726,14 +1720,12 @@ local function updateAILogic(dt)
         if bot.Role.Value=="Goalkeeper" then updateGoalkeeperAI(bot,dt)
         else
             local pd=gameState.playerDribbling and (gameState.playerTeam==bot.Team.Value) and not gameState.isOnBench
-            local isSt=bot.Role.Value=="Striker"
             local sc=bot==cb and not ct and not pd
             if gameState.playerSkillActive or gameState.superSkillActive then sc=false end
-            if isSt and (bot.PrimaryPart.Position-ball.Position).Magnitude>60 then sc=false end
             if gameState.gkHolding then sc=false end
             if sc then
                 local d=ball.Position-bot.PrimaryPart.Position
-                if d.Magnitude>3 then
+                if d.Magnitude>1 then
                     local diff=getDiff(bot.Team.Value)
                     local np=bot.PrimaryPart.Position+d.Unit*AI_SPEED*diff.speedMul*dt
                     local ld=Vector3.new(d.X,0,d.Z); if ld.Magnitude<0.1 then ld=Vector3.new(0,0,1) end
