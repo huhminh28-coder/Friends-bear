@@ -71,9 +71,9 @@ local gameState = {
     teamRedName="RED", teamBlueName="BLUE",
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
-    -- CẤU HÌNH SỌC ÁO MỚI
-    teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
-    teamRedStripeColor=Color3.fromRGB(255,255,255), teamBlueStripeColor=Color3.fromRGB(255,255,255),
+    -- CẤU HÌNH HỌA TIẾT ÁO
+    teamRedPattern="Solid", teamBluePattern="Solid", -- "Solid", "Stripes", "Checker"
+    teamRedPatternColor=Color3.fromRGB(255,255,255), teamBluePatternColor=Color3.fromRGB(255,255,255),
 
     settingsUI=nil, settingsOpen=false, gameButtons={},
     inPenaltyShootout=false, celebrating=false, celebrationConn=nil,
@@ -90,17 +90,114 @@ local gameState = {
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
     playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil, hudFrame=nil,
     playerPosition="Striker", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
-    extraTimeEnabled = true,
-    penaltyEnabled = true,
-    twoLeggedEnabled = false,
-    firstLegScoreRed = 0,
-    firstLegScoreBlue = 0,
-    currentLeg = 1,
-    practiceModeEnabled = false,
-    hasTrophy = false,
-    skillBallActive = 0,
-    skillBallOwner = nil,
+    extraTimeEnabled = true, penaltyEnabled = true, twoLeggedEnabled = false,
+    firstLegScoreRed = 0, firstLegScoreBlue = 0, currentLeg = 1,
+    practiceModeEnabled = false, hasTrophy = false,
+    skillBallActive = 0, skillBallOwner = nil,
 }
+
+-- HÀM VẼ HỌA TIẾT LÊN ÁO (SURFACE GUI)
+local function drawTorsoPattern(torso, baseColor, patternColor, patternType)
+    local oldGui = torso:FindFirstChild("PatternGui")
+    if oldGui then oldGui:Destroy() end
+    
+    torso.Color = baseColor
+    if patternType == "Solid" then return end
+    
+    local faces = {Enum.NormalId.Front, Enum.NormalId.Back}
+    
+    for _, face in ipairs(faces) do
+        local sgui = Instance.new("SurfaceGui")
+        sgui.Name = "PatternGui"
+        sgui.Face = face
+        sgui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+        sgui.PixelsPerStud = 50
+        sgui.Parent = torso
+        
+        if patternType == "Stripes" then
+            for i = 1, 6 do
+                local f = Instance.new("Frame")
+                f.Size = UDim2.new(1/6, 0, 1, 0)
+                f.Position = UDim2.new((i-1)/6, 0, 0, 0)
+                f.BackgroundColor3 = (i % 2 == 1) and baseColor or patternColor
+                f.BorderSizePixel = 0
+                f.Parent = sgui
+            end
+        elseif patternType == "Checker" then
+            local grid = 4
+            local size = 1 / grid
+            for x = 0, grid - 1 do
+                for y = 0, grid - 1 do
+                    local f = Instance.new("Frame")
+                    f.Size = UDim2.new(size, 0, size, 0)
+                    f.Position = UDim2.new(x*size, 0, y*size, 0)
+                    f.BackgroundColor3 = ((x + y) % 2 == 0) and baseColor or patternColor
+                    f.BorderSizePixel = 0
+                    f.Parent = sgui
+                end
+            end
+        end
+    end
+end
+
+local function updatePlayerAppearance()
+    local char = gameState.playerChar; if not char then return end
+    if gameState.isOnBench then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and (part.Name == "Torso" or part.Name:find("Arm")) then part.Color = Color3.fromRGB(20, 20, 20) end
+        end
+        local bc = char:FindFirstChildOfClass("BodyColors")
+        if bc then bc.TorsoColor = Color3.fromRGB(20,20,20); bc.LeftArmColor = Color3.fromRGB(20,20,20); bc.RightArmColor = Color3.fromRGB(20,20,20) end
+        return
+    end
+    
+    local isRed = (gameState.playerTeam == "Red")
+    local baseColor = isRed and gameState.teamRedColor or gameState.teamBlueColor
+    local patternType = isRed and gameState.teamRedPattern or gameState.teamBluePattern
+    local patternColor = isRed and gameState.teamRedPatternColor or gameState.teamBluePatternColor
+    
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            if part.Name == "Torso" or part.Name == "UpperTorso" then
+                drawTorsoPattern(part, baseColor, patternColor, patternType)
+            elseif part.Name:find("Arm") then
+                part.Color = baseColor
+            end
+        elseif part:IsA("Shirt") or part:IsA("Pants") then 
+            part:Destroy() 
+        end
+    end
+end
+
+local function applyTeamColors()
+    -- Cập nhật Bot Đỏ
+    for _,bot in ipairs(gameState.redTeam) do 
+        for _,part in ipairs(bot:GetChildren()) do
+            if part:IsA("BasePart") then
+                if part.Name == "Torso" then
+                    drawTorsoPattern(part, gameState.teamRedColor, gameState.teamRedPatternColor, gameState.teamRedPattern)
+                elseif part.Name == "LeftArm" or part.Name == "RightArm" then
+                    part.Color = gameState.teamRedColor
+                end
+            end
+        end 
+    end
+    
+    -- Cập nhật Bot Xanh
+    for _,bot in ipairs(gameState.blueTeam) do 
+        for _,part in ipairs(bot:GetChildren()) do
+            if part:IsA("BasePart") then
+                if part.Name == "Torso" then
+                    drawTorsoPattern(part, gameState.teamBlueColor, gameState.teamBluePatternColor, gameState.teamBluePattern)
+                elseif part.Name == "LeftArm" or part.Name == "RightArm" then
+                    part.Color = gameState.teamBlueColor
+                end
+            end
+        end 
+    end
+    
+    updatePlayerAppearance()
+end
 
 local function getPlayerAchievement(count)
     if count == 1 then return "" end
@@ -248,65 +345,6 @@ local function playFinalWhistle() playSoundOnce(WHISTLE_SOUND, 10, 5) end
 local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
-
-local function updatePlayerAppearance()
-    local char = gameState.playerChar; if not char then return end
-    if gameState.isOnBench then
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and (part.Name == "Torso" or part.Name:find("Arm")) then part.Color = Color3.fromRGB(20, 20, 20) end
-        end
-        local bc = char:FindFirstChildOfClass("BodyColors")
-        if bc then bc.TorsoColor = Color3.fromRGB(20,20,20); bc.LeftArmColor = Color3.fromRGB(20,20,20); bc.RightArmColor = Color3.fromRGB(20,20,20) end
-        return
-    end
-    
-    local isRed = (gameState.playerTeam == "Red")
-    local newColor = isRed and gameState.teamRedColor or gameState.teamBlueColor
-    local stripeEnabled = isRed and gameState.teamRedStripeEnabled or gameState.teamBlueStripeEnabled
-    local stripeColor = isRed and gameState.teamRedStripeColor or gameState.teamBlueStripeColor
-    
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") then
-            if part.Name == "Torso" or part.Name == "UpperTorso" then
-                part.Color = stripeEnabled and stripeColor or newColor
-            elseif part.Name:find("Arm") then
-                part.Color = newColor
-            end
-        elseif part:IsA("Shirt") or part:IsA("Pants") then 
-            part:Destroy() 
-        end
-    end
-end
-
-local function applyTeamColors()
-    -- Cập nhật Bot Đỏ
-    for _,bot in ipairs(gameState.redTeam) do 
-        for _,part in ipairs(bot:GetChildren()) do
-            if part:IsA("BasePart") then
-                if part.Name == "Torso" then
-                    part.Color = gameState.teamRedStripeEnabled and gameState.teamRedStripeColor or gameState.teamRedColor
-                elseif part.Name == "LeftArm" or part.Name == "RightArm" then
-                    part.Color = gameState.teamRedColor
-                end
-            end
-        end 
-    end
-    
-    -- Cập nhật Bot Xanh
-    for _,bot in ipairs(gameState.blueTeam) do 
-        for _,part in ipairs(bot:GetChildren()) do
-            if part:IsA("BasePart") then
-                if part.Name == "Torso" then
-                    part.Color = gameState.teamBlueStripeEnabled and gameState.teamBlueStripeColor or gameState.teamBlueColor
-                elseif part.Name == "LeftArm" or part.Name == "RightArm" then
-                    part.Color = gameState.teamBlueColor
-                end
-            end
-        end 
-    end
-    
-    updatePlayerAppearance()
-end
 
 local function playBallKick(position, pitch)
     local p = Instance.new("Part"); p.Anchored=true; p.CanCollide=false; p.Transparency=1
@@ -711,7 +749,7 @@ end
 
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -1064,9 +1102,8 @@ local function createAIPlayer(team,role,idx)
     local bot = Instance.new("Model"); bot.Name=team.."_"..role.."_"..idx
     local isRed = (team=="Red")
     local teamColor = isRed and gameState.teamRedColor or gameState.teamBlueColor
-    local stripeEnabled = isRed and gameState.teamRedStripeEnabled or gameState.teamBlueStripeEnabled
-    local stripeColor = isRed and gameState.teamRedStripeColor or gameState.teamBlueStripeColor
-    local torsoColor = stripeEnabled and stripeColor or teamColor
+    local patternType = isRed and gameState.teamRedPattern or gameState.teamBluePattern
+    local patternColor = isRed and gameState.teamRedPatternColor or gameState.teamBluePatternColor
     
     local skinColor = Color3.fromRGB(255,215,170); local shortsColor = Color3.new(1,1,1)
     local function mp(name,size,color,ox,oy,oz)
@@ -1076,7 +1113,10 @@ local function createAIPlayer(team,role,idx)
         p:SetAttribute("OffX",ox or 0); p:SetAttribute("OffY",oy or 0); p:SetAttribute("OffZ",oz or 0)
         p.Parent=bot; return p
     end
-    mp("Torso",Vector3.new(2,2,1),torsoColor,0,0,0)
+    
+    local torso = mp("Torso",Vector3.new(2,2,1),teamColor,0,0,0)
+    drawTorsoPattern(torso, teamColor, patternColor, patternType)
+    
     local head = mp("Head",Vector3.new(2,1,1),skinColor,0,1.5,0)
     mp("LeftArm",Vector3.new(1,2,1),teamColor,-1.5,0,0)
     mp("RightArm",Vector3.new(1,2,1),teamColor,1.5,0,0)
@@ -1473,7 +1513,6 @@ local function handleBallTouch(bot)
     elseif role == "Midfielder" then shotMult = 0.7; passMult = 1.35
     elseif role == "Defender" then shotMult = 0.5; passMult = 0.9 end
     
-    -- Check opponent phía trước
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local nearestOppDist = math.huge
     local fwdDir = (team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
@@ -1488,7 +1527,6 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 1: Skill xuyên qua (Midfielder/Striker)
     if nearestOppDist < 18 and (role == "Midfielder" or role == "Striker") and not gameState.aiSkillActive[bid] then
         if math.random() < diff.skillChance * 2 then
             if useSkill(bot, team) then
@@ -1498,7 +1536,6 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 2: Sút (Striker ưu tiên)
     if dtg < 320 and csn then
         local shootProb = 0.75 * shotMult
         if dtg < 150 then shootProb = 0.9 * shotMult end
@@ -1510,7 +1547,6 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 3: Chuyền (Midfielder ưu tiên)
     local t,pt=findBestPassTarget(bot)
     if t and csn then
         local tp
@@ -1540,12 +1576,10 @@ local function handleBallTouch(bot)
         end
     end
     
-    -- Priority 4: Dribble
     if dtb<15 and dtg>200 then
         if aiDribble(bot) then gameState.passCooldowns[bid]=tick()+0.8 return end
     end
     
-    -- Fallback: clear
     local d=(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-ball.Position).Unit
     ball.AssemblyLinearVelocity=d*100*diff.passMul
     gameState.passCooldowns[bid]=tick()+0.8
@@ -1721,7 +1755,6 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         end
     end
     
-    -- CB (Defender) luôn ở sân nhà
     if role == "Defender" then
         if team == "Red" then
             if target.Z > MAP_POS.Z - 20 then
@@ -2162,7 +2195,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
@@ -2547,8 +2580,8 @@ local function createSettingsUI()
     local curRC=gameState.teamRedColor; local curBC=gameState.teamBlueColor
     local hR,sR,vR=Color3.toHSV(curRC); local hB,sB,vB=Color3.toHSV(curBC)
     
-    local hSR,sSR,vSR = Color3.toHSV(gameState.teamRedStripeColor)
-    local hSB,sSB,vSB = Color3.toHSV(gameState.teamBlueStripeColor)
+    local hPR,sPR,vPR = Color3.toHSV(gameState.teamRedPatternColor)
+    local hPB,sPB,vPB = Color3.toHSV(gameState.teamBluePatternColor)
     
     local gb=Instance.new("TextButton"); gb.Size=UDim2.new(0,44,0,44); gb.Position=UDim2.new(1,-60,0,15)
     gb.BackgroundColor3=Color3.fromRGB(40,40,50); gb.Text="*"; gb.TextColor3=Color3.new(1,1,1)
@@ -2568,7 +2601,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2300)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2600)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2623,6 +2656,23 @@ local function createSettingsUI()
             state=not state; onC(state); b.Text=state and "ON" or "OFF"; b.BackgroundColor3=state and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
         end)
         return b
+    end
+    local function mpat(parent, y, label, currentPattern, onC)
+        local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
+        l.BackgroundTransparency=1; l.Text=label; l.TextColor3=Color3.fromRGB(200,200,200); l.TextXAlignment=Enum.TextXAlignment.Left
+        l.Font=Enum.Font.FredokaOne; l.TextScaled=true
+        local r=Instance.new("Frame",parent); r.Size=UDim2.new(1,-24,0,28); r.Position=UDim2.new(0,12,0,y+16); r.BackgroundTransparency=1
+        local patterns = {"Solid", "Stripes", "Checker"}
+        local btns = {}
+        for i, p in ipairs(patterns) do
+            local b=Instance.new("TextButton",r); b.Size=UDim2.new(0.32,-4,1,0); b.Position=UDim2.new((i-1)*0.34,0,0,0)
+            b.BackgroundColor3=(currentPattern==p) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
+            b.Text=p; b.TextColor3=Color3.new(1,1,1); b.TextScaled=true; b.Font=Enum.Font.FredokaOne
+            Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
+            b.MouseButton1Click:Connect(function() onC(p); for j,bt2 in ipairs(btns) do bt2.BackgroundColor3=(j==i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end end)
+            btns[i]=b
+        end
+        return btns
     end
     
     msh(sc,6,"MATCH CONTROLS",Color3.fromRGB(255,255,100))
@@ -2754,12 +2804,11 @@ local function createSettingsUI()
     bdb.pass=mdr(sc,1416,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
     -- ==========================================
-    -- MÀU ÁO ĐỎ VÀ SỌC
+    -- MÀU ÁO ĐỎ VÀ HỌA TIẾT
     -- ==========================================
     msh(sc,1474,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
     local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1496)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
-    -- 16 Màu mở rộng
     local ph={0,0.1,0.33,0.6,0.8,0.05,0.9,0.5,0.15,0.65,0.45,0.75,0.25,0.85,0,0}
     local pst={1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0}
     local pvl={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0.08}
@@ -2773,9 +2822,9 @@ local function createSettingsUI()
     local srs=msl(sc,1556,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     local srv=msl(sc,1592,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    local srToggle = mtg(sc, 1630, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
+    local rdbPatterns = mpat(sc, 1630, "Red Pattern:", gameState.teamRedPattern, function(p) gameState.teamRedPattern = p; applyTeamColors() end)
     local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1666)
-    spv1.BackgroundColor3=gameState.teamRedStripeColor; Instance.new("UICorner",spv1).CornerRadius=UDim.new(0,6)
+    spv1.BackgroundColor3=gameState.teamRedPatternColor; Instance.new("UICorner",spv1).CornerRadius=UDim.new(0,6)
     
     local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1666); srw1.BackgroundTransparency=1
     for i=1,16 do
@@ -2783,11 +2832,11 @@ local function createSettingsUI()
         local b=Instance.new("TextButton",srw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssrs=msl(sc,1726,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
-    local ssrv=msl(sc,1762,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrs=msl(sc,1726,"Red Pattern Color Saturation:",Color3.fromRGB(200,80,80),sPR,function(v) sPR=v; spv1.BackgroundColor3=Color3.fromHSV(hPR,sPR,vPR) end)
+    local ssrv=msl(sc,1762,"Red Pattern Color Brightness:",Color3.fromRGB(240,120,120),vPR,function(v) vPR=v; spv1.BackgroundColor3=Color3.fromHSV(hPR,sPR,vPR) end)
     
     -- ==========================================
-    -- MÀU ÁO XANH VÀ SỌC
+    -- MÀU ÁO XANH VÀ HỌA TIẾT
     -- ==========================================
     msh(sc,1800,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
     local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1822)
@@ -2802,9 +2851,9 @@ local function createSettingsUI()
     local sbs=msl(sc,1882,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     local sbv=msl(sc,1918,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
-    local sbToggle = mtg(sc, 1956, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
+    local bdbPatterns = mpat(sc, 1956, "Blue Pattern:", gameState.teamBluePattern, function(p) gameState.teamBluePattern = p; applyTeamColors() end)
     local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,1992)
-    spv2.BackgroundColor3=gameState.teamBlueStripeColor; Instance.new("UICorner",spv2).CornerRadius=UDim.new(0,6)
+    spv2.BackgroundColor3=gameState.teamBluePatternColor; Instance.new("UICorner",spv2).CornerRadius=UDim.new(0,6)
     
     local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,1992); srw2.BackgroundTransparency=1
     for i=1,16 do
@@ -2812,8 +2861,8 @@ local function createSettingsUI()
         local b=Instance.new("TextButton",srw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssbs=msl(sc,2052,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
-    local ssbv=msl(sc,2088,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbs=msl(sc,2052,"Blue Pattern Color Saturation:",Color3.fromRGB(80,80,200),sPB,function(v) sPB=v; spv2.BackgroundColor3=Color3.fromHSV(hPB,sPB,vPB) end)
+    local ssbv=msl(sc,2088,"Blue Pattern Color Brightness:",Color3.fromRGB(120,120,240),vPB,function(v) vPB=v; spv2.BackgroundColor3=Color3.fromHSV(hPB,sPB,vPB) end)
     
     -- ==========================================
     -- SCORE
@@ -2836,7 +2885,7 @@ local function createSettingsUI()
     local i1s=1
     for _,child in ipairs(srw1:GetChildren()) do if child:IsA("TextButton") then
         local pi=i1s; child.MouseButton1Click:Connect(function()
-            hSR=ph[pi]; sSR=pst[pi]; vSR=pvl[pi]; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR); ssrs(sSR); ssrv(vSR)
+            hPR=ph[pi]; sPR=pst[pi]; vPR=pvl[pi]; spv1.BackgroundColor3=Color3.fromHSV(hPR,sPR,vPR); ssrs(sPR); ssrv(vPR)
         end); i1s=i1s+1 end
     end
     local i2=1
@@ -2848,7 +2897,7 @@ local function createSettingsUI()
     local i2s=1
     for _,child in ipairs(srw2:GetChildren()) do if child:IsA("TextButton") then
         local pi=i2s; child.MouseButton1Click:Connect(function()
-            hSB=ph[pi]; sSB=pst[pi]; vSB=pvl[pi]; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB); ssbs(sSB); ssbv(vSB)
+            hPB=ph[pi]; sPB=pst[pi]; vPB=pvl[pi]; spv2.BackgroundColor3=Color3.fromHSV(hPB,sPB,vPB); ssbs(sPB); ssbv(vPB)
         end); i2s=i2s+1 end
     end
     
@@ -2865,11 +2914,10 @@ local function createSettingsUI()
         if si then gameState.currentStageIndex=math.max(1,math.floor(si)) end
         if mi then gameState.currentMatchInStage=math.max(1,math.floor(mi)) end
         
-        -- Áp dụng màu áo và sọc
         gameState.teamRedColor=Color3.fromHSV(hR,sR,vR)
-        gameState.teamRedStripeColor=Color3.fromHSV(hSR,sSR,vSR)
+        gameState.teamRedPatternColor=Color3.fromHSV(hPR,sPR,vPR)
         gameState.teamBlueColor=Color3.fromHSV(hB,sB,vB)
-        gameState.teamBlueStripeColor=Color3.fromHSV(hSB,sSB,vSB)
+        gameState.teamBluePatternColor=Color3.fromHSV(hPB,sPB,vPB)
         
         applyTeamColors(); updateTournamentDisplay()
         if gameState.physicsShotLabel then gameState.physicsShotLabel.Visible=gameState.physicsShotEnabled and not gameState.isOnBench end
@@ -2889,13 +2937,13 @@ local function createSettingsUI()
             sb.Text=tostring(gameState.currentStageIndex); mib.Text=tostring(gameState.currentMatchInStage)
             
             hR,sR,vR=Color3.toHSV(gameState.teamRedColor); hB,sB,vB=Color3.toHSV(gameState.teamBlueColor)
-            hSR,sSR,vSR=Color3.toHSV(gameState.teamRedStripeColor); hSB,sSB,vSB=Color3.toHSV(gameState.teamBlueStripeColor)
+            hPR,sPR,vPR=Color3.toHSV(gameState.teamRedPatternColor); hPB,sPB,vPB=Color3.toHSV(gameState.teamBluePatternColor)
             
             pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR); pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB)
-            spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR); spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB)
+            spv1.BackgroundColor3=Color3.fromHSV(hPR,sPR,vPR); spv2.BackgroundColor3=Color3.fromHSV(hPB,sPB,vPB)
             
             srs(sR); srv(vR); sbs(sB); sbv(vB)
-            ssrs(sSR); ssrv(vSR); ssbs(sSB); ssbv(vSB)
+            ssrs(sPR); ssrv(vPR); ssbs(sPB); ssbv(vPB)
             
             srB.Text=tostring(gameState.scoreRed); sbB.Text=tostring(gameState.scoreBlue)
             frb.Text=tostring(gameState.firstLegScoreRed); fbb.Text=tostring(gameState.firstLegScoreBlue)
@@ -2906,6 +2954,10 @@ local function createSettingsUI()
             for j,b in ipairs(tbt) do b.BackgroundColor3=(tn[j]==gameState.tournamentType) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end
             for k,bl in pairs(rdb) do local sl=gameState.redDifficulty[k]; for j,b in ipairs(bl) do b.BackgroundColor3=(j==sl) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end end
             for k,bl in pairs(bdb) do local sl=gameState.blueDifficulty[k]; for j,b in ipairs(bl) do b.BackgroundColor3=(j==sl) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end end
+            
+            local patterns = {"Solid", "Stripes", "Checker"}
+            for j, b in ipairs(rdbPatterns) do b.BackgroundColor3 = (patterns[j]==gameState.teamRedPattern) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end
+            for j, b in ipairs(bdbPatterns) do b.BackgroundColor3 = (patterns[j]==gameState.teamBluePattern) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60) end
         end
     end)
 end
