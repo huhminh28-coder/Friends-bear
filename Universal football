@@ -279,6 +279,7 @@ local function updatePlayerAppearance()
 end
 
 local function applyTeamColors()
+    -- Cập nhật Bot Đỏ
     for _,bot in ipairs(gameState.redTeam) do 
         for _,part in ipairs(bot:GetChildren()) do
             if part:IsA("BasePart") then
@@ -291,6 +292,7 @@ local function applyTeamColors()
         end 
     end
     
+    -- Cập nhật Bot Xanh
     for _,bot in ipairs(gameState.blueTeam) do 
         for _,part in ipairs(bot:GetChildren()) do
             if part:IsA("BasePart") then
@@ -710,12 +712,6 @@ end
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
     playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
-    
-    -- CAMERA FIX: Khóa camera vào bục nâng cúp
-    local cam = workspace.CurrentCamera
-    local origType = cam.CameraType
-    local origSubject = cam.CameraSubject
-    
     local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
     local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
@@ -723,10 +719,6 @@ local function startTrophyCeremony(winningTeam)
     
     local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
     local pedestalPos = podiumCenter + Vector3.new(-40, 3, 30)
-    
-    -- Camera quay vào bục
-    cam.CameraType = Enum.CameraType.Scriptable
-    cam.CFrame = CFrame.new(podiumCenter + Vector3.new(60, 35, 60), podiumCenter)
     
     local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
     gameState.podiumModel = podium
@@ -765,7 +757,6 @@ local function startTrophyCeremony(winningTeam)
     end
     task.wait(1)
     
-    -- Losers walk to guard
     local stopAtGuard = {}
     for i, bot in ipairs(losers) do
         stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
@@ -776,14 +767,12 @@ local function startTrophyCeremony(winningTeam)
     conn = RunService.Heartbeat:Connect(function()
         if tick() - t0 > 4 then if conn then conn:Disconnect() end return end
         for bot, target in pairs(stopAtGuard) do
-            if bot.PrimaryPart then
-                local cur = bot.PrimaryPart.Position
-                local dir = target - cur
-                local horiz = Vector3.new(dir.X, 0, dir.Z)
-                if horiz.Magnitude > 1.5 then
-                    local np = cur + horiz.Unit * 15 * 0.033
-                    pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), guard.PrimaryPart.Position)
-                end
+            local cur = bot.PrimaryPart.Position
+            local dir = target - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), guard.PrimaryPart.Position)
             end
         end
     end)
@@ -791,7 +780,6 @@ local function startTrophyCeremony(winningTeam)
     if conn then conn:Disconnect() end
     task.wait(3)
     
-    -- Losers view
     local viewTargets = {}
     for i, bot in ipairs(losers) do
         viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
@@ -800,14 +788,12 @@ local function startTrophyCeremony(winningTeam)
     conn = RunService.Heartbeat:Connect(function()
         if tick() - t1 > 3 then if conn then conn:Disconnect() end return end
         for bot, target in pairs(viewTargets) do
-            if bot.PrimaryPart then
-                local cur = bot.PrimaryPart.Position
-                local dir = target - cur
-                local horiz = Vector3.new(dir.X, 0, dir.Z)
-                if horiz.Magnitude > 1.5 then
-                    local np = cur + horiz.Unit * 15 * 0.033
-                    pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), podiumCenter)
-                end
+            local cur = bot.PrimaryPart.Position
+            local dir = target - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), podiumCenter)
             end
         end
     end)
@@ -823,39 +809,39 @@ local function startTrophyCeremony(winningTeam)
         if hrp then rep = "PLAYER" end
     end
     
-    -- Winner grabs the trophy (FIXED CUR BUG)
     local grabPos = pedestalPos + Vector3.new(0, 0, 4)
-    local t2 = tick()
-    conn = RunService.Heartbeat:Connect(function()
-        if tick() - t2 > 3 then if conn then conn:Disconnect() end return end
-        if rep == "PLAYER" then
-            local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local cur = hrp.Position
-                local dir = grabPos - cur
-                local horiz = Vector3.new(dir.X, 0, dir.Z)
-                if horiz.Magnitude > 1.5 then
-                    hrp.CFrame = CFrame.new(cur + horiz.Unit * 15 * 0.033)
-                end
+    if rep == "PLAYER" then
+        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+        local t2 = tick()
+        conn = RunService.Heartbeat:Connect(function()
+            if tick() - t2 > 3 then if conn then conn:Disconnect() end return end
+            local dir = grabPos - hrp.Position
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                hrp.CFrame = CFrame.new(hrp.Position + horiz.Unit * 15 * 0.033)
             end
-        elseif rep.PrimaryPart then
-            local cur = rep.PrimaryPart.Position
+        end)
+        task.wait(3)
+        if conn then conn:Disconnect() end
+    else
+        local cur = rep.PrimaryPart.Position
+        local t2 = tick()
+        conn = RunService.Heartbeat:Connect(function()
+            if tick() - t2 > 3 then if conn then conn:Disconnect() end return end
             local dir = grabPos - cur
             local horiz = Vector3.new(dir.X, 0, dir.Z)
             if horiz.Magnitude > 1.5 then
                 local np = cur + horiz.Unit * 15 * 0.033
                 pcall(moveCharacter, rep, Vector3.new(np.X, cur.Y, np.Z), pedestalPos)
             end
-        end
-    end)
-    task.wait(3)
-    if conn then conn:Disconnect() end
+        end)
+        task.wait(3)
+        if conn then conn:Disconnect() end
+    end
     
     local trophyHandPos = grabPos + Vector3.new(0, 5, 0)
     displayTrophy:PivotTo(CFrame.new(trophyHandPos))
-    task.wait(1)
     
-    -- Move to center podium
     local targetPodium = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
     local t3 = tick()
     conn = RunService.Heartbeat:Connect(function()
@@ -869,24 +855,19 @@ local function startTrophyCeremony(winningTeam)
                 gameState.playerChar.HumanoidRootPart.CFrame = CFrame.new(refPos + horiz.Unit * 15 * 0.033)
             end
         else
-            if rep.PrimaryPart then
-                refPos = rep.PrimaryPart.Position
-                local dir = targetPodium - refPos
-                local horiz = Vector3.new(dir.X, 0, dir.Z)
-                if horiz.Magnitude > 1.5 then
-                    local np = refPos + horiz.Unit * 15 * 0.033
-                    pcall(moveCharacter, rep, Vector3.new(np.X, refPos.Y, np.Z), podiumCenter)
-                end
+            refPos = rep.PrimaryPart.Position
+            local dir = targetPodium - refPos
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = refPos + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, rep, Vector3.new(np.X, refPos.Y, np.Z), podiumCenter)
             end
         end
-        if refPos then
-            displayTrophy:PivotTo(CFrame.new(refPos + Vector3.new(0, 3, 0)))
-        end
+        displayTrophy:PivotTo(CFrame.new(refPos + Vector3.new(0, 3, 0)))
     end)
     task.wait(3)
     if conn then conn:Disconnect() end
     
-    -- Other winners join
     local otherWinners = {}
     for _, bot in ipairs(winners) do
         if bot ~= rep then table.insert(otherWinners, bot) end
@@ -929,7 +910,6 @@ local function startTrophyCeremony(winningTeam)
     task.wait(walkDuration + 0.5)
     if conn then conn:Disconnect() end
     
-    -- Cheer loop
     local cheerStart = tick()
     local cheerDuration = 8
     conn = RunService.Heartbeat:Connect(function()
@@ -983,10 +963,6 @@ local function startTrophyCeremony(winningTeam)
     if gameState.podiumModel then gameState.podiumModel:Destroy(); gameState.podiumModel = nil end
     if gameState.trophyModel then gameState.trophyModel:Destroy(); gameState.trophyModel = nil end
     if guard then guard:Destroy() end
-    
-    -- Khôi phục Camera
-    cam.CameraType = origType
-    cam.CameraSubject = origSubject
 end
 
 local function createStadium()
@@ -1497,6 +1473,7 @@ local function handleBallTouch(bot)
     elseif role == "Midfielder" then shotMult = 0.7; passMult = 1.35
     elseif role == "Defender" then shotMult = 0.5; passMult = 0.9 end
     
+    -- Check opponent phía trước
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local nearestOppDist = math.huge
     local fwdDir = (team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
@@ -1511,6 +1488,7 @@ local function handleBallTouch(bot)
         end
     end
     
+    -- Priority 1: Skill xuyên qua (Midfielder/Striker)
     if nearestOppDist < 18 and (role == "Midfielder" or role == "Striker") and not gameState.aiSkillActive[bid] then
         if math.random() < diff.skillChance * 2 then
             if useSkill(bot, team) then
@@ -1520,6 +1498,7 @@ local function handleBallTouch(bot)
         end
     end
     
+    -- Priority 2: Sút (Striker ưu tiên)
     if dtg < 320 and csn then
         local shootProb = 0.75 * shotMult
         if dtg < 150 then shootProb = 0.9 * shotMult end
@@ -1531,6 +1510,7 @@ local function handleBallTouch(bot)
         end
     end
     
+    -- Priority 3: Chuyền (Midfielder ưu tiên)
     local t,pt=findBestPassTarget(bot)
     if t and csn then
         local tp
@@ -1560,10 +1540,12 @@ local function handleBallTouch(bot)
         end
     end
     
+    -- Priority 4: Dribble
     if dtb<15 and dtg>200 then
         if aiDribble(bot) then gameState.passCooldowns[bid]=tick()+0.8 return end
     end
     
+    -- Fallback: clear
     local d=(Vector3.new(MAP_POS.X,MAP_POS.Y,agz)-ball.Position).Unit
     ball.AssemblyLinearVelocity=d*100*diff.passMul
     gameState.passCooldowns[bid]=tick()+0.8
@@ -1739,6 +1721,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
         end
     end
     
+    -- CB (Defender) luôn ở sân nhà
     if role == "Defender" then
         if team == "Red" then
             if target.Z > MAP_POS.Z - 20 then
@@ -2179,24 +2162,13 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) 
-    
-    local cam = workspace.CurrentCamera
-    local origType = cam.CameraType
-    local origSubject = cam.CameraSubject
-    
-    local cp = MAP_POS + Vector3.new(0, 5, 0)
-    local w = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
-    
-    -- Camera Lock cho ăn mừng
-    cam.CameraType = Enum.CameraType.Scriptable
-    cam.CFrame = CFrame.new(cp + Vector3.new(50, 30, 50), cp)
-    
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
     end
-    
+    local cp = MAP_POS + Vector3.new(0, 5, 0)
+    local w = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local tp = {}
     for i, bot in ipairs(w) do
         local a = (i / #w) * math.pi * 2
@@ -2235,9 +2207,6 @@ local function startCelebration(winningTeam)
             gameState.celebrationConn = nil
         end
     end)
-    task.wait(10)
-    cam.CameraType = origType
-    cam.CameraSubject = origSubject
 end
 
 local function endMatch()
@@ -2784,9 +2753,13 @@ local function createSettingsUI()
     bdb.attack=mdr(sc,1366,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
     bdb.pass=mdr(sc,1416,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
+    -- ==========================================
+    -- MÀU ÁO ĐỎ VÀ SỌC
+    -- ==========================================
     msh(sc,1474,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
     local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1496)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
+    -- 16 Màu mở rộng
     local ph={0,0.1,0.33,0.6,0.8,0.05,0.9,0.5,0.15,0.65,0.45,0.75,0.25,0.85,0,0}
     local pst={1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0}
     local pvl={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0.08}
@@ -2813,6 +2786,9 @@ local function createSettingsUI()
     local ssrs=msl(sc,1726,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
     local ssrv=msl(sc,1762,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
     
+    -- ==========================================
+    -- MÀU ÁO XANH VÀ SỌC
+    -- ==========================================
     msh(sc,1800,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
     local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1822)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
@@ -2839,6 +2815,9 @@ local function createSettingsUI()
     local ssbs=msl(sc,2052,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
     local ssbv=msl(sc,2088,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
     
+    -- ==========================================
+    -- SCORE
+    -- ==========================================
     msh(sc,2126,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
     local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2150)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
@@ -2847,6 +2826,7 @@ local function createSettingsUI()
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
+    -- HÀM CẬP NHẬT MÀU PALETTE
     local i1=1
     for _,child in ipairs(rw1:GetChildren()) do if child:IsA("TextButton") then
         local pi=i1; child.MouseButton1Click:Connect(function()
@@ -2885,6 +2865,7 @@ local function createSettingsUI()
         if si then gameState.currentStageIndex=math.max(1,math.floor(si)) end
         if mi then gameState.currentMatchInStage=math.max(1,math.floor(mi)) end
         
+        -- Áp dụng màu áo và sọc
         gameState.teamRedColor=Color3.fromHSV(hR,sR,vR)
         gameState.teamRedStripeColor=Color3.fromHSV(hSR,sSR,vSR)
         gameState.teamBlueColor=Color3.fromHSV(hB,sB,vB)
