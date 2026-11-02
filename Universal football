@@ -18,7 +18,7 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 
--- CẬP NHẬT TỐC ĐỘ TẠI ĐÂY
+-- TỐC ĐỘ CHẠY
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
 
@@ -687,7 +687,7 @@ local function launchFirework(position)
 end
 
 -- ==========================================
--- HÀM TRAO CÚP ĐƠN GIẢN (ĐÃ BỎ BỤC VÀ BẢO VỆ)
+-- HÀM TRAO CÚP HOÀN CHỈNH (HỖ TRỢ CẢ BOT CẦM CÚP)
 -- ==========================================
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
@@ -698,45 +698,80 @@ local function startTrophyCeremony(winningTeam)
         local playerWon = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
         local center = MAP_POS + Vector3.new(0, 0, 0)
 
-        -- Tập trung đội thắng ở giữa sân
+        -- 1. Teleport toàn bộ đội thắng (bao gồm cả thủ môn) ra giữa sân
         for i, bot in ipairs(winners) do
-            local angle = (i / #winners) * math.pi * 2
-            local pos = center + Vector3.new(math.cos(angle) * 15, TORSO_Y, math.sin(angle) * 15)
-            pcall(moveCharacter, bot, pos, center)
+            if bot.PrimaryPart then
+                local angle = (i / #winners) * math.pi * 2
+                local pos = center + Vector3.new(math.cos(angle) * 15, TORSO_Y - MAP_POS.Y, math.sin(angle) * 15)
+                local cf = CFrame.new(pos, center)
+                for _, part in ipairs(bot:GetChildren()) do
+                    if part:IsA("BasePart") then
+                        part.CFrame = cf * CFrame.new(part:GetAttribute("OffX") or 0, part:GetAttribute("OffY") or 0, part:GetAttribute("OffZ") or 0)
+                    end
+                end
+            end
         end
 
-        -- Nếu người chơi thắng, đặt họ ở giữa
         if playerWon then
             local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
-            if hrp then hrp.CFrame = CFrame.new(center + Vector3.new(0, TORSO_Y, -20)) end
+            if hrp then hrp.CFrame = CFrame.new(center + Vector3.new(0, TORSO_Y - MAP_POS.Y, -20)) end
         end
 
         task.wait(1)
 
-        -- Phát cúp cho người chơi nếu họ thắng
+        -- 2. Trao cúp cho Người chơi hoặc Bot
         if playerWon then
             createTrophyTool()
+        else
+            -- BOT ĐẠI DIỆN CẦM CÚP
+            local repBot = winners[1] 
+            if repBot and repBot.PrimaryPart then
+                local trophyModel = buildTrophy(gameState.tournamentType)
+                local handle = trophyModel.PrimaryPart
+                if handle then
+                    handle.Anchored = false
+                    handle.CanCollide = false
+                    
+                    -- Dùng Weld hàn chặt vào ngực Bot
+                    local weld = Instance.new("Weld")
+                    weld.Part0 = repBot.PrimaryPart
+                    weld.Part1 = handle
+                    -- C0: Đặt cúp trước ngực (Z = -2.5), xoay thẳng đứng (-90 độ X)
+                    weld.C0 = CFrame.new(0, 2, -2.5) * CFrame.Angles(math.rad(-90), 0, 0) 
+                    weld.Parent = repBot.PrimaryPart
+                    
+                    trophyModel.Parent = workspace
+                    gameState.trophyModel = trophyModel
+                end
+            end
         end
 
-        -- Nhảy ăn mừng
+        -- 3. Nhảy nhót ăn mừng
         local startT = tick()
         local conn = RunService.Heartbeat:Connect(function()
             if tick() - startT > 8 then conn:Disconnect() return end
             local jump = math.abs(math.sin((tick() - startT) * 6)) * 3
-            for _, bot in ipairs(winners) do
+            
+            for i, bot in ipairs(winners) do
                 if bot.PrimaryPart then
-                    local bp = bot.PrimaryPart.Position
-                    pcall(moveCharacter, bot, Vector3.new(bp.X, TORSO_Y + jump, bp.Z), center)
+                    local angle = (i / #winners) * math.pi * 2
+                    local pos = center + Vector3.new(math.cos(angle) * 15, TORSO_Y - MAP_POS.Y + jump, math.sin(angle) * 15)
+                    local cf = CFrame.new(pos, center)
+                    for _, part in ipairs(bot:GetChildren()) do
+                        if part:IsA("BasePart") then
+                            part.CFrame = cf * CFrame.new(part:GetAttribute("OffX") or 0, part:GetAttribute("OffY") or 0, part:GetAttribute("OffZ") or 0)
+                        end
+                    end
                 end
             end
             if playerWon then
                 local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
                 if hrp then
-                    hrp.CFrame = CFrame.new(center.X, TORSO_Y + jump, center.Z - 20)
+                    hrp.CFrame = CFrame.new(center.X, TORSO_Y - MAP_POS.Y + jump, center.Z - 20)
                 end
             end
         end)
-
+        
         -- Bắn pháo hoa
         for i = 1, 12 do
             task.spawn(function()
@@ -748,6 +783,12 @@ local function startTrophyCeremony(winningTeam)
         end
         task.wait(4)
         if conn then conn:Disconnect() end
+        
+        -- Dọn dẹp cúp của Bot sau khi ăn mừng xong
+        if not playerWon and gameState.trophyModel then
+            gameState.trophyModel:Destroy()
+            gameState.trophyModel = nil
+        end
     end)
     
     if not success then warn("[Trophy] Error: "..tostring(err)) end
