@@ -17,11 +17,8 @@ local HALF_TIME = 180
 local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
-
--- CẬP NHẬT TỐC ĐỘ TẠI ĐÂY
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
-
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
 local NET_SOUND = "rbxassetid://5568887127"
@@ -686,126 +683,283 @@ local function launchFirework(position)
     end)
 end
 
--- ==========================================
--- HÀM TRAO CÚP HOÀN CHỈNH (DỊCH CHUYỂN TỨC THỜI, HÀN CÚP)
--- ==========================================
+local function createGuard(pos)
+    local guard = Instance.new("Model")
+    guard.Name = "SecurityGuard"
+    local function mp(name,size,color,ox,oy,oz)
+        local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Color=color
+        p.Material=Enum.Material.SmoothPlastic; p.Anchored=true; p.CanCollide=true
+        p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth
+        p:SetAttribute("OffX",ox or 0); p:SetAttribute("OffY",oy or 0); p:SetAttribute("OffZ",oz or 0)
+        p.Parent=guard; return p
+    end
+    local black = Color3.fromRGB(10, 10, 10)
+    mp("Torso",Vector3.new(2,2,1),black,0,0,0)
+    local head = mp("Head",Vector3.new(2,1,1),Color3.fromRGB(255,215,170),0,1.5,0)
+    mp("LeftArm",Vector3.new(1,2,1),black,-1.5,0,0)
+    mp("RightArm",Vector3.new(1,2,1),black,1.5,0,0)
+    mp("LeftLeg",Vector3.new(1,2,1),black,-0.5,-2,0)
+    mp("RightLeg",Vector3.new(1,2,1),black,0.5,-2,0)
+    guard.PrimaryPart=guard:FindFirstChild("Torso")
+    guard.Parent = workspace
+    moveCharacter(guard, pos, pos + Vector3.new(0,0,1))
+    return guard
+end
+
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    local success, err = pcall(function()
-        playSoundOnce("rbxassetid://132079977802654", 5, 6) 
-        
-        local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
-        local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
-        local playerWon = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
-        local center = MAP_POS + Vector3.new(0, 0, -100)
-
-        -- 1. Tạo Bục
-        local podium = Instance.new("Model"); podium.Name="TrophyPodium"; podium.Parent=workspace
-        gameState.podiumModel = podium
-        local function mkStep(name, size, pos, color)
-            local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Position=pos
-            p.Color=color or Color3.fromRGB(180,180,190); p.Material=Enum.Material.Marble
-            p.Anchored=true; p.CanCollide=true; p.Parent=podium; return p
-        end
-        mkStep("Center", Vector3.new(16, 6, 12), center + Vector3.new(0, 3, 0), Color3.fromRGB(220, 200, 100))
-        mkStep("Left", Vector3.new(10, 4, 10), center + Vector3.new(-14, 2, 0), Color3.fromRGB(180, 180, 200))
-        mkStep("Right", Vector3.new(10, 4, 10), center + Vector3.new(14, 2, 0), Color3.fromRGB(180, 180, 200))
-
-        -- 2. Sắp xếp đội thua
-        for i, bot in ipairs(losers) do
-            if bot.PrimaryPart then
-                local pos = center + Vector3.new((i - (#losers+1)/2) * 6, TORSO_Y - MAP_POS.Y, 35)
-                pcall(moveCharacter, bot, pos, center)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
+    local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
+    local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
+    local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
+    local playerIsWinner = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
+    
+    local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
+    local pedestalPos = podiumCenter + Vector3.new(-40, 3, 30)
+    
+    local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
+    gameState.podiumModel = podium
+    local function mkStep(name, size, pos, color)
+        local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Position=pos
+        p.Color=color or Color3.fromRGB(180,180,190); p.Material=Enum.Material.Marble
+        p.Anchored=true; p.Parent=podium; return p
+    end
+    mkStep("Center", Vector3.new(14, 6, 10), podiumCenter + Vector3.new(0, 3, 0), Color3.fromRGB(220, 200, 100))
+    mkStep("Left", Vector3.new(9, 4, 9), podiumCenter + Vector3.new(-12, 2, 0), Color3.fromRGB(180, 180, 200))
+    mkStep("Right", Vector3.new(9, 4, 9), podiumCenter + Vector3.new(12, 2, 0), Color3.fromRGB(180, 180, 200))
+    local carpet = mkStep("Carpet", Vector3.new(70, 0.2, 8), podiumCenter+Vector3.new(0,6.2,6), Color3.fromRGB(180,30,30))
+    carpet.Material = Enum.Material.Fabric
+    
+    local pedestal = Instance.new("Part")
+    pedestal.Size = Vector3.new(6, 6, 6)
+    pedestal.Position = pedestalPos + Vector3.new(0, 3, 0)
+    pedestal.Color = Color3.fromRGB(100, 100, 100)
+    pedestal.Material = Enum.Material.Marble
+    pedestal.Anchored = true
+    pedestal.Parent = podium
+    
+    local displayTrophy = buildTrophy(gameState.tournamentType)
+    displayTrophy:PivotTo(CFrame.new(pedestalPos + Vector3.new(0, 9, 0)))
+    displayTrophy.Parent = podium
+    gameState.trophyModel = displayTrophy
+    
+    local guard = createGuard(pedestalPos + Vector3.new(6, 0, 0))
+    
+    local loserStartPos = pedestalPos + Vector3.new(-20, 0, 0)
+    local loserViewPos = podiumCenter + Vector3.new(0, 0, 35)
+    
+    for i, bot in ipairs(losers) do
+        local start = loserStartPos + Vector3.new(0, 0, i * 3)
+        pcall(moveCharacter, bot, start, guard.PrimaryPart.Position)
+    end
+    task.wait(1)
+    
+    local stopAtGuard = {}
+    for i, bot in ipairs(losers) do
+        stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
+    end
+    
+    local t0 = tick()
+    local conn
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - t0 > 4 then if conn then conn:Disconnect() end return end
+        for bot, target in pairs(stopAtGuard) do
+            local cur = bot.PrimaryPart.Position
+            local dir = target - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), guard.PrimaryPart.Position)
             end
         end
-
-        -- 3. Sắp xếp đội thắng
-        local rep = winners[1]
-        if playerWon then rep = "PLAYER" end
-
-        for i, bot in ipairs(winners) do
-            if bot.PrimaryPart then
-                if bot == rep then
-                    local pos = center + Vector3.new(0, 6 + TORSO_Y - MAP_POS.Y, 0)
-                    pcall(moveCharacter, bot, pos, center + Vector3.new(0, 6, 10))
-                else
-                    local side = (i % 2 == 0) and 1 or -1
-                    local dist = 8 + math.floor(i/2) * 4
-                    local pos = center + Vector3.new(side * dist, 4 + TORSO_Y - MAP_POS.Y, 0)
-                    pcall(moveCharacter, bot, pos, center)
-                end
+    end)
+    task.wait(4)
+    if conn then conn:Disconnect() end
+    task.wait(3)
+    
+    local viewTargets = {}
+    for i, bot in ipairs(losers) do
+        viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
+    end
+    local t1 = tick()
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - t1 > 3 then if conn then conn:Disconnect() end return end
+        for bot, target in pairs(viewTargets) do
+            local cur = bot.PrimaryPart.Position
+            local dir = target - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 15 * 0.033
+                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), podiumCenter)
             end
         end
-
-        -- Đại diện người chơi
-        if playerWon then
-            local pc = gameState.playerChar
-            local hrp = pc and pc:FindFirstChild("HumanoidRootPart")
-            if hrp then hrp.CFrame = CFrame.new(center + Vector3.new(0, 6 + TORSO_Y - MAP_POS.Y, 0), center + Vector3.new(0, 6, 10)) end
-        end
-
-        task.wait(1)
-
-        -- 4. Trao cúp
-        if playerWon then
-            createTrophyTool()
-        else
-            if rep and rep.PrimaryPart then
-                local trophy = buildTrophy(gameState.tournamentType)
-                if trophy.PrimaryPart then
-                    trophy.PrimaryPart.Anchored = false
-                    trophy.PrimaryPart.CanCollide = false
-                    local weld = Instance.new("Weld")
-                    weld.Part0 = rep.PrimaryPart
-                    weld.Part1 = trophy.PrimaryPart
-                    weld.C0 = CFrame.new(0, 2, -3) * CFrame.Angles(math.rad(-90), 0, 0)
-                    weld.Parent = rep.PrimaryPart
-                    trophy.Parent = workspace
-                    gameState.trophyModel = trophy
-                end
-            end
-        end
-
-        -- 5. Nhảy nhót ăn mừng
-        local startT = tick()
-        local conn = RunService.Heartbeat:Connect(function()
-            if tick() - startT > 10 then conn:Disconnect() return end
-            local jump = math.abs(math.sin((tick() - startT) * 6)) * 3
-            
-            for i, bot in ipairs(winners) do
-                if bot.PrimaryPart then
-                    local basePos
-                    if bot == rep then
-                        basePos = center + Vector3.new(0, 6 + TORSO_Y - MAP_POS.Y, 0)
-                    else
-                        local side = (i % 2 == 0) and 1 or -1
-                        local dist = 8 + math.floor(i/2) * 4
-                        basePos = center + Vector3.new(side * dist, 4 + TORSO_Y - MAP_POS.Y, 0)
-                    end
-                    pcall(moveCharacter, bot, Vector3.new(basePos.X, basePos.Y + jump, basePos.Z), center)
-                end
-            end
-            
-            if playerWon then
-                local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
-                if hrp then hrp.CFrame = CFrame.new(center.X, 6 + TORSO_Y - MAP_POS.Y + jump, center.Z) end
+    end)
+    task.wait(3)
+    if conn then conn:Disconnect() end
+    for bot, target in pairs(viewTargets) do
+        pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y, target.Z), podiumCenter)
+    end
+    
+    local rep = winners[1]
+    if playerIsWinner and gameState.playerChar then
+        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+        if hrp then rep = "PLAYER" end
+    end
+    
+    local grabPos = pedestalPos + Vector3.new(0, 0, 4)
+    if rep == "PLAYER" then
+        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+        local t2 = tick()
+        conn = RunService.Heartbeat:Connect(function()
+            if tick() - t2 > 5 then if conn then conn:Disconnect() end return end
+            local dir = grabPos - hrp.Position
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                hrp.CFrame = CFrame.new(hrp.Position + horiz.Unit * 60 * 0.033)
             end
         end)
-
-        -- Bắn pháo hoa
-        for i = 1, 16 do
-            task.spawn(function() local a = math.random() * math.pi * 2; local d = 60 + math.random() * 100; launchFirework(center + Vector3.new(math.cos(a) * d, 3, math.sin(a) * d)) end)
-            task.wait(0.5)
-        end
         task.wait(5)
         if conn then conn:Disconnect() end
+    else
+        local cur = rep.PrimaryPart.Position
+        local t2 = tick()
+        conn = RunService.Heartbeat:Connect(function()
+            if tick() - t2 > 5 then if conn then conn:Disconnect() end return end
+            local dir = grabPos - cur
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = cur + horiz.Unit * 60 * 0.033
+                pcall(moveCharacter, rep, Vector3.new(np.X, cur.Y, np.Z), pedestalPos)
+            end
+        end)
+        task.wait(5)
+        if conn then conn:Disconnect() end
+    end
+    
+    local trophyHandPos = grabPos + Vector3.new(0, 5, 0)
+    displayTrophy:PivotTo(CFrame.new(trophyHandPos))
+    
+    local targetPodium = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
+    local t3 = tick()
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - t3 > 5 then if conn then conn:Disconnect() end return end
+        local refPos
+        if rep == "PLAYER" then
+            refPos = gameState.playerChar.HumanoidRootPart.Position
+            local dir = targetPodium - refPos
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                gameState.playerChar.HumanoidRootPart.CFrame = CFrame.new(refPos + horiz.Unit * 60 * 0.033)
+            end
+        else
+            refPos = rep.PrimaryPart.Position
+            local dir = targetPodium - refPos
+            local horiz = Vector3.new(dir.X, 0, dir.Z)
+            if horiz.Magnitude > 1.5 then
+                local np = refPos + horiz.Unit * 60 * 0.033
+                pcall(moveCharacter, rep, Vector3.new(np.X, refPos.Y, np.Z), podiumCenter)
+            end
+        end
+        displayTrophy:PivotTo(CFrame.new(refPos + Vector3.new(0, 3, 0)))
+    end)
+    task.wait(5)
+    if conn then conn:Disconnect() end
+    
+    local otherWinners = {}
+    for _, bot in ipairs(winners) do
+        if bot ~= rep then table.insert(otherWinners, bot) end
+    end
+    
+    local walkStart = tick()
+    local walkDuration = 8
+    local targetPositions = {}
+    local sideIdx = 0
+    for i, bot in ipairs(otherWinners) do
+        local pos
+        if i == 1 then
+            pos = podiumCenter + Vector3.new(-6, TORSO_Y - MAP_POS.Y + 6, 0)
+        elseif i == 2 then
+            pos = podiumCenter + Vector3.new(6, TORSO_Y - MAP_POS.Y + 6, 0)
+        else
+            local side = (sideIdx % 2 == 0) and -1 or 1
+            local dist = 12 + math.floor(sideIdx/2) * 4
+            pos = podiumCenter + Vector3.new(side * dist, TORSO_Y - MAP_POS.Y + 6, 0)
+            sideIdx = sideIdx + 1
+        end
+        targetPositions[bot] = pos
+    end
+    
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - walkStart > walkDuration then if conn then conn:Disconnect() end return end
+        for bot, target in pairs(targetPositions) do
+            if bot.PrimaryPart then
+                local cur = bot.PrimaryPart.Position
+                local dir = target - cur
+                local horiz = Vector3.new(dir.X, 0, dir.Z)
+                if horiz.Magnitude > 1.5 then
+                    horiz = horiz.Unit
+                    local newPos = cur + horiz * 80 * 0.033
+                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), target)
+                end
+            end
+        end
+    end)
+    task.wait(walkDuration + 0.5)
+    if conn then conn:Disconnect() end
+    
+    local cheerStart = tick()
+    local cheerDuration = 8
+    conn = RunService.Heartbeat:Connect(function()
+        if tick() - cheerStart > cheerDuration then if conn then conn:Disconnect() end return end
+        for i, bot in ipairs(otherWinners) do
+            if bot.PrimaryPart then
+                local basePos = targetPositions[bot]
+                if basePos then
+                    local jump = math.abs(math.sin((tick()-cheerStart)*6 + i))*3
+                    pcall(moveCharacter, bot, Vector3.new(basePos.X, basePos.Y + jump, basePos.Z), podiumCenter)
+                end
+            end
+        end
+        if rep == "PLAYER" then
+            local hrp = gameState.playerChar.HumanoidRootPart
+            local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
+            hrp.CFrame = CFrame.new(targetPodium.X, targetPodium.Y + jump, targetPodium.Z)
+            displayTrophy:PivotTo(CFrame.new(hrp.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick()*0.8, 0))
+        else
+            if rep.PrimaryPart then
+                local cur = rep.PrimaryPart.Position
+                local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
+                pcall(moveCharacter, rep, Vector3.new(cur.X, targetPodium.Y + jump, cur.Z), podiumCenter)
+                displayTrophy:PivotTo(CFrame.new(rep.PrimaryPart.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick()*0.8, 0))
+            end
+        end
     end)
     
-    if not success then warn("[Trophy] Error: "..tostring(err)) end
+    for i = 1, 16 do
+        task.spawn(function()
+            local angle = math.random() * math.pi * 2
+            local dist = 60 + math.random() * 100
+            local pos = MAP_POS + Vector3.new(math.cos(angle) * dist, 3, math.sin(angle) * dist)
+            launchFirework(pos)
+        end)
+        task.wait(0.5)
+    end
+    task.wait(cheerDuration - 8 + 2)
+    if conn then conn:Disconnect() end
+    
+    if playerIsWinner then
+        if displayTrophy then 
+            displayTrophy:Destroy() 
+            gameState.trophyModel = nil 
+        end
+        createTrophyTool()
+    end
+    
     gameState.trophyActive = false
     task.wait(2)
     if gameState.podiumModel then gameState.podiumModel:Destroy(); gameState.podiumModel = nil end
     if gameState.trophyModel then gameState.trophyModel:Destroy(); gameState.trophyModel = nil end
+    if guard then guard:Destroy() end
 end
 
 local function createStadium()
@@ -1998,7 +2152,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
@@ -3081,9 +3235,17 @@ end
 local function autoStart()
     local char=player.Character or player.CharacterAdded:Wait()
     gameState.playerChar=char; task.wait(1); updatePlayerAppearance()
+    
+    local hum0 = char:FindFirstChildOfClass("Humanoid")
+    if hum0 then hum0.WalkSpeed = NORMAL_WALKSPEED end
+    
     player.CharacterAdded:Connect(function(nc)
         gameState.playerChar=nc; gameState.sprinting=false; gameState.playerDribbling=false
         task.wait(0.5); updatePlayerAppearance()
+        
+        local hum = nc:FindFirstChildOfClass("Humanoid")
+        if hum then hum.WalkSpeed = NORMAL_WALKSPEED end
+        
         if gameState.hasTrophy then
             task.wait(1)
             createTrophyTool()
