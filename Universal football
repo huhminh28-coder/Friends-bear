@@ -74,10 +74,8 @@ local gameState = {
     teamRedName="RED", teamBlueName="BLUE",
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
-    -- MÀU QUẦN MỚI
     teamRedPantsColor=Color3.fromRGB(255,255,255), teamBluePantsColor=Color3.fromRGB(255,255,255),
 
-    -- TÊN VÀ SỐ ÁO MỚI
     playerName="PLAYER", playerNumber="10",
 
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
@@ -257,7 +255,7 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
--- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO SAU LƯNG
+-- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO SAU LƯNG (ĐÃ FIX VỊ TRÍ VÀ THÊM VIỀN)
 local function updateJerseyBack(char, isRedTeam)
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if not torso then return end
@@ -270,50 +268,66 @@ local function updateJerseyBack(char, isRedTeam)
         gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
         gui.PixelsPerStud = 50
         gui.Parent = torso
-        
-        local numLabel = Instance.new("TextLabel")
-        numLabel.Name = "NumberLabel"
-        numLabel.Size = UDim2.new(1, 0, 0.6, 0)
-        numLabel.Position = UDim2.new(0, 0, 0.1, 0)
-        numLabel.BackgroundTransparency = 1
-        numLabel.TextScaled = true
-        numLabel.Font = Enum.Font.FredokaOne
-        numLabel.Parent = gui
-        
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Name = "NameLabel"
-        nameLabel.Size = UDim2.new(1, 0, 0.3, 0)
-        nameLabel.Position = UDim2.new(0, 0, 0.7, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.TextScaled = true
-        nameLabel.Font = Enum.Font.FredokaOne
-        nameLabel.Parent = gui
     end
     
-    local numL = gui:FindFirstChild("NumberLabel")
-    local nameL = gui:FindFirstChild("NameLabel")
-    if numL and nameL then
-        if char == gameState.playerChar then
-            numL.Text = gameState.playerNumber or "10"
-            nameL.Text = string.upper(gameState.playerName or "PLAYER")
-        else
-            -- Random tên và số cho Bot
-            numL.Text = tostring(math.random(2, 99))
-            local names = {"SMITH", "JONES", "NEYMAR", "MESSI", "RONALDO", "MBAPPE", "HAALAND", "KANE"}
-            nameL.Text = names[math.random(1, #names)]
-        end
-        
-        -- Tự động đổi màu chữ cho nổi bật trên nền áo
-        local shirtColor = torso.Color
-        local h,s,v = Color3.toHSV(shirtColor)
-        if v > 0.6 then
-            numL.TextColor3 = Color3.new(0,0,0)
-            nameL.TextColor3 = Color3.new(0,0,0)
-        else
-            numL.TextColor3 = Color3.new(1,1,1)
-            nameL.TextColor3 = Color3.new(1,1,1)
-        end
+    -- TÊN ÁO (NẰM TRÊN)
+    local nameLabel = gui:FindFirstChild("NameLabel")
+    if not nameLabel then
+        nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Parent = gui
     end
+    nameLabel.Size = UDim2.new(1, 0, 0.35, 0)
+    nameLabel.Position = UDim2.new(0, 0, 0.1, 0) -- Đưa lên trên
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.GothamBold
+    
+    -- Thêm viền đen cho tên
+    local nameStroke = nameLabel:FindFirstChild("UIStroke") or Instance.new("UIStroke", nameLabel)
+    nameStroke.Thickness = 2
+    nameStroke.Color = Color3.new(0,0,0)
+
+    -- SỐ ÁO (NẰM DƯỚI)
+    local numLabel = gui:FindFirstChild("NumberLabel")
+    if not numLabel then
+        numLabel = Instance.new("TextLabel")
+        numLabel.Name = "NumberLabel"
+        numLabel.Parent = gui
+    end
+    numLabel.Size = UDim2.new(1, 0, 0.55, 0)
+    numLabel.Position = UDim2.new(0, 0, 0.35, 0) -- Đưa xuống dưới
+    numLabel.BackgroundTransparency = 1
+    numLabel.TextScaled = true
+    numLabel.Font = Enum.Font.FredokaOne
+    
+    -- Thêm viền đen cho số
+    local numStroke = numLabel:FindFirstChild("UIStroke") or Instance.new("UIStroke", numLabel)
+    numStroke.Thickness = 2
+    numStroke.Color = Color3.new(0,0,0)
+
+    -- Gán chữ và số
+    if char == gameState.playerChar then
+        numLabel.Text = gameState.playerNumber or "10"
+        nameLabel.Text = string.upper(gameState.playerName or "PLAYER")
+    else
+        -- Đối với Bot: Cố định tên và số để không bị random liên tục
+        if not nameLabel:GetAttribute("BotName") then
+            local names = {"SMITH", "JONES", "NEYMAR", "MESSI", "RONALDO", "MBAPPE", "HAALAND", "KANE"}
+            nameLabel:SetAttribute("BotName", names[math.random(1, #names)])
+            numLabel:SetAttribute("BotNum", tostring(math.random(2, 99)))
+        end
+        numLabel.Text = numLabel:GetAttribute("BotNum") or "7"
+        nameLabel.Text = nameLabel:GetAttribute("BotName") or "BOT"
+    end
+    
+    -- Tự động đổi màu chữ cho nổi bật trên nền áo
+    local shirtColor = torso.Color
+    local h,s,v = Color3.toHSV(shirtColor)
+    local textColor = (v > 0.6) and Color3.new(0,0,0) or Color3.new(1,1,1)
+    
+    numLabel.TextColor3 = textColor
+    nameLabel.TextColor3 = textColor
 end
 
 local function updatePlayerAppearance()
@@ -769,7 +783,6 @@ local function startTrophyCeremony(winningTeam)
         local playerWon = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
         local center = MAP_POS + Vector3.new(0, 0, -100)
 
-        -- Tạo Bục
         local podium = Instance.new("Model"); podium.Name="TrophyPodium"; podium.Parent=workspace
         gameState.podiumModel = podium
         local function mkStep(name, size, pos, color)
@@ -781,7 +794,6 @@ local function startTrophyCeremony(winningTeam)
         mkStep("Left", Vector3.new(10, 4, 10), center + Vector3.new(-14, 2, 0), Color3.fromRGB(180, 180, 200))
         mkStep("Right", Vector3.new(10, 4, 10), center + Vector3.new(14, 2, 0), Color3.fromRGB(180, 180, 200))
 
-        -- Sắp xếp đội thua
         for i, bot in ipairs(losers) do
             if bot.PrimaryPart then
                 local pos = center + Vector3.new((i - (#losers+1)/2) * 6, TORSO_Y - MAP_POS.Y, 35)
@@ -789,7 +801,6 @@ local function startTrophyCeremony(winningTeam)
             end
         end
 
-        -- Sắp xếp đội thắng
         local rep = winners[1]
         if playerWon then rep = "PLAYER" end
 
@@ -807,7 +818,6 @@ local function startTrophyCeremony(winningTeam)
             end
         end
 
-        -- Đại diện người chơi
         if playerWon then
             local pc = gameState.playerChar
             local hrp = pc and pc:FindFirstChild("HumanoidRootPart")
@@ -816,7 +826,6 @@ local function startTrophyCeremony(winningTeam)
 
         task.wait(1)
 
-        -- Trao cúp
         if playerWon then
             createTrophyTool()
         else
@@ -836,7 +845,6 @@ local function startTrophyCeremony(winningTeam)
             end
         end
 
-        -- Nhảy nhót ăn mừng
         local startT = tick()
         local conn = RunService.Heartbeat:Connect(function()
             if tick() - startT > 10 then conn:Disconnect() return end
@@ -862,7 +870,6 @@ local function startTrophyCeremony(winningTeam)
             end
         end)
 
-        -- Bắn pháo hoa
         for i = 1, 16 do
             task.spawn(function() local a = math.random() * math.pi * 2; local d = 60 + math.random() * 100; launchFirework(center + Vector3.new(math.cos(a) * d, 3, math.sin(a) * d)) end)
             task.wait(0.5)
@@ -968,7 +975,6 @@ local function createBall()
     ball.Anchored=false; ball.CanCollide=true
     ball.CustomPhysicalProperties=PhysicalProperties.new(0.7,0.3,0.5,1,1)
     
-    -- TEXTURE BÓNG MỚI REALISTIC HƠN (Adidas Al Rihla / World Cup)
     local soccerTexture = "rbxassetid://11219520285"
     for _,face in ipairs({Enum.NormalId.Front,Enum.NormalId.Back,Enum.NormalId.Left,Enum.NormalId.Right,Enum.NormalId.Top,Enum.NormalId.Bottom}) do
         local d = Instance.new("Decal"); d.Texture=soccerTexture; d.Face=face; d.Parent=ball
@@ -1006,7 +1012,6 @@ local function createAIPlayer(team,role,idx)
     bot:SetAttribute("FormationIndex",idx); bot.Parent=workspace
     moveCharacter(bot,Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z+1))
     
-    -- ADD NAME/NUMBER TO BOTS
     updateJerseyBack(bot, isRed)
     
     if team=="Red" then table.insert(gameState.redTeam,bot) else table.insert(gameState.blueTeam,bot) end
@@ -2076,7 +2081,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
+    playSoundOnce("rbxassetid://132079977802654", 5, 6)
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
