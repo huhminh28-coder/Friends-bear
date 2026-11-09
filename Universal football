@@ -17,8 +17,11 @@ local HALF_TIME = 180
 local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
+
+-- CẬP NHẬT TỐC ĐỘ
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
+
 local BALLKICK_SOUND = "rbxassetid://6042053626"
 local WHISTLE_SOUND = "rbxassetid://9117260208"
 local NET_SOUND = "rbxassetid://5568887127"
@@ -71,6 +74,12 @@ local gameState = {
     teamRedName="RED", teamBlueName="BLUE",
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
+    -- MÀU QUẦN MỚI
+    teamRedPantsColor=Color3.fromRGB(255,255,255), teamBluePantsColor=Color3.fromRGB(255,255,255),
+
+    -- TÊN VÀ SỐ ÁO MỚI
+    playerName="PLAYER", playerNumber="10",
+
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
     teamRedStripeColor=Color3.fromRGB(255,255,255), teamBlueStripeColor=Color3.fromRGB(255,255,255),
 
@@ -248,6 +257,65 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
+-- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO SAU LƯNG
+local function updateJerseyBack(char, isRedTeam)
+    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
+    if not torso then return end
+    
+    local gui = torso:FindFirstChild("JerseyBackGui")
+    if not gui then
+        gui = Instance.new("SurfaceGui")
+        gui.Name = "JerseyBackGui"
+        gui.Face = Enum.NormalId.Back
+        gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+        gui.PixelsPerStud = 50
+        gui.Parent = torso
+        
+        local numLabel = Instance.new("TextLabel")
+        numLabel.Name = "NumberLabel"
+        numLabel.Size = UDim2.new(1, 0, 0.6, 0)
+        numLabel.Position = UDim2.new(0, 0, 0.1, 0)
+        numLabel.BackgroundTransparency = 1
+        numLabel.TextScaled = true
+        numLabel.Font = Enum.Font.FredokaOne
+        numLabel.Parent = gui
+        
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "NameLabel"
+        nameLabel.Size = UDim2.new(1, 0, 0.3, 0)
+        nameLabel.Position = UDim2.new(0, 0, 0.7, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextScaled = true
+        nameLabel.Font = Enum.Font.FredokaOne
+        nameLabel.Parent = gui
+    end
+    
+    local numL = gui:FindFirstChild("NumberLabel")
+    local nameL = gui:FindFirstChild("NameLabel")
+    if numL and nameL then
+        if char == gameState.playerChar then
+            numL.Text = gameState.playerNumber or "10"
+            nameL.Text = string.upper(gameState.playerName or "PLAYER")
+        else
+            -- Random tên và số cho Bot
+            numL.Text = tostring(math.random(2, 99))
+            local names = {"SMITH", "JONES", "NEYMAR", "MESSI", "RONALDO", "MBAPPE", "HAALAND", "KANE"}
+            nameL.Text = names[math.random(1, #names)]
+        end
+        
+        -- Tự động đổi màu chữ cho nổi bật trên nền áo
+        local shirtColor = torso.Color
+        local h,s,v = Color3.toHSV(shirtColor)
+        if v > 0.6 then
+            numL.TextColor3 = Color3.new(0,0,0)
+            nameL.TextColor3 = Color3.new(0,0,0)
+        else
+            numL.TextColor3 = Color3.new(1,1,1)
+            nameL.TextColor3 = Color3.new(1,1,1)
+        end
+    end
+end
+
 local function updatePlayerAppearance()
     local char = gameState.playerChar; if not char then return end
     if gameState.isOnBench then
@@ -261,6 +329,7 @@ local function updatePlayerAppearance()
     
     local isRed = (gameState.playerTeam == "Red")
     local newColor = isRed and gameState.teamRedColor or gameState.teamBlueColor
+    local pantsColor = isRed and gameState.teamRedPantsColor or gameState.teamBluePantsColor
     local stripeEnabled = isRed and gameState.teamRedStripeEnabled or gameState.teamBlueStripeEnabled
     local stripeColor = isRed and gameState.teamRedStripeColor or gameState.teamBlueStripeColor
     
@@ -270,11 +339,14 @@ local function updatePlayerAppearance()
                 part.Color = stripeEnabled and stripeColor or newColor
             elseif part.Name:find("Arm") then
                 part.Color = newColor
+            elseif part.Name:find("Leg") then
+                part.Color = pantsColor
             end
         elseif part:IsA("Shirt") or part:IsA("Pants") then 
             part:Destroy() 
         end
     end
+    updateJerseyBack(char, isRed)
 end
 
 local function applyTeamColors()
@@ -285,6 +357,8 @@ local function applyTeamColors()
                     part.Color = gameState.teamRedStripeEnabled and gameState.teamRedStripeColor or gameState.teamRedColor
                 elseif part.Name == "LeftArm" or part.Name == "RightArm" then
                     part.Color = gameState.teamRedColor
+                elseif part.Name == "LeftLeg" or part.Name == "RightLeg" then
+                    part.Color = gameState.teamRedPantsColor
                 end
             end
         end 
@@ -297,6 +371,8 @@ local function applyTeamColors()
                     part.Color = gameState.teamBlueStripeEnabled and gameState.teamBlueStripeColor or gameState.teamBlueColor
                 elseif part.Name == "LeftArm" or part.Name == "RightArm" then
                     part.Color = gameState.teamBlueColor
+                elseif part.Name == "LeftLeg" or part.Name == "RightLeg" then
+                    part.Color = gameState.teamBluePantsColor
                 end
             end
         end 
@@ -683,283 +759,123 @@ local function launchFirework(position)
     end)
 end
 
-local function createGuard(pos)
-    local guard = Instance.new("Model")
-    guard.Name = "SecurityGuard"
-    local function mp(name,size,color,ox,oy,oz)
-        local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Color=color
-        p.Material=Enum.Material.SmoothPlastic; p.Anchored=true; p.CanCollide=true
-        p.TopSurface=Enum.SurfaceType.Smooth; p.BottomSurface=Enum.SurfaceType.Smooth
-        p:SetAttribute("OffX",ox or 0); p:SetAttribute("OffY",oy or 0); p:SetAttribute("OffZ",oz or 0)
-        p.Parent=guard; return p
-    end
-    local black = Color3.fromRGB(10, 10, 10)
-    mp("Torso",Vector3.new(2,2,1),black,0,0,0)
-    local head = mp("Head",Vector3.new(2,1,1),Color3.fromRGB(255,215,170),0,1.5,0)
-    mp("LeftArm",Vector3.new(1,2,1),black,-1.5,0,0)
-    mp("RightArm",Vector3.new(1,2,1),black,1.5,0,0)
-    mp("LeftLeg",Vector3.new(1,2,1),black,-0.5,-2,0)
-    mp("RightLeg",Vector3.new(1,2,1),black,0.5,-2,0)
-    guard.PrimaryPart=guard:FindFirstChild("Torso")
-    guard.Parent = workspace
-    moveCharacter(guard, pos, pos + Vector3.new(0,0,1))
-    return guard
-end
-
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
-    playSoundOnce("rbxassetid://132079977802654", 5, 6)
-    local losingTeam = (winningTeam == "Red") and "Blue" or "Red"
-    local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
-    local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
-    local playerIsWinner = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
-    
-    local podiumCenter = MAP_POS + Vector3.new(0, 3, -100)
-    local pedestalPos = podiumCenter + Vector3.new(-40, 3, 30)
-    
-    local podium = Instance.new("Model"); podium.Name = "TrophyPodium"; podium.Parent = workspace
-    gameState.podiumModel = podium
-    local function mkStep(name, size, pos, color)
-        local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Position=pos
-        p.Color=color or Color3.fromRGB(180,180,190); p.Material=Enum.Material.Marble
-        p.Anchored=true; p.Parent=podium; return p
-    end
-    mkStep("Center", Vector3.new(14, 6, 10), podiumCenter + Vector3.new(0, 3, 0), Color3.fromRGB(220, 200, 100))
-    mkStep("Left", Vector3.new(9, 4, 9), podiumCenter + Vector3.new(-12, 2, 0), Color3.fromRGB(180, 180, 200))
-    mkStep("Right", Vector3.new(9, 4, 9), podiumCenter + Vector3.new(12, 2, 0), Color3.fromRGB(180, 180, 200))
-    local carpet = mkStep("Carpet", Vector3.new(70, 0.2, 8), podiumCenter+Vector3.new(0,6.2,6), Color3.fromRGB(180,30,30))
-    carpet.Material = Enum.Material.Fabric
-    
-    local pedestal = Instance.new("Part")
-    pedestal.Size = Vector3.new(6, 6, 6)
-    pedestal.Position = pedestalPos + Vector3.new(0, 3, 0)
-    pedestal.Color = Color3.fromRGB(100, 100, 100)
-    pedestal.Material = Enum.Material.Marble
-    pedestal.Anchored = true
-    pedestal.Parent = podium
-    
-    local displayTrophy = buildTrophy(gameState.tournamentType)
-    displayTrophy:PivotTo(CFrame.new(pedestalPos + Vector3.new(0, 9, 0)))
-    displayTrophy.Parent = podium
-    gameState.trophyModel = displayTrophy
-    
-    local guard = createGuard(pedestalPos + Vector3.new(6, 0, 0))
-    
-    local loserStartPos = pedestalPos + Vector3.new(-20, 0, 0)
-    local loserViewPos = podiumCenter + Vector3.new(0, 0, 35)
-    
-    for i, bot in ipairs(losers) do
-        local start = loserStartPos + Vector3.new(0, 0, i * 3)
-        pcall(moveCharacter, bot, start, guard.PrimaryPart.Position)
-    end
-    task.wait(1)
-    
-    local stopAtGuard = {}
-    for i, bot in ipairs(losers) do
-        stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
-    end
-    
-    local t0 = tick()
-    local conn
-    conn = RunService.Heartbeat:Connect(function()
-        if tick() - t0 > 4 then if conn then conn:Disconnect() end return end
-        for bot, target in pairs(stopAtGuard) do
-            local cur = bot.PrimaryPart.Position
-            local dir = target - cur
-            local horiz = Vector3.new(dir.X, 0, dir.Z)
-            if horiz.Magnitude > 1.5 then
-                local np = cur + horiz.Unit * 15 * 0.033
-                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), guard.PrimaryPart.Position)
-            end
+    local success, err = pcall(function()
+        playSoundOnce("rbxassetid://132079977802654", 5, 6) 
+        
+        local winners = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
+        local losers = (winningTeam == "Red") and gameState.blueTeam or gameState.redTeam
+        local playerWon = (gameState.playerTeam == winningTeam and not gameState.isOnBench)
+        local center = MAP_POS + Vector3.new(0, 0, -100)
+
+        -- Tạo Bục
+        local podium = Instance.new("Model"); podium.Name="TrophyPodium"; podium.Parent=workspace
+        gameState.podiumModel = podium
+        local function mkStep(name, size, pos, color)
+            local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Position=pos
+            p.Color=color or Color3.fromRGB(180,180,190); p.Material=Enum.Material.Marble
+            p.Anchored=true; p.CanCollide=true; p.Parent=podium; return p
         end
-    end)
-    task.wait(4)
-    if conn then conn:Disconnect() end
-    task.wait(3)
-    
-    local viewTargets = {}
-    for i, bot in ipairs(losers) do
-        viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
-    end
-    local t1 = tick()
-    conn = RunService.Heartbeat:Connect(function()
-        if tick() - t1 > 3 then if conn then conn:Disconnect() end return end
-        for bot, target in pairs(viewTargets) do
-            local cur = bot.PrimaryPart.Position
-            local dir = target - cur
-            local horiz = Vector3.new(dir.X, 0, dir.Z)
-            if horiz.Magnitude > 1.5 then
-                local np = cur + horiz.Unit * 15 * 0.033
-                pcall(moveCharacter, bot, Vector3.new(np.X, cur.Y, np.Z), podiumCenter)
-            end
-        end
-    end)
-    task.wait(3)
-    if conn then conn:Disconnect() end
-    for bot, target in pairs(viewTargets) do
-        pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y, target.Z), podiumCenter)
-    end
-    
-    local rep = winners[1]
-    if playerIsWinner and gameState.playerChar then
-        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-        if hrp then rep = "PLAYER" end
-    end
-    
-    local grabPos = pedestalPos + Vector3.new(0, 0, 4)
-    if rep == "PLAYER" then
-        local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-        local t2 = tick()
-        conn = RunService.Heartbeat:Connect(function()
-            if tick() - t2 > 5 then if conn then conn:Disconnect() end return end
-            local dir = grabPos - hrp.Position
-            local horiz = Vector3.new(dir.X, 0, dir.Z)
-            if horiz.Magnitude > 1.5 then
-                hrp.CFrame = CFrame.new(hrp.Position + horiz.Unit * 60 * 0.033)
-            end
-        end)
-        task.wait(5)
-        if conn then conn:Disconnect() end
-    else
-        local cur = rep.PrimaryPart.Position
-        local t2 = tick()
-        conn = RunService.Heartbeat:Connect(function()
-            if tick() - t2 > 5 then if conn then conn:Disconnect() end return end
-            local dir = grabPos - cur
-            local horiz = Vector3.new(dir.X, 0, dir.Z)
-            if horiz.Magnitude > 1.5 then
-                local np = cur + horiz.Unit * 60 * 0.033
-                pcall(moveCharacter, rep, Vector3.new(np.X, cur.Y, np.Z), pedestalPos)
-            end
-        end)
-        task.wait(5)
-        if conn then conn:Disconnect() end
-    end
-    
-    local trophyHandPos = grabPos + Vector3.new(0, 5, 0)
-    displayTrophy:PivotTo(CFrame.new(trophyHandPos))
-    
-    local targetPodium = podiumCenter + Vector3.new(0, TORSO_Y - MAP_POS.Y + 6, 0)
-    local t3 = tick()
-    conn = RunService.Heartbeat:Connect(function()
-        if tick() - t3 > 5 then if conn then conn:Disconnect() end return end
-        local refPos
-        if rep == "PLAYER" then
-            refPos = gameState.playerChar.HumanoidRootPart.Position
-            local dir = targetPodium - refPos
-            local horiz = Vector3.new(dir.X, 0, dir.Z)
-            if horiz.Magnitude > 1.5 then
-                gameState.playerChar.HumanoidRootPart.CFrame = CFrame.new(refPos + horiz.Unit * 60 * 0.033)
-            end
-        else
-            refPos = rep.PrimaryPart.Position
-            local dir = targetPodium - refPos
-            local horiz = Vector3.new(dir.X, 0, dir.Z)
-            if horiz.Magnitude > 1.5 then
-                local np = refPos + horiz.Unit * 60 * 0.033
-                pcall(moveCharacter, rep, Vector3.new(np.X, refPos.Y, np.Z), podiumCenter)
-            end
-        end
-        displayTrophy:PivotTo(CFrame.new(refPos + Vector3.new(0, 3, 0)))
-    end)
-    task.wait(5)
-    if conn then conn:Disconnect() end
-    
-    local otherWinners = {}
-    for _, bot in ipairs(winners) do
-        if bot ~= rep then table.insert(otherWinners, bot) end
-    end
-    
-    local walkStart = tick()
-    local walkDuration = 8
-    local targetPositions = {}
-    local sideIdx = 0
-    for i, bot in ipairs(otherWinners) do
-        local pos
-        if i == 1 then
-            pos = podiumCenter + Vector3.new(-6, TORSO_Y - MAP_POS.Y + 6, 0)
-        elseif i == 2 then
-            pos = podiumCenter + Vector3.new(6, TORSO_Y - MAP_POS.Y + 6, 0)
-        else
-            local side = (sideIdx % 2 == 0) and -1 or 1
-            local dist = 12 + math.floor(sideIdx/2) * 4
-            pos = podiumCenter + Vector3.new(side * dist, TORSO_Y - MAP_POS.Y + 6, 0)
-            sideIdx = sideIdx + 1
-        end
-        targetPositions[bot] = pos
-    end
-    
-    conn = RunService.Heartbeat:Connect(function()
-        if tick() - walkStart > walkDuration then if conn then conn:Disconnect() end return end
-        for bot, target in pairs(targetPositions) do
+        mkStep("Center", Vector3.new(16, 6, 12), center + Vector3.new(0, 3, 0), Color3.fromRGB(220, 200, 100))
+        mkStep("Left", Vector3.new(10, 4, 10), center + Vector3.new(-14, 2, 0), Color3.fromRGB(180, 180, 200))
+        mkStep("Right", Vector3.new(10, 4, 10), center + Vector3.new(14, 2, 0), Color3.fromRGB(180, 180, 200))
+
+        -- Sắp xếp đội thua
+        for i, bot in ipairs(losers) do
             if bot.PrimaryPart then
-                local cur = bot.PrimaryPart.Position
-                local dir = target - cur
-                local horiz = Vector3.new(dir.X, 0, dir.Z)
-                if horiz.Magnitude > 1.5 then
-                    horiz = horiz.Unit
-                    local newPos = cur + horiz * 80 * 0.033
-                    pcall(moveCharacter, bot, Vector3.new(newPos.X, cur.Y, newPos.Z), target)
+                local pos = center + Vector3.new((i - (#losers+1)/2) * 6, TORSO_Y - MAP_POS.Y, 35)
+                pcall(moveCharacter, bot, pos, center)
+            end
+        end
+
+        -- Sắp xếp đội thắng
+        local rep = winners[1]
+        if playerWon then rep = "PLAYER" end
+
+        for i, bot in ipairs(winners) do
+            if bot.PrimaryPart then
+                if bot == rep then
+                    local pos = center + Vector3.new(0, 6 + TORSO_Y - MAP_POS.Y, 0)
+                    pcall(moveCharacter, bot, pos, center + Vector3.new(0, 6, 10))
+                else
+                    local side = (i % 2 == 0) and 1 or -1
+                    local dist = 8 + math.floor(i/2) * 4
+                    local pos = center + Vector3.new(side * dist, 4 + TORSO_Y - MAP_POS.Y, 0)
+                    pcall(moveCharacter, bot, pos, center)
                 end
             end
         end
-    end)
-    task.wait(walkDuration + 0.5)
-    if conn then conn:Disconnect() end
-    
-    local cheerStart = tick()
-    local cheerDuration = 8
-    conn = RunService.Heartbeat:Connect(function()
-        if tick() - cheerStart > cheerDuration then if conn then conn:Disconnect() end return end
-        for i, bot in ipairs(otherWinners) do
-            if bot.PrimaryPart then
-                local basePos = targetPositions[bot]
-                if basePos then
-                    local jump = math.abs(math.sin((tick()-cheerStart)*6 + i))*3
-                    pcall(moveCharacter, bot, Vector3.new(basePos.X, basePos.Y + jump, basePos.Z), podiumCenter)
+
+        -- Đại diện người chơi
+        if playerWon then
+            local pc = gameState.playerChar
+            local hrp = pc and pc:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = CFrame.new(center + Vector3.new(0, 6 + TORSO_Y - MAP_POS.Y, 0), center + Vector3.new(0, 6, 10)) end
+        end
+
+        task.wait(1)
+
+        -- Trao cúp
+        if playerWon then
+            createTrophyTool()
+        else
+            if rep and rep.PrimaryPart then
+                local trophy = buildTrophy(gameState.tournamentType)
+                if trophy.PrimaryPart then
+                    trophy.PrimaryPart.Anchored = false
+                    trophy.PrimaryPart.CanCollide = false
+                    local weld = Instance.new("Weld")
+                    weld.Part0 = rep.PrimaryPart
+                    weld.Part1 = trophy.PrimaryPart
+                    weld.C0 = CFrame.new(0, 2, -3) * CFrame.Angles(math.rad(-90), 0, 0)
+                    weld.Parent = rep.PrimaryPart
+                    trophy.Parent = workspace
+                    gameState.trophyModel = trophy
                 end
             end
         end
-        if rep == "PLAYER" then
-            local hrp = gameState.playerChar.HumanoidRootPart
-            local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
-            hrp.CFrame = CFrame.new(targetPodium.X, targetPodium.Y + jump, targetPodium.Z)
-            displayTrophy:PivotTo(CFrame.new(hrp.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick()*0.8, 0))
-        else
-            if rep.PrimaryPart then
-                local cur = rep.PrimaryPart.Position
-                local jump = math.abs(math.sin((tick()-cheerStart)*6))*3
-                pcall(moveCharacter, rep, Vector3.new(cur.X, targetPodium.Y + jump, cur.Z), podiumCenter)
-                displayTrophy:PivotTo(CFrame.new(rep.PrimaryPart.Position + Vector3.new(0, 3, 0)) * CFrame.Angles(0, tick()*0.8, 0))
+
+        -- Nhảy nhót ăn mừng
+        local startT = tick()
+        local conn = RunService.Heartbeat:Connect(function()
+            if tick() - startT > 10 then conn:Disconnect() return end
+            local jump = math.abs(math.sin((tick() - startT) * 6)) * 3
+            
+            for i, bot in ipairs(winners) do
+                if bot.PrimaryPart then
+                    local basePos
+                    if bot == rep then
+                        basePos = center + Vector3.new(0, 6 + TORSO_Y - MAP_POS.Y, 0)
+                    else
+                        local side = (i % 2 == 0) and 1 or -1
+                        local dist = 8 + math.floor(i/2) * 4
+                        basePos = center + Vector3.new(side * dist, 4 + TORSO_Y - MAP_POS.Y, 0)
+                    end
+                    pcall(moveCharacter, bot, Vector3.new(basePos.X, basePos.Y + jump, basePos.Z), center)
+                end
             end
+            
+            if playerWon then
+                local hrp = gameState.playerChar and gameState.playerChar:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(center.X, 6 + TORSO_Y - MAP_POS.Y + jump, center.Z) end
+            end
+        end)
+
+        -- Bắn pháo hoa
+        for i = 1, 16 do
+            task.spawn(function() local a = math.random() * math.pi * 2; local d = 60 + math.random() * 100; launchFirework(center + Vector3.new(math.cos(a) * d, 3, math.sin(a) * d)) end)
+            task.wait(0.5)
         end
+        task.wait(5)
+        if conn then conn:Disconnect() end
     end)
     
-    for i = 1, 16 do
-        task.spawn(function()
-            local angle = math.random() * math.pi * 2
-            local dist = 60 + math.random() * 100
-            local pos = MAP_POS + Vector3.new(math.cos(angle) * dist, 3, math.sin(angle) * dist)
-            launchFirework(pos)
-        end)
-        task.wait(0.5)
-    end
-    task.wait(cheerDuration - 8 + 2)
-    if conn then conn:Disconnect() end
-    
-    if playerIsWinner then
-        if displayTrophy then 
-            displayTrophy:Destroy() 
-            gameState.trophyModel = nil 
-        end
-        createTrophyTool()
-    end
-    
+    if not success then warn("[Trophy] Error: "..tostring(err)) end
     gameState.trophyActive = false
     task.wait(2)
     if gameState.podiumModel then gameState.podiumModel:Destroy(); gameState.podiumModel = nil end
     if gameState.trophyModel then gameState.trophyModel:Destroy(); gameState.trophyModel = nil end
-    if guard then guard:Destroy() end
 end
 
 local function createStadium()
@@ -1051,8 +967,11 @@ local function createBall()
     ball.Color=Color3.fromRGB(255,255,255); ball.Material=Enum.Material.SmoothPlastic
     ball.Anchored=false; ball.CanCollide=true
     ball.CustomPhysicalProperties=PhysicalProperties.new(0.7,0.3,0.5,1,1)
+    
+    -- TEXTURE BÓNG MỚI REALISTIC HƠN (Adidas Al Rihla / World Cup)
+    local soccerTexture = "rbxassetid://11219520285"
     for _,face in ipairs({Enum.NormalId.Front,Enum.NormalId.Back,Enum.NormalId.Left,Enum.NormalId.Right,Enum.NormalId.Top,Enum.NormalId.Bottom}) do
-        local d = Instance.new("Decal"); d.Texture="rbxassetid://243098098"; d.Face=face; d.Parent=ball
+        local d = Instance.new("Decal"); d.Texture=soccerTexture; d.Face=face; d.Parent=ball
     end
     ball.Parent=workspace; gameState.ball=ball
 end
@@ -1061,11 +980,12 @@ local function createAIPlayer(team,role,idx)
     local bot = Instance.new("Model"); bot.Name=team.."_"..role.."_"..idx
     local isRed = (team=="Red")
     local teamColor = isRed and gameState.teamRedColor or gameState.teamBlueColor
+    local pantsColor = isRed and gameState.teamRedPantsColor or gameState.teamBluePantsColor
     local stripeEnabled = isRed and gameState.teamRedStripeEnabled or gameState.teamBlueStripeEnabled
     local stripeColor = isRed and gameState.teamRedStripeColor or gameState.teamBlueStripeColor
     local torsoColor = stripeEnabled and stripeColor or teamColor
     
-    local skinColor = Color3.fromRGB(255,215,170); local shortsColor = Color3.new(1,1,1)
+    local skinColor = Color3.fromRGB(255,215,170); local shortsColor = pantsColor
     local function mp(name,size,color,ox,oy,oz)
         local p = Instance.new("Part"); p.Name=name; p.Size=size; p.Color=color
         p.Material=Enum.Material.SmoothPlastic; p.Anchored=true; p.CanCollide=true
@@ -1085,6 +1005,10 @@ local function createAIPlayer(team,role,idx)
     local rv = Instance.new("StringValue",bot); rv.Name="Role"; rv.Value=role
     bot:SetAttribute("FormationIndex",idx); bot.Parent=workspace
     moveCharacter(bot,Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z+1))
+    
+    -- ADD NAME/NUMBER TO BOTS
+    updateJerseyBack(bot, isRed)
+    
     if team=="Red" then table.insert(gameState.redTeam,bot) else table.insert(gameState.blueTeam,bot) end
     return bot
 end
@@ -2152,7 +2076,7 @@ end
 local function startCelebration(winningTeam)
     gameState.celebrating = true
     pcall(playFinalWhistle)
-    playSoundOnce("rbxassetid://132079977802654", 5, 6)
+    playSoundOnce("rbxassetid://132079977802654", 5, 6) -- Âm thanh chiến thắng
     task.wait(2.5)
     if gameState.celebrationConn then
         pcall(function() gameState.celebrationConn:Disconnect() end)
@@ -2535,7 +2459,9 @@ local function createSettingsUI()
     local gui=Instance.new("ScreenGui"); gui.Name="SettingsUI"; gui.ResetOnSpawn=false; gui.Parent=player.PlayerGui
     gameState.settingsUI=gui
     local curRC=gameState.teamRedColor; local curBC=gameState.teamBlueColor
+    local curRPants=gameState.teamRedPantsColor; local curBPants=gameState.teamBluePantsColor
     local hR,sR,vR=Color3.toHSV(curRC); local hB,sB,vB=Color3.toHSV(curBC)
+    local hRP,sRP,vRP=Color3.toHSV(curRPants); local hBP,sBP,vBP=Color3.toHSV(curBPants)
     
     local hSR,sSR,vSR = Color3.toHSV(gameState.teamRedStripeColor)
     local hSB,sSB,vSB = Color3.toHSV(gameState.teamBlueStripeColor)
@@ -2558,7 +2484,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2300)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2700)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2685,10 +2611,19 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     
-    msh(sc,546,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    msh(sc,546,"PLAYER INFO (NAME & NUMBER)",Color3.fromRGB(200,200,255))
+    local pInfoFrame=Instance.new("Frame",sc); pInfoFrame.Size=UDim2.new(1,-24,0,30); pInfoFrame.Position=UDim2.new(0,12,0,572); pInfoFrame.BackgroundTransparency=1
+    local pnb=Instance.new("TextBox",pInfoFrame); pnb.Size=UDim2.new(0.6,0,1,0); pnb.Position=UDim2.new(0,0,0,0)
+    pnb.BackgroundColor3=Color3.fromRGB(45,45,60); pnb.Text=gameState.playerName; pnb.TextColor3=Color3.new(1,1,1); pnb.TextScaled=true; pnb.Font=Enum.Font.FredokaOne
+    Instance.new("UICorner",pnb).CornerRadius=UDim.new(0,8)
+    local pnub=Instance.new("TextBox",pInfoFrame); pnub.Size=UDim2.new(0.3,0,1,0); pnub.Position=UDim2.new(0.65,0,0,0)
+    pnub.BackgroundColor3=Color3.fromRGB(45,45,60); pnub.Text=gameState.playerNumber; pnub.TextColor3=Color3.new(1,1,1); pnub.TextScaled=true; pnub.Font=Enum.Font.FredokaOne
+    Instance.new("UICorner",pnub).CornerRadius=UDim.new(0,8)
+
+    msh(sc,622,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 260)
-    tFrame.Position = UDim2.new(0, 12, 0, 572)
+    tFrame.Position = UDim2.new(0, 12, 0, 648)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2713,96 +2648,120 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,846,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,872)
+    msh(sc,922,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,948)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,872)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,948)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,916,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,942)
+    msh(sc,992,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,1018)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,972)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,1048)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,1006,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,1082,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,1032,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,1082,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,1132,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1182,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,1108,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,1158,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1208,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1258,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1240,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1316,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1266,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1316,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1366,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1416,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1342,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1392,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1442,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1492,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1474,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1496)
+    msh(sc,1550,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1572)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.1,0.33,0.6,0.8,0.05,0.9,0.5,0.15,0.65,0.45,0.75,0.25,0.85,0,0}
     local pst={1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0}
     local pvl={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0.08}
     
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,50); rw1.Position=UDim2.new(0,12,0,1496); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,50); rw1.Position=UDim2.new(0,12,0,1574); rw1.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1556,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1592,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1632,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1668,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    local srToggle = mtg(sc, 1630, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
-    local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1666)
+    local srToggle = mtg(sc, 1706, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
+    local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1742)
     spv1.BackgroundColor3=gameState.teamRedStripeColor; Instance.new("UICorner",spv1).CornerRadius=UDim.new(0,6)
     
-    local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1666); srw1.BackgroundTransparency=1
+    local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1744); srw1.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",srw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssrs=msl(sc,1726,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
-    local ssrv=msl(sc,1762,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrs=msl(sc,1802,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrv=msl(sc,1838,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
     
-    msh(sc,1800,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,1822)
+    msh(sc,1876,"RED PANTS COLOR",Color3.fromRGB(255,120,120))
+    local rpvp=Instance.new("Frame",sc); rpvp.AnchorPoint=Vector2.new(1,0); rpvp.Size=UDim2.new(0,100,0,24); rpvp.Position=UDim2.new(1,-12,0,1898)
+    rpvp.BackgroundColor3=curRPants; Instance.new("UICorner",rpvp).CornerRadius=UDim.new(0,6)
+    local rpww=Instance.new("Frame",sc); rpww.Size=UDim2.new(0.7,0,0,50); rpww.Position=UDim2.new(0,12,0,1900); rpww.BackgroundTransparency=1
+    for i=1,16 do
+        local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
+        local b=Instance.new("TextButton",rpww); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
+        b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+    end
+    local srps=msl(sc,1958,"Red Pants Saturation:",Color3.fromRGB(200,80,80),sRP,function(v) sRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
+    local srpv=msl(sc,1994,"Red Pants Brightness:",Color3.fromRGB(240,120,120),vRP,function(v) vRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
+
+    msh(sc,2032,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,2054)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
     
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,50); rw2.Position=UDim2.new(0,12,0,1822); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,50); rw2.Position=UDim2.new(0,12,0,2056); rw2.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,1882,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,1918,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,2114,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,2150,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
-    local sbToggle = mtg(sc, 1956, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
-    local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,1992)
+    local sbToggle = mtg(sc, 2188, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
+    local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,2224)
     spv2.BackgroundColor3=gameState.teamBlueStripeColor; Instance.new("UICorner",spv2).CornerRadius=UDim.new(0,6)
     
-    local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,1992); srw2.BackgroundTransparency=1
+    local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,2226); srw2.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",srw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssbs=msl(sc,2052,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
-    local ssbv=msl(sc,2088,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbs=msl(sc,2284,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbv=msl(sc,2320,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
     
-    msh(sc,2126,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2150)
+    msh(sc,2358,"BLUE PANTS COLOR",Color3.fromRGB(120,150,255))
+    local bpvp=Instance.new("Frame",sc); bpvp.AnchorPoint=Vector2.new(1,0); bpvp.Size=UDim2.new(0,100,0,24); bpvp.Position=UDim2.new(1,-12,0,2380)
+    bpvp.BackgroundColor3=curBPants; Instance.new("UICorner",bpvp).CornerRadius=UDim.new(0,6)
+    local bpww=Instance.new("Frame",sc); bpww.Size=UDim2.new(0.7,0,0,50); bpww.Position=UDim2.new(0,12,0,2382); bpww.BackgroundTransparency=1
+    for i=1,16 do
+        local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
+        local b=Instance.new("TextButton",bpww); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
+        b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+    end
+    local sbps=msl(sc,2440,"Blue Pants Saturation:",Color3.fromRGB(80,80,200),sBP,function(v) sBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
+    local sbpv=msl(sc,2476,"Blue Pants Brightness:",Color3.fromRGB(120,120,240),vBP,function(v) vBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
+
+    msh(sc,2514,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2538)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,2150)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,2538)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
@@ -2831,12 +2790,29 @@ local function createSettingsUI()
         end); i2s=i2s+1 end
     end
     
+    local ip1=1
+    for _,child in ipairs(rpww:GetChildren()) do if child:IsA("TextButton") then
+        local pi=ip1; child.MouseButton1Click:Connect(function()
+            hRP=ph[pi]; sRP=pst[pi]; vRP=pvl[pi]; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP); srps(sRP); srpv(vRP)
+        end); ip1=ip1+1 end
+    end
+    local ip2=1
+    for _,child in ipairs(bpww:GetChildren()) do if child:IsA("TextButton") then
+        local pi=ip2; child.MouseButton1Click:Connect(function()
+            hBP=ph[pi]; sBP=pst[pi]; vBP=pvl[pi]; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP); sbps(sBP); sbpv(vBP)
+        end); ip2=ip2+1 end
+    end
+    
     local ap=Instance.new("TextButton",bb); ap.Size=UDim2.new(0.49,0,1,0); ap.Position=UDim2.new(0,0,0,0)
     ap.BackgroundColor3=Color3.fromRGB(50,200,100); ap.Text="APPLY"; ap.TextColor3=Color3.new(1,1,1); ap.TextScaled=true; ap.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",ap).CornerRadius=UDim.new(0,12)
     ap.MouseButton1Click:Connect(function()
         if tnb.Text~="" then gameState.teamRedName=string.upper(tnb.Text) end
         if onb.Text~="" then gameState.teamBlueName=string.upper(onb.Text) end
+        
+        gameState.playerName = pnb.Text
+        gameState.playerNumber = pnub.Text
+        
         local sr=tonumber(srB.Text); local sb2=tonumber(sbB.Text)
         if sr then gameState.scoreRed=math.max(0,math.floor(sr)) end
         if sb2 then gameState.scoreBlue=math.max(0,math.floor(sb2)) end
@@ -2848,6 +2824,8 @@ local function createSettingsUI()
         gameState.teamRedStripeColor=Color3.fromHSV(hSR,sSR,vSR)
         gameState.teamBlueColor=Color3.fromHSV(hB,sB,vB)
         gameState.teamBlueStripeColor=Color3.fromHSV(hSB,sSB,vSB)
+        gameState.teamRedPantsColor=Color3.fromHSV(hRP,sRP,vRP)
+        gameState.teamBluePantsColor=Color3.fromHSV(hBP,sBP,vBP)
         
         applyTeamColors(); updateTournamentDisplay()
         if gameState.physicsShotLabel then gameState.physicsShotLabel.Visible=gameState.physicsShotEnabled and not gameState.isOnBench end
@@ -2864,16 +2842,20 @@ local function createSettingsUI()
         gameState.settingsOpen=not gameState.settingsOpen; panel.Visible=gameState.settingsOpen
         if gameState.settingsOpen then
             tnb.Text=gameState.teamRedName; onb.Text=gameState.teamBlueName
+            pnb.Text=gameState.playerName; pnub.Text=gameState.playerNumber
             sb.Text=tostring(gameState.currentStageIndex); mib.Text=tostring(gameState.currentMatchInStage)
             
             hR,sR,vR=Color3.toHSV(gameState.teamRedColor); hB,sB,vB=Color3.toHSV(gameState.teamBlueColor)
             hSR,sSR,vSR=Color3.toHSV(gameState.teamRedStripeColor); hSB,sSB,vSB=Color3.toHSV(gameState.teamBlueStripeColor)
+            hRP,sRP,vRP=Color3.toHSV(gameState.teamRedPantsColor); hBP,sBP,vBP=Color3.toHSV(gameState.teamBluePantsColor)
             
             pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR); pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB)
             spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR); spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB)
+            rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP); bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP)
             
             srs(sR); srv(vR); sbs(sB); sbv(vB)
             ssrs(sSR); ssrv(vSR); ssbs(sSB); ssbv(vSB)
+            srps(sRP); srpv(vRP); sbps(sBP); sbpv(vBP)
             
             srB.Text=tostring(gameState.scoreRed); sbB.Text=tostring(gameState.scoreBlue)
             frb.Text=tostring(gameState.firstLegScoreRed); fbb.Text=tostring(gameState.firstLegScoreBlue)
@@ -3235,17 +3217,9 @@ end
 local function autoStart()
     local char=player.Character or player.CharacterAdded:Wait()
     gameState.playerChar=char; task.wait(1); updatePlayerAppearance()
-    
-    local hum0 = char:FindFirstChildOfClass("Humanoid")
-    if hum0 then hum0.WalkSpeed = NORMAL_WALKSPEED end
-    
     player.CharacterAdded:Connect(function(nc)
         gameState.playerChar=nc; gameState.sprinting=false; gameState.playerDribbling=false
         task.wait(0.5); updatePlayerAppearance()
-        
-        local hum = nc:FindFirstChildOfClass("Humanoid")
-        if hum then hum.WalkSpeed = NORMAL_WALKSPEED end
-        
         if gameState.hasTrophy then
             task.wait(1)
             createTrophyTool()
