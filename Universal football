@@ -18,7 +18,6 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 
--- CẬP NHẬT TỐC ĐỘ
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
 
@@ -75,7 +74,6 @@ local gameState = {
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
     teamRedPantsColor=Color3.fromRGB(255,255,255), teamBluePantsColor=Color3.fromRGB(255,255,255),
-
     playerName="PLAYER", playerNumber="10",
 
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
@@ -255,8 +253,13 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
--- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO SAU LƯNG (ĐÃ FIX VỊ TRÍ VÀ THÊM VIỀN)
+-- ==========================================
+-- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO (CHỈ DÀNH CHO PLAYER, BOT KHÔNG CÓ)
+-- ==========================================
 local function updateJerseyBack(char, isRedTeam)
+    -- Bỏ qua nếu không phải là người chơi (Xóa sạch tên số trên Bot)
+    if char ~= gameState.playerChar then return end
+
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if not torso then return end
     
@@ -268,66 +271,65 @@ local function updateJerseyBack(char, isRedTeam)
         gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
         gui.PixelsPerStud = 50
         gui.Parent = torso
-    end
-    
-    -- TÊN ÁO (NẰM TRÊN)
-    local nameLabel = gui:FindFirstChild("NameLabel")
-    if not nameLabel then
-        nameLabel = Instance.new("TextLabel")
+
+        local frame = Instance.new("Frame")
+        frame.Name = "Container"
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 1
+        frame.Parent = gui
+
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        layout.VerticalAlignment = Enum.VerticalAlignment.Center
+        layout.Padding = UDim.new(0, 2)
+        layout.Parent = frame
+
+        -- TÊN ÁO (TRÊN)
+        local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "NameLabel"
-        nameLabel.Parent = gui
-    end
-    nameLabel.Size = UDim2.new(1, 0, 0.35, 0)
-    nameLabel.Position = UDim2.new(0, 0, 0.1, 0) -- Đưa lên trên
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.TextScaled = true
-    nameLabel.Font = Enum.Font.GothamBold
-    
-    -- Thêm viền đen cho tên
-    local nameStroke = nameLabel:FindFirstChild("UIStroke") or Instance.new("UIStroke", nameLabel)
-    nameStroke.Thickness = 2
-    nameStroke.Color = Color3.new(0,0,0)
+        nameLabel.LayoutOrder = 1
+        nameLabel.Size = UDim2.new(1, 0, 0.3, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextScaled = true
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Parent = frame
+        
+        local nameStroke = Instance.new("UIStroke", nameLabel)
+        nameStroke.Thickness = 2
+        nameStroke.Color = Color3.new(0,0,0)
 
-    -- SỐ ÁO (NẰM DƯỚI)
-    local numLabel = gui:FindFirstChild("NumberLabel")
-    if not numLabel then
-        numLabel = Instance.new("TextLabel")
+        -- SỐ ÁO (DƯỚI)
+        local numLabel = Instance.new("TextLabel")
         numLabel.Name = "NumberLabel"
-        numLabel.Parent = gui
+        numLabel.LayoutOrder = 2
+        numLabel.Size = UDim2.new(1, 0, 0.6, 0)
+        numLabel.BackgroundTransparency = 1
+        numLabel.TextScaled = true
+        numLabel.Font = Enum.Font.FredokaOne
+        numLabel.Parent = frame
+        
+        local numStroke = Instance.new("UIStroke", numLabel)
+        numStroke.Thickness = 2
+        numStroke.Color = Color3.new(0,0,0)
     end
-    numLabel.Size = UDim2.new(1, 0, 0.55, 0)
-    numLabel.Position = UDim2.new(0, 0, 0.35, 0) -- Đưa xuống dưới
-    numLabel.BackgroundTransparency = 1
-    numLabel.TextScaled = true
-    numLabel.Font = Enum.Font.FredokaOne
     
-    -- Thêm viền đen cho số
-    local numStroke = numLabel:FindFirstChild("UIStroke") or Instance.new("UIStroke", numLabel)
-    numStroke.Thickness = 2
-    numStroke.Color = Color3.new(0,0,0)
+    local frame = gui:FindFirstChild("Container")
+    local numLabel = frame and frame:FindFirstChild("NumberLabel")
+    local nameLabel = frame and frame:FindFirstChild("NameLabel")
 
-    -- Gán chữ và số
-    if char == gameState.playerChar then
+    if numLabel and nameLabel then
         numLabel.Text = gameState.playerNumber or "10"
         nameLabel.Text = string.upper(gameState.playerName or "PLAYER")
-    else
-        -- Đối với Bot: Cố định tên và số để không bị random liên tục
-        if not nameLabel:GetAttribute("BotName") then
-            local names = {"SMITH", "JONES", "NEYMAR", "MESSI", "RONALDO", "MBAPPE", "HAALAND", "KANE"}
-            nameLabel:SetAttribute("BotName", names[math.random(1, #names)])
-            numLabel:SetAttribute("BotNum", tostring(math.random(2, 99)))
-        end
-        numLabel.Text = numLabel:GetAttribute("BotNum") or "7"
-        nameLabel.Text = nameLabel:GetAttribute("BotName") or "BOT"
+        
+        -- Tự động đổi màu chữ cho nổi bật trên nền áo
+        local shirtColor = torso.Color
+        local h,s,v = Color3.toHSV(shirtColor)
+        local textColor = (v > 0.6) and Color3.new(0,0,0) or Color3.new(1,1,1)
+        
+        numLabel.TextColor3 = textColor
+        nameLabel.TextColor3 = textColor
     end
-    
-    -- Tự động đổi màu chữ cho nổi bật trên nền áo
-    local shirtColor = torso.Color
-    local h,s,v = Color3.toHSV(shirtColor)
-    local textColor = (v > 0.6) and Color3.new(0,0,0) or Color3.new(1,1,1)
-    
-    numLabel.TextColor3 = textColor
-    nameLabel.TextColor3 = textColor
 end
 
 local function updatePlayerAppearance()
@@ -1012,7 +1014,7 @@ local function createAIPlayer(team,role,idx)
     bot:SetAttribute("FormationIndex",idx); bot.Parent=workspace
     moveCharacter(bot,Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z+1))
     
-    updateJerseyBack(bot, isRed)
+    -- [ĐÃ XÓA DÒNG GỌI TÊN SỐ ÁO CHO BOT Ở ĐÂY]
     
     if team=="Red" then table.insert(gameState.redTeam,bot) else table.insert(gameState.blueTeam,bot) end
     return bot
