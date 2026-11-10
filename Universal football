@@ -18,7 +18,6 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 
--- CẬP NHẬT TỐC ĐỘ
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
 
@@ -75,8 +74,11 @@ local gameState = {
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
     teamRedPantsColor=Color3.fromRGB(255,255,255), teamBluePantsColor=Color3.fromRGB(255,255,255),
-
+    
+    -- PLAYER JERSEY SETTINGS
     playerName="PLAYER", playerNumber="10",
+    isJerseyTextWhite=false, -- False = Black, True = White
+    jerseyTextColor=Color3.fromRGB(0,0,0), 
 
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
     teamRedStripeColor=Color3.fromRGB(255,255,255), teamBlueStripeColor=Color3.fromRGB(255,255,255),
@@ -255,8 +257,13 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
--- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO SAU LƯNG (ĐÃ FIX VỊ TRÍ VÀ THÊM VIỀN)
-local function updateJerseyBack(char, isRedTeam)
+-- ==========================================
+-- JERSEY UI (STRICTLY FOR PLAYER ONLY)
+-- ==========================================
+local function updatePlayerJersey()
+    local char = gameState.playerChar
+    if not char then return end
+    
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if not torso then return end
     
@@ -268,66 +275,61 @@ local function updateJerseyBack(char, isRedTeam)
         gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
         gui.PixelsPerStud = 50
         gui.Parent = torso
-    end
-    
-    -- TÊN ÁO (NẰM TRÊN)
-    local nameLabel = gui:FindFirstChild("NameLabel")
-    if not nameLabel then
-        nameLabel = Instance.new("TextLabel")
+
+        local frame = Instance.new("Frame")
+        frame.Name = "Container"
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 1
+        frame.Parent = gui
+
+        local layout = Instance.new("UIListLayout")
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        layout.VerticalAlignment = Enum.VerticalAlignment.Center
+        layout.Padding = UDim.new(0, 2)
+        layout.Parent = frame
+
+        -- NAME (TOP)
+        local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "NameLabel"
-        nameLabel.Parent = gui
-    end
-    nameLabel.Size = UDim2.new(1, 0, 0.35, 0)
-    nameLabel.Position = UDim2.new(0, 0, 0.1, 0) -- Đưa lên trên
-    nameLabel.BackgroundTransparency = 1
-    nameLabel.TextScaled = true
-    nameLabel.Font = Enum.Font.GothamBold
-    
-    -- Thêm viền đen cho tên
-    local nameStroke = nameLabel:FindFirstChild("UIStroke") or Instance.new("UIStroke", nameLabel)
-    nameStroke.Thickness = 2
-    nameStroke.Color = Color3.new(0,0,0)
+        nameLabel.LayoutOrder = 1
+        nameLabel.Size = UDim2.new(1, 0, 0.3, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.TextScaled = true
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Parent = frame
+        
+        local nameStroke = Instance.new("UIStroke", nameLabel)
+        nameStroke.Thickness = 2
+        nameStroke.Color = Color3.new(0,0,0)
 
-    -- SỐ ÁO (NẰM DƯỚI)
-    local numLabel = gui:FindFirstChild("NumberLabel")
-    if not numLabel then
-        numLabel = Instance.new("TextLabel")
+        -- NUMBER (BOTTOM)
+        local numLabel = Instance.new("TextLabel")
         numLabel.Name = "NumberLabel"
-        numLabel.Parent = gui
+        numLabel.LayoutOrder = 2
+        numLabel.Size = UDim2.new(1, 0, 0.6, 0)
+        numLabel.BackgroundTransparency = 1
+        numLabel.TextScaled = true
+        numLabel.Font = Enum.Font.FredokaOne
+        numLabel.Parent = frame
+        
+        local numStroke = Instance.new("UIStroke", numLabel)
+        numStroke.Thickness = 2
+        numStroke.Color = Color3.new(0,0,0)
     end
-    numLabel.Size = UDim2.new(1, 0, 0.55, 0)
-    numLabel.Position = UDim2.new(0, 0, 0.35, 0) -- Đưa xuống dưới
-    numLabel.BackgroundTransparency = 1
-    numLabel.TextScaled = true
-    numLabel.Font = Enum.Font.FredokaOne
     
-    -- Thêm viền đen cho số
-    local numStroke = numLabel:FindFirstChild("UIStroke") or Instance.new("UIStroke", numLabel)
-    numStroke.Thickness = 2
-    numStroke.Color = Color3.new(0,0,0)
+    local frame = gui:FindFirstChild("Container")
+    local numLabel = frame and frame:FindFirstChild("NumberLabel")
+    local nameLabel = frame and frame:FindFirstChild("NameLabel")
 
-    -- Gán chữ và số
-    if char == gameState.playerChar then
+    if numLabel and nameLabel then
         numLabel.Text = gameState.playerNumber or "10"
         nameLabel.Text = string.upper(gameState.playerName or "PLAYER")
-    else
-        -- Đối với Bot: Cố định tên và số để không bị random liên tục
-        if not nameLabel:GetAttribute("BotName") then
-            local names = {"SMITH", "JONES", "NEYMAR", "MESSI", "RONALDO", "MBAPPE", "HAALAND", "KANE"}
-            nameLabel:SetAttribute("BotName", names[math.random(1, #names)])
-            numLabel:SetAttribute("BotNum", tostring(math.random(2, 99)))
-        end
-        numLabel.Text = numLabel:GetAttribute("BotNum") or "7"
-        nameLabel.Text = nameLabel:GetAttribute("BotName") or "BOT"
+        
+        -- Apply custom color from settings
+        numLabel.TextColor3 = gameState.jerseyTextColor
+        nameLabel.TextColor3 = gameState.jerseyTextColor
     end
-    
-    -- Tự động đổi màu chữ cho nổi bật trên nền áo
-    local shirtColor = torso.Color
-    local h,s,v = Color3.toHSV(shirtColor)
-    local textColor = (v > 0.6) and Color3.new(0,0,0) or Color3.new(1,1,1)
-    
-    numLabel.TextColor3 = textColor
-    nameLabel.TextColor3 = textColor
 end
 
 local function updatePlayerAppearance()
@@ -360,7 +362,7 @@ local function updatePlayerAppearance()
             part:Destroy() 
         end
     end
-    updateJerseyBack(char, isRed)
+    updatePlayerJersey()
 end
 
 local function applyTeamColors()
@@ -1012,7 +1014,7 @@ local function createAIPlayer(team,role,idx)
     bot:SetAttribute("FormationIndex",idx); bot.Parent=workspace
     moveCharacter(bot,Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z+1))
     
-    updateJerseyBack(bot, isRed)
+    -- NPCs DO NOT GET JERSEY TEXT. (NO UPDATE JERSEY CALL HERE)
     
     if team=="Red" then table.insert(gameState.redTeam,bot) else table.insert(gameState.blueTeam,bot) end
     return bot
@@ -2489,7 +2491,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2700)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2750)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2625,10 +2627,17 @@ local function createSettingsUI()
     pnub.BackgroundColor3=Color3.fromRGB(45,45,60); pnub.Text=gameState.playerNumber; pnub.TextColor3=Color3.new(1,1,1); pnub.TextScaled=true; pnub.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pnub).CornerRadius=UDim.new(0,8)
 
-    msh(sc,622,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    -- NEW: JERSEY TEXT COLOR TOGGLE
+    local jtcBtn = mtg(sc, 620, "Jersey Text Color (White)", gameState.isJerseyTextWhite, function(st) 
+        gameState.isJerseyTextWhite = st
+        gameState.jerseyTextColor = st and Color3.fromRGB(255,255,255) or Color3.fromRGB(0,0,0)
+        updatePlayerJersey()
+    end)
+
+    msh(sc,670,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 260)
-    tFrame.Position = UDim2.new(0, 12, 0, 648)
+    tFrame.Position = UDim2.new(0, 12, 0, 696)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2653,120 +2662,120 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,922,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,948)
+    msh(sc,970,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,996)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,948)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,996)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,992,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,1018)
+    msh(sc,1040,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,1066)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,1048)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,1096)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,1082,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,1130,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,1108,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,1158,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,1208,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1258,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,1156,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,1206,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1256,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1306,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1316,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1364,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1342,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1392,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1442,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1492,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1390,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1440,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1490,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1540,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1550,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1572)
+    msh(sc,1598,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1620)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.1,0.33,0.6,0.8,0.05,0.9,0.5,0.15,0.65,0.45,0.75,0.25,0.85,0,0}
     local pst={1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0}
     local pvl={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0.08}
     
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,50); rw1.Position=UDim2.new(0,12,0,1574); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,50); rw1.Position=UDim2.new(0,12,0,1622); rw1.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1632,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1668,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1680,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1716,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    local srToggle = mtg(sc, 1706, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
-    local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1742)
+    local srToggle = mtg(sc, 1754, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
+    local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1790)
     spv1.BackgroundColor3=gameState.teamRedStripeColor; Instance.new("UICorner",spv1).CornerRadius=UDim.new(0,6)
     
-    local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1744); srw1.BackgroundTransparency=1
+    local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1792); srw1.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",srw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssrs=msl(sc,1802,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
-    local ssrv=msl(sc,1838,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrs=msl(sc,1850,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrv=msl(sc,1886,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
     
-    msh(sc,1876,"RED PANTS COLOR",Color3.fromRGB(255,120,120))
-    local rpvp=Instance.new("Frame",sc); rpvp.AnchorPoint=Vector2.new(1,0); rpvp.Size=UDim2.new(0,100,0,24); rpvp.Position=UDim2.new(1,-12,0,1898)
+    msh(sc,1924,"RED PANTS COLOR",Color3.fromRGB(255,120,120))
+    local rpvp=Instance.new("Frame",sc); rpvp.AnchorPoint=Vector2.new(1,0); rpvp.Size=UDim2.new(0,100,0,24); rpvp.Position=UDim2.new(1,-12,0,1946)
     rpvp.BackgroundColor3=curRPants; Instance.new("UICorner",rpvp).CornerRadius=UDim.new(0,6)
-    local rpww=Instance.new("Frame",sc); rpww.Size=UDim2.new(0.7,0,0,50); rpww.Position=UDim2.new(0,12,0,1900); rpww.BackgroundTransparency=1
+    local rpww=Instance.new("Frame",sc); rpww.Size=UDim2.new(0.7,0,0,50); rpww.Position=UDim2.new(0,12,0,1948); rpww.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rpww); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srps=msl(sc,1958,"Red Pants Saturation:",Color3.fromRGB(200,80,80),sRP,function(v) sRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
-    local srpv=msl(sc,1994,"Red Pants Brightness:",Color3.fromRGB(240,120,120),vRP,function(v) vRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
+    local srps=msl(sc,2006,"Red Pants Saturation:",Color3.fromRGB(200,80,80),sRP,function(v) sRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
+    local srpv=msl(sc,2042,"Red Pants Brightness:",Color3.fromRGB(240,120,120),vRP,function(v) vRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
 
-    msh(sc,2032,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,2054)
+    msh(sc,2080,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,2102)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
     
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,50); rw2.Position=UDim2.new(0,12,0,2056); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,50); rw2.Position=UDim2.new(0,12,0,2104); rw2.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,2114,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,2150,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,2162,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,2198,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
-    local sbToggle = mtg(sc, 2188, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
-    local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,2224)
+    local sbToggle = mtg(sc, 2236, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
+    local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,2272)
     spv2.BackgroundColor3=gameState.teamBlueStripeColor; Instance.new("UICorner",spv2).CornerRadius=UDim.new(0,6)
     
-    local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,2226); srw2.BackgroundTransparency=1
+    local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,2274); srw2.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",srw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssbs=msl(sc,2284,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
-    local ssbv=msl(sc,2320,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbs=msl(sc,2332,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbv=msl(sc,2368,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
     
-    msh(sc,2358,"BLUE PANTS COLOR",Color3.fromRGB(120,150,255))
-    local bpvp=Instance.new("Frame",sc); bpvp.AnchorPoint=Vector2.new(1,0); bpvp.Size=UDim2.new(0,100,0,24); bpvp.Position=UDim2.new(1,-12,0,2380)
+    msh(sc,2406,"BLUE PANTS COLOR",Color3.fromRGB(120,150,255))
+    local bpvp=Instance.new("Frame",sc); bpvp.AnchorPoint=Vector2.new(1,0); bpvp.Size=UDim2.new(0,100,0,24); bpvp.Position=UDim2.new(1,-12,0,2428)
     bpvp.BackgroundColor3=curBPants; Instance.new("UICorner",bpvp).CornerRadius=UDim.new(0,6)
-    local bpww=Instance.new("Frame",sc); bpww.Size=UDim2.new(0.7,0,0,50); bpww.Position=UDim2.new(0,12,0,2382); bpww.BackgroundTransparency=1
+    local bpww=Instance.new("Frame",sc); bpww.Size=UDim2.new(0.7,0,0,50); bpww.Position=UDim2.new(0,12,0,2430); bpww.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",bpww); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbps=msl(sc,2440,"Blue Pants Saturation:",Color3.fromRGB(80,80,200),sBP,function(v) sBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
-    local sbpv=msl(sc,2476,"Blue Pants Brightness:",Color3.fromRGB(120,120,240),vBP,function(v) vBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
+    local sbps=msl(sc,2488,"Blue Pants Saturation:",Color3.fromRGB(80,80,200),sBP,function(v) sBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
+    local sbpv=msl(sc,2524,"Blue Pants Brightness:",Color3.fromRGB(120,120,240),vBP,function(v) vBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
 
-    msh(sc,2514,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2538)
+    msh(sc,2562,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2586)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,2538)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,2586)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
