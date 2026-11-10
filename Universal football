@@ -45,6 +45,7 @@ local TOURNAMENTS = {
     ["World Cup"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Champions League"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
     ["Euro"]={stages={"GROUP STAGE","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1}},
+    ["Copa America"]={stages={"GROUP STAGE","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1}},
     ["Nations League"]={stages={"GROUP STAGE","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1}},
     ["Premier League"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
     ["Bundesliga"]={stages={"GROUP STAGE","ROUND OF 32","ROUND OF 16","QUARTER-FINALS","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1,1,1,1}},
@@ -516,6 +517,7 @@ local function buildTrophy(tournamentType)
     if tournamentType == "World Cup" then pc=Color3.fromRGB(255,200,60); sc=Color3.fromRGB(180,140,30); shape="WC"
     elseif tournamentType == "Champions League" then pc=Color3.fromRGB(215,220,230); sc=Color3.fromRGB(150,155,165); shape="CL"
     elseif tournamentType == "Euro" then pc=Color3.fromRGB(220,220,220); sc=Color3.fromRGB(150,150,150); shape="EU"
+    elseif tournamentType == "Copa America" then pc=Color3.fromRGB(220,220,230); sc=Color3.fromRGB(80,50,30); shape="CA"
     elseif tournamentType == "Nations League" then pc=Color3.fromRGB(240,240,240); sc=Color3.fromRGB(50,50,50); shape="NL"
     elseif tournamentType == "Premier League" then pc=Color3.fromRGB(255,215,0); sc=Color3.fromRGB(20,80,50); shape="PL"
     elseif tournamentType == "Bundesliga" then pc=Color3.fromRGB(220,220,220); sc=Color3.fromRGB(150,150,150); shape="BL"
@@ -538,7 +540,22 @@ local function buildTrophy(tournamentType)
         p.Anchored=true; p.CanCollide=false; p.Parent=model; return p
     end
 
-    if shape=="DFB" then
+    -- COPA AMERICA REALISTIC TROPHY
+    if shape=="CA" then
+        mk("WoodBase", Vector3.new(4, 1, 4), CFrame.new(0, 0.5, 0), sc, Enum.Material.Wood)
+        mk("WoodBaseTop", Vector3.new(3, 0.5, 3), CFrame.new(0, 1.25, 0), sc, Enum.Material.Wood)
+        mk("SilverStem", Vector3.new(1, 1.5, 1), CFrame.new(0, 2.25, 0), pc, Enum.Material.Metal)
+        mk("CupBody", Vector3.new(2.8, 3, 2.8), CFrame.new(0, 4.5, 0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        mk("CupRim", Vector3.new(3.2, 0.3, 3.2), CFrame.new(0, 6.0, 0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
+        -- Details around the base
+        for i = 1, 4 do
+            local ang = (i-1) * math.pi/2
+            mk("Crest"..i, Vector3.new(0.8, 1, 0.2), CFrame.new(math.cos(ang)*2, 0.5, math.sin(ang)*2) * CFrame.Angles(0, -ang, 0), Color3.fromRGB(200, 200, 200), Enum.Material.SmoothPlastic)
+        end
+        -- Gold accent at the top
+        mk("GoldTrim", Vector3.new(1.5, 0.5, 1.5), CFrame.new(0, 6.2, 0), Color3.fromRGB(255,215,0), Enum.Material.Metal, Enum.PartType.Cylinder)
+
+    elseif shape=="DFB" then
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(1.2,2,1.2), CFrame.new(0,1.5,0), sc, Enum.Material.Metal)
         mk("Body", Vector3.new(3,3,3), CFrame.new(0,4,0), pc, Enum.Material.Metal, Enum.PartType.Cylinder)
@@ -2645,7 +2662,7 @@ local function createSettingsUI()
     tGrid.CellPadding = UDim2.new(0, 4, 0, 4)
     tGrid.SortOrder = Enum.SortOrder.LayoutOrder
     
-    local tn={"World Cup","Champions League","Euro","Nations League","Premier League","Bundesliga","La Liga","Serie A","FIFA Club World Cup","DFB-Pokal","FA Cup","Carabao Cup","Copa del Rey","Coppa Italia","Coupe de France","Supercopa de España"}
+    local tn={"World Cup","Champions League","Euro","Copa America","Nations League","Premier League","Bundesliga","La Liga","Serie A","FIFA Club World Cup","DFB-Pokal","FA Cup","Carabao Cup","Copa del Rey","Coppa Italia","Coupe de France","Supercopa de España"}
     local tbt={}
     for i,name in ipairs(tn) do
         local b=Instance.new("TextButton",tFrame)
