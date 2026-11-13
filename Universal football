@@ -75,10 +75,12 @@ local gameState = {
     teamRedName="RED", teamBlueName="BLUE",
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
+    -- MÀU QUẦN
     teamRedPantsColor=Color3.fromRGB(255,255,255), teamBluePantsColor=Color3.fromRGB(255,255,255),
-    
+
+    -- TÊN VÀ SỐ ÁO
     playerName="PLAYER", playerNumber="10",
-    isJerseyTextWhite=false,
+    isJerseyTextWhite=false, -- False = Black, True = White
     jerseyTextColor=Color3.fromRGB(0,0,0),
 
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
@@ -109,7 +111,6 @@ local gameState = {
     hasTrophy = false,
     skillBallActive = 0,
     skillBallOwner = nil,
-    currentSubBot = nil, -- THÊM DÒNG NÀY
 }
 
 local function getPlayerAchievement(count)
@@ -259,6 +260,9 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
+-- ==========================================
+-- HÀM CẬP NHẬT TÊN VÀ SỐ ÁO (CHỈ DÀNH CHO PLAYER, BOT KHÔNG CÓ)
+-- ==========================================
 local function updateJerseyBack(char, isRedTeam)
     if char ~= gameState.playerChar then return end
 
@@ -420,7 +424,6 @@ local function hideGoalText() if gameState.goalTextLabel then gameState.goalText
 local function toggleBenchMode()
     if gameState.inPenaltyShootout and gameState.isOnBench then return end
     gameState.isOnBench = not gameState.isOnBench
-    updateTeamForPlayer() -- THÊM DÒNG NÀY
     local chr = gameState.playerChar
     if not chr then return end
     
@@ -535,6 +538,7 @@ local function buildTrophy(tournamentType)
         p.Anchored=true; p.CanCollide=false; p.Parent=model; return p
     end
 
+    -- COPA AMERICA REALISTIC TROPHY
     if shape=="CA" then
         mk("WoodBase", Vector3.new(4, 1, 4), CFrame.new(0, 0.5, 0), sc, Enum.Material.Wood)
         mk("WoodBaseTop", Vector3.new(3, 0.5, 3), CFrame.new(0, 1.25, 0), sc, Enum.Material.Wood)
@@ -807,6 +811,9 @@ local function createGuard(pos)
     return guard
 end
 
+-- ==========================================
+-- HÀM TRAO CÚP HOÀN CHỈNH (CÓ BẢO VỆ VÀ ĐỘI THUA)
+-- ==========================================
 local function startTrophyCeremony(winningTeam)
     gameState.trophyActive = true
     playSoundOnce("rbxassetid://132079977802654", 5, 6)
@@ -1230,40 +1237,6 @@ local function getHomePos(bot,useBall)
     tX=math.clamp(tX,MAP_POS.X-PITCH_WIDTH/2+10,MAP_POS.X+PITCH_WIDTH/2-10)
     tZ=math.clamp(tZ,MAP_POS.Z-PITCH_LENGTH/2+5,MAP_POS.Z+PITCH_LENGTH/2-5)
     return Vector3.new(tX,TORSO_Y,tZ)
-end
-
-local function updateTeamForPlayer()
-    if gameState.currentSubBot then
-        local oldIsRed = gameState.currentSubBot.Team.Value == "Red"
-        local oldTeamList = oldIsRed and gameState.redTeam or gameState.blueTeam
-        gameState.currentSubBot.Parent = workspace
-        if gameState.ball then
-            local p = getHomePos(gameState.currentSubBot, false)
-            moveCharacter(gameState.currentSubBot, p, p + Vector3.new(0, 0, 1))
-        end
-        table.insert(oldTeamList, gameState.currentSubBot)
-        gameState.currentSubBot = nil
-    end
-
-    if not gameState.isOnBench then
-        local isRed = (gameState.playerTeam == "Red")
-        local teamList = isRed and gameState.redTeam or gameState.blueTeam
-        local role = gameState.playerPosition
-        local targetIdx = 1
-        if role == "Defender" then targetIdx = 4
-        elseif role == "Midfielder" then targetIdx = 4
-        elseif role == "Striker" then targetIdx = 2
-        end
-
-        for i, bot in ipairs(teamList) do
-            if bot.Role.Value == role and bot:GetAttribute("FormationIndex") == targetIdx then
-                bot.Parent = nil
-                table.remove(teamList, i)
-                gameState.currentSubBot = bot
-                break
-            end
-        end
-    end
 end
 
 local function playBallTouchSound()
@@ -2803,7 +2776,6 @@ local function createSettingsUI()
             for j, btn in ipairs(posBtns) do
                 btn.BackgroundColor3 = (j==i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
             end
-            updateTeamForPlayer() -- THÊM DÒNG NÀY
         end)
         table.insert(posBtns, b)
     end
@@ -3399,7 +3371,6 @@ local function createGameUI()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         gameState.playerTeam=(gameState.playerTeam=="Red") and "Blue" or "Red"
         gameState.playerDribbling=false; updatePlayerAppearance()
-        updateTeamForPlayer() -- THÊM DÒNG NÀY
         local pc=gameState.playerChar
         if pc and pc:FindFirstChild("HumanoidRootPart") then
             local ad=(gameState.playerTeam=="Red") and 1 or -1
@@ -3460,7 +3431,6 @@ local function autoStart()
     for i=1,4 do createAIPlayer("Blue","Defender",i) end
     for i=1,4 do createAIPlayer("Blue","Midfielder",i) end
     for i=1,2 do createAIPlayer("Blue","Striker",i) end
-    updateTeamForPlayer() -- THÊM DÒNG NÀY
     resetPositions("Red"); gameState.gameActive=true
     createGameUI(); createSettingsUI(); startTimer(); updateTournamentDisplay()
     RunService.Heartbeat:Connect(function(dt)
