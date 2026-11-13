@@ -18,6 +18,7 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 
+-- CẬP NHẬT TỐC ĐỘ TẠI ĐÂY
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
 
@@ -32,8 +33,6 @@ local TORSO_Y = FEET_Y + 3
 local PENALTY_BOX_DEPTH = 80
 local PENALTY_DIST = 35
 local STOPPAGE_TIME = 15
-
-local ALL_POSITIONS = {"ST", "LW", "RW", "CAM", "CM", "CDM", "LM", "RM", "CB", "LB", "RB"}
 
 local DIFFICULTY_LEVELS = {[1]={name="EASY"},[2]={name="NORMAL"},[3]={name="HARD"}}
 local DIFFICULTY_PER_CATEGORY = {
@@ -63,18 +62,6 @@ local TOURNAMENTS = {
     ["Supercopa de España"]={stages={"GROUP STAGE","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1}},
 }
 
--- TỌA ĐỘ CHUẨN CHO TỪNG VỊ TRÍ (X TỪ -0.5 ĐẾN 0.5, Z TỪ -1 ĐẾN 1)
-local POS_COORDS = {
-    GK = {0, -0.95},
-    LB = {-0.35, -0.65}, LCB = {-0.15, -0.65}, CB = {0, -0.65}, RCB = {0.15, -0.65}, RB = {0.35, -0.65},
-    LWB = {-0.4, -0.4}, RWB = {0.4, -0.4},
-    CDM = {0, -0.35}, LDM = {-0.15, -0.3}, RDM = {0.15, -0.3},
-    LCM = {-0.25, -0.1}, CM = {0, -0.1}, RCM = {0.25, -0.1}, CAM = {0, 0.15},
-    LM = {-0.35, -0.05}, RM = {0.35, -0.05},
-    LW = {-0.3, 0.4}, LST = {-0.15, 0.45}, ST = {0, 0.45}, RST = {0.15, 0.45}, RW = {0.3, 0.4},
-    Striker = {0, 0.45}, Midfielder = {0, -0.1}, Defender = {0, -0.65}
-}
-
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2, isExtraTime=false,
@@ -89,17 +76,13 @@ local gameState = {
     teamRedColor=Color3.fromRGB(255,50,50), teamBlueColor=Color3.fromRGB(50,50,255),
     
     teamRedPantsColor=Color3.fromRGB(255,255,255), teamBluePantsColor=Color3.fromRGB(255,255,255),
-
+    
     playerName="PLAYER", playerNumber="10",
-    isJerseyTextWhite=false, 
+    isJerseyTextWhite=false,
     jerseyTextColor=Color3.fromRGB(0,0,0),
 
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
     teamRedStripeColor=Color3.fromRGB(255,255,255), teamBlueStripeColor=Color3.fromRGB(255,255,255),
-
-    formation="4-4-2",
-    savedFormations={"4-4-2", "4-3-3", "3-5-2", "5-3-2", "4-2-3-1", "4-1-4-1", "3-4-3", "4-5-1", "5-4-1", "4-2-4"},
-    benchedBotForPlayer=nil,
 
     settingsUI=nil, settingsOpen=false, gameButtons={},
     inPenaltyShootout=false, celebrating=false, celebrationConn=nil,
@@ -115,7 +98,7 @@ local gameState = {
     lastScorer=nil, lastScorerTeam=nil,
     trophyActive=false, podiumModel=nil, trophyModel=nil, goalCelebrationActive=false,
     playerGoalCount=0, playerGoalLabel=nil, suddenDeathLabel=nil, hudFrame=nil,
-    playerPosition="ST", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
+    playerPosition="Striker", isOnBench=false, actionButtons={}, switchTeamBtn=nil, benchBtn=nil,
     extraTimeEnabled = true,
     penaltyEnabled = true,
     twoLeggedEnabled = false,
@@ -126,6 +109,7 @@ local gameState = {
     hasTrophy = false,
     skillBallActive = 0,
     skillBallOwner = nil,
+    currentSubBot = nil, -- THÊM DÒNG NÀY
 }
 
 local function getPlayerAchievement(count)
@@ -275,10 +259,9 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
-local function updatePlayerJersey()
-    local char = gameState.playerChar
-    if not char then return end
-    
+local function updateJerseyBack(char, isRedTeam)
+    if char ~= gameState.playerChar then return end
+
     local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
     if not torso then return end
     
@@ -374,7 +357,7 @@ local function updatePlayerAppearance()
             part:Destroy() 
         end
     end
-    updatePlayerJersey()
+    updateJerseyBack(char, isRed)
 end
 
 local function applyTeamColors()
@@ -434,71 +417,10 @@ local function showGoalText()
 end
 local function hideGoalText() if gameState.goalTextLabel then gameState.goalTextLabel.Visible=false end end
 
--- HÀM DỊCH CHUYỂN NGƯỜI CHƠI ĐẾN ĐÚNG VỊ TRÍ
-local function teleportPlayerToPosition()
-    if gameState.isOnBench or not gameState.playerChar then return end
-    local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    
-    local ad = (gameState.playerTeam == "Red") and 1 or -1
-    local coords = POS_COORDS[gameState.playerPosition] or {0, 0.45}
-    local tX = MAP_POS.X + coords[1] * (PITCH_WIDTH/2)
-    local tZ = MAP_POS.Z + coords[2] * (PITCH_LENGTH/2) * ad
-    hrp.CFrame = CFrame.new(tX, TORSO_Y, tZ)
-end
-
-local function updateSubstitutionState()
-    if #gameState.redTeam == 0 then return end
-    
-    local isPlayerActive = not gameState.isOnBench
-
-    if gameState.benchedBotForPlayer then
-        local bot = gameState.benchedBotForPlayer
-        bot:SetAttribute("SubbedOut", false)
-        for _, p in ipairs(bot:GetChildren()) do
-            if p:IsA("BasePart") then p.Transparency = 0 end
-        end
-        local h = getHomePos(bot, false)
-        moveCharacter(bot, h, h + Vector3.new(0,0,1))
-        gameState.benchedBotForPlayer = nil
-    end
-
-    if isPlayerActive then
-        local targetPos = gameState.playerPosition
-        -- Nếu chọn ST, thì tìm bot có vị trí là ST hoặc LST hoặc RST
-        local matchedBot = nil
-        for _, bot in ipairs(gameState.redTeam) do
-            local bPos = bot:GetAttribute("PosName") or ""
-            if bPos == targetPos or (targetPos == "ST" and (bPos == "LST" or bPos == "RST")) then
-                matchedBot = bot
-                break
-            end
-        end
-        
-        -- Nếu không tìm thấy vị trí chính xác, lấy tạm 1 bot
-        if not matchedBot then
-            for _, bot in ipairs(gameState.redTeam) do
-                if bot.Role.Value ~= "Goalkeeper" and not bot:GetAttribute("SubbedOut") then
-                    matchedBot = bot
-                    break
-                end
-            end
-        end
-
-        if matchedBot then
-            matchedBot:SetAttribute("SubbedOut", true)
-            for _, p in ipairs(matchedBot:GetChildren()) do
-                if p:IsA("BasePart") then p.Transparency = 1 end
-            end
-            moveCharacter(matchedBot, Vector3.new(0, -500, 0), Vector3.new(0, -500, 1))
-            gameState.benchedBotForPlayer = matchedBot
-        end
-    end
-end
-
 local function toggleBenchMode()
     if gameState.inPenaltyShootout and gameState.isOnBench then return end
     gameState.isOnBench = not gameState.isOnBench
+    updateTeamForPlayer() -- THÊM DÒNG NÀY
     local chr = gameState.playerChar
     if not chr then return end
     
@@ -512,7 +434,15 @@ local function toggleBenchMode()
         gameState.benchBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         gameState.playerDribbling = false
     else
-        teleportPlayerToPosition()
+        local hrp = chr:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local ad = (gameState.playerTeam=="Red") and 1 or -1
+            local tX = MAP_POS.X; local tZ = MAP_POS.Z
+            if gameState.playerPosition == "Striker" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
+            elseif gameState.playerPosition == "Midfielder" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.1) * ad
+            else tZ = MAP_POS.Z - (PITCH_LENGTH/2 * 0.3) * ad end
+            hrp.CFrame = CFrame.new(Vector3.new(tX, TORSO_Y, tZ))
+        end
         updatePlayerAppearance()
         for _, btn in ipairs(gameState.actionButtons) do btn.Visible = true end
         if gameState.switchTeamBtn then gameState.switchTeamBtn.Visible = true end
@@ -521,8 +451,6 @@ local function toggleBenchMode()
         gameState.benchBtn.Text = "GO TO BENCH"
         gameState.benchBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     end
-    
-    updateSubstitutionState()
 end
 
 local function startGoalCelebration(scorer, scoringTeam)
@@ -532,7 +460,7 @@ local function startGoalCelebration(scorer, scoringTeam)
     
     local runners = {}
     for _, bot in ipairs(teamList) do
-        if bot.PrimaryPart and bot ~= scorer and not bot:GetAttribute("SubbedOut") then table.insert(runners, bot) end
+        if bot.PrimaryPart and bot ~= scorer then table.insert(runners, bot) end
     end
     
     local startTime = tick()
@@ -922,18 +850,14 @@ local function startTrophyCeremony(winningTeam)
     local loserViewPos = podiumCenter + Vector3.new(0, 0, 35)
     
     for i, bot in ipairs(losers) do
-        if not bot:GetAttribute("SubbedOut") then
-            local start = loserStartPos + Vector3.new(0, 0, i * 3)
-            pcall(moveCharacter, bot, start, guard.PrimaryPart.Position)
-        end
+        local start = loserStartPos + Vector3.new(0, 0, i * 3)
+        pcall(moveCharacter, bot, start, guard.PrimaryPart.Position)
     end
     task.wait(1)
     
     local stopAtGuard = {}
     for i, bot in ipairs(losers) do
-        if not bot:GetAttribute("SubbedOut") then
-            stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
-        end
+        stopAtGuard[bot] = pedestalPos + Vector3.new(-5, TORSO_Y - MAP_POS.Y, (i - (#losers+1)/2) * 4)
     end
     
     local t0 = tick()
@@ -956,9 +880,7 @@ local function startTrophyCeremony(winningTeam)
     
     local viewTargets = {}
     for i, bot in ipairs(losers) do
-        if not bot:GetAttribute("SubbedOut") then
-            viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
-        end
+        viewTargets[bot] = loserViewPos + Vector3.new((i - (#losers+1)/2) * 5, 0, 0)
     end
     local t1 = tick()
     conn = RunService.Heartbeat:Connect(function()
@@ -979,12 +901,7 @@ local function startTrophyCeremony(winningTeam)
         pcall(moveCharacter, bot, Vector3.new(target.X, TORSO_Y, target.Z), podiumCenter)
     end
     
-    local rep = nil
-    for _, w in ipairs(winners) do
-        if not w:GetAttribute("SubbedOut") then rep = w break end
-    end
-    if not rep then rep = winners[1] end
-    
+    local rep = winners[1]
     if playerIsWinner and gameState.playerChar then
         local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
         if hrp then rep = "PLAYER" end
@@ -1051,7 +968,7 @@ local function startTrophyCeremony(winningTeam)
     
     local otherWinners = {}
     for _, bot in ipairs(winners) do
-        if bot ~= rep and not bot:GetAttribute("SubbedOut") then table.insert(otherWinners, bot) end
+        if bot ~= rep then table.insert(otherWinners, bot) end
     end
     
     local walkStart = tick()
@@ -1243,7 +1160,7 @@ local function createBall()
     ball.Parent=workspace; gameState.ball=ball
 end
 
-local function createAIPlayer(team,role,idx,posName)
+local function createAIPlayer(team,role,idx)
     local bot = Instance.new("Model"); bot.Name=team.."_"..role.."_"..idx
     local isRed = (team=="Red")
     local teamColor = isRed and gameState.teamRedColor or gameState.teamBlueColor
@@ -1270,85 +1187,24 @@ local function createAIPlayer(team,role,idx,posName)
     bot.PrimaryPart=bot:FindFirstChild("Torso")
     local tv = Instance.new("StringValue",bot); tv.Name="Team"; tv.Value=team
     local rv = Instance.new("StringValue",bot); rv.Name="Role"; rv.Value=role
-    bot:SetAttribute("FormationIndex",idx)
-    bot:SetAttribute("PosName", posName or role)
-    bot.Parent=workspace
+    bot:SetAttribute("FormationIndex",idx); bot.Parent=workspace
     moveCharacter(bot,Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z),Vector3.new(MAP_POS.X,TORSO_Y,MAP_POS.Z+1))
+    
+    -- NPCs DO NOT GET JERSEY TEXT. (NO UPDATE JERSEY CALL HERE)
     
     if team=="Red" then table.insert(gameState.redTeam,bot) else table.insert(gameState.blueTeam,bot) end
     return bot
 end
 
-local function buildTeam(team, formationStr)
-    if team == "Red" then
-        for _, b in ipairs(gameState.redTeam) do b:Destroy() end
-        gameState.redTeam = {}
-    else
-        for _, b in ipairs(gameState.blueTeam) do b:Destroy() end
-        gameState.blueTeam = {}
-    end
-    
-    local nums = {}
-    for num in string.gmatch(formationStr, "%d+") do
-        table.insert(nums, tonumber(num))
-    end
-    local defCount = nums[1] or 4
-    local midCount = nums[2] or 4
-    local stCount = nums[3] or 2
-    
-    local function getPosNames(count, roleType)
-        if roleType == "Defender" then
-            if count == 1 then return {"CB"} end
-            if count == 2 then return {"LCB", "RCB"} end
-            if count == 3 then return {"LB", "CB", "RB"} end
-            if count == 4 then return {"LB", "LCB", "RCB", "RB"} end
-            if count == 5 then return {"LB", "LCB", "CB", "RCB", "RB"} end
-        elseif roleType == "Midfielder" then
-            if count == 1 then return {"CM"} end
-            if count == 2 then return {"LDM", "RDM"} end
-            if count == 3 then return {"LCM", "CM", "RCM"} end
-            if count == 4 then return {"LM", "LCM", "RCM", "RM"} end
-            if count == 5 then return {"LM", "LCM", "CAM", "RCM", "RM"} end
-        elseif roleType == "Striker" then
-            if count == 1 then return {"ST"} end
-            if count == 2 then return {"LST", "RST"} end
-            if count == 3 then return {"LW", "ST", "RW"} end
-            if count == 4 then return {"LW", "LST", "RST", "RW"} end
-        end
-        local arr = {}
-        for i=1,count do table.insert(arr, roleType) end
-        return arr
-    end
-
-    createAIPlayer(team, "Goalkeeper", 1, "GK")
-    local defs = getPosNames(defCount, "Defender")
-    for i, pos in ipairs(defs) do createAIPlayer(team, "Defender", i, pos) end
-    local mids = getPosNames(midCount, "Midfielder")
-    for i, pos in ipairs(mids) do createAIPlayer(team, "Midfielder", i, pos) end
-    local sts = getPosNames(stCount, "Striker")
-    for i, pos in ipairs(sts) do createAIPlayer(team, "Striker", i, pos) end
-end
-
 local function getHomePos(bot,useBall)
     local team=bot.Team.Value; local role=bot.Role.Value
-    local posName=bot:GetAttribute("PosName") or role
+    local idx=bot:GetAttribute("FormationIndex") or 1
     local ad=(team=="Red") and 1 or -1
-    
-    local bx, bz = 0, 0
-    local coords = POS_COORDS[posName]
-    if coords then
-        bx, bz = coords[1], coords[2]
-    else
-        if role == "Defender" then bz = -0.6
-        elseif role == "Midfielder" then bz = -0.1
-        elseif role == "Striker" then bz = 0.35 end
-    end
-    
-    local xw, zw = 0.3, 0.3
-    if role == "Goalkeeper" then xw, zw = 0.5, 0.05
-    elseif role == "Defender" then xw, zw = 0.35, 0.4
-    elseif role == "Midfielder" then xw, zw = 0.35, 0.5
-    elseif role == "Striker" then xw, zw = 0.3, 0.55 end
+    local bx,bz,xw,zw = 0,0,0.3,0.3
+    if role=="Goalkeeper" then bx,bz,xw,zw=0,-0.95,0.5,0.05
+    elseif role=="Defender" then local xs={-0.35,-0.12,0.12,0.35}; bx=xs[idx] or 0; bz=(idx==1 or idx==4) and -0.5 or -0.6; xw,zw=0.35,0.4
+    elseif role=="Midfielder" then local xs={-0.30,-0.10,0.10,0.30}; bx=xs[idx] or 0; bz=(idx==1 or idx==4) and -0.10 or 0.0; xw,zw=0.35,0.5
+    elseif role=="Striker" then bx=(idx==1) and -0.15 or 0.15; bz=0.35; xw,zw=0.3,0.55 end
     
     local bZ,bX = 0,0
     if useBall and gameState.ball then
@@ -1374,6 +1230,40 @@ local function getHomePos(bot,useBall)
     tX=math.clamp(tX,MAP_POS.X-PITCH_WIDTH/2+10,MAP_POS.X+PITCH_WIDTH/2-10)
     tZ=math.clamp(tZ,MAP_POS.Z-PITCH_LENGTH/2+5,MAP_POS.Z+PITCH_LENGTH/2-5)
     return Vector3.new(tX,TORSO_Y,tZ)
+end
+
+local function updateTeamForPlayer()
+    if gameState.currentSubBot then
+        local oldIsRed = gameState.currentSubBot.Team.Value == "Red"
+        local oldTeamList = oldIsRed and gameState.redTeam or gameState.blueTeam
+        gameState.currentSubBot.Parent = workspace
+        if gameState.ball then
+            local p = getHomePos(gameState.currentSubBot, false)
+            moveCharacter(gameState.currentSubBot, p, p + Vector3.new(0, 0, 1))
+        end
+        table.insert(oldTeamList, gameState.currentSubBot)
+        gameState.currentSubBot = nil
+    end
+
+    if not gameState.isOnBench then
+        local isRed = (gameState.playerTeam == "Red")
+        local teamList = isRed and gameState.redTeam or gameState.blueTeam
+        local role = gameState.playerPosition
+        local targetIdx = 1
+        if role == "Defender" then targetIdx = 4
+        elseif role == "Midfielder" then targetIdx = 4
+        elseif role == "Striker" then targetIdx = 2
+        end
+
+        for i, bot in ipairs(teamList) do
+            if bot.Role.Value == role and bot:GetAttribute("FormationIndex") == targetIdx then
+                bot.Parent = nil
+                table.remove(teamList, i)
+                gameState.currentSubBot = bot
+                break
+            end
+        end
+    end
 end
 
 local function playBallTouchSound()
@@ -1439,7 +1329,7 @@ local function findDirectionalPassTarget()
     local bestScore = -math.huge
     
     for _, bot in ipairs(teamList) do
-        if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" and not bot:GetAttribute("SubbedOut") then
+        if bot.PrimaryPart and bot.Role.Value ~= "Goalkeeper" then
             local toBot = bot.PrimaryPart.Position - hrp.Position
             local horizToBot = Vector3.new(toBot.X, 0, toBot.Z)
             local dist = horizToBot.Magnitude
@@ -1540,7 +1430,7 @@ local function aiAvoidOpponent(bot)
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local no=nil; local nd=math.huge
     local fd=Vector3.new(0,0,(team=="Red") and 1 or -1)
-    for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" and not opp:GetAttribute("SubbedOut") then
+    for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
         local op=opp.PrimaryPart.Position; local to=op-bp; local d=to.Magnitude
         if to.Unit:Dot(fd)>0.4 and d<25 and d<nd then nd=d; no=opp end
     end end
@@ -1603,7 +1493,7 @@ local function aiDribble(bot)
     local agz=(team=="Red") and (MAP_POS.Z+PITCH_LENGTH/2) or (MAP_POS.Z-PITCH_LENGTH/2)
     local ol=(team=="Red") and gameState.blueTeam or gameState.redTeam
     local nod=math.huge
-    for _,opp in ipairs(ol) do if opp.PrimaryPart and not opp:GetAttribute("SubbedOut") then local d=(opp.PrimaryPart.Position-bp).Magnitude; if d<nod then nod=d end end end
+    for _,opp in ipairs(ol) do if opp.PrimaryPart then local d=(opp.PrimaryPart.Position-bp).Magnitude; if d<nod then nod=d end end end
     if nod<12 and math.random()<diff.skillChance and not gameState.aiSkillActive[bid] then if useSkill(bot,team) then return true end end
     local bs=gameState.aiDribbleState[bid]
     if not bs or not bs.active or dtb>8 then
@@ -1650,7 +1540,7 @@ function findBestPassTarget(bot)
     local best,bs,pt=nil,-math.huge,"Short"
     local candidates = {}
     for _,tm in ipairs(tl) do
-        if tm~=bot and tm.PrimaryPart and tm.Role.Value~="Goalkeeper" and not tm:GetAttribute("SubbedOut") then
+        if tm~=bot and tm.PrimaryPart and tm.Role.Value~="Goalkeeper" then
             table.insert(candidates, {part=tm.PrimaryPart, bot=tm, isPlayer=false})
         end
     end
@@ -1668,7 +1558,7 @@ function findBestPassTarget(bot)
             local score = -math.abs(tp.Z - agz) * 0.5
             local no = math.huge
             for _,opp in ipairs(ol) do
-                if opp.PrimaryPart and not opp:GetAttribute("SubbedOut") then
+                if opp.PrimaryPart then
                     local d = (opp.PrimaryPart.Position - tp).Magnitude
                     if d < no then no = d end
                 end
@@ -1678,9 +1568,9 @@ function findBestPassTarget(bot)
             
             if c.isPlayer then
                 local chance = 50
-                if gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" then chance = 30
-                elseif gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then chance = 50
-                elseif gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then chance = 80 end
+                if gameState.playerPosition == "Defender" then chance = 30
+                elseif gameState.playerPosition == "Midfielder" then chance = 50
+                elseif gameState.playerPosition == "Striker" then chance = 80 end
                 
                 if math.random(1,100) <= chance then
                     score = score + 500
@@ -1725,7 +1615,7 @@ local function handleBallTouch(bot)
     local nearestOppDist = math.huge
     local fwdDir = (team=="Red") and Vector3.new(0,0,1) or Vector3.new(0,0,-1)
     for _,opp in ipairs(ol) do
-        if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" and not opp:GetAttribute("SubbedOut") then
+        if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
             local toOpp = opp.PrimaryPart.Position - bp
             local horizToOpp = Vector3.new(toOpp.X, 0, toOpp.Z)
             local d = horizToOpp.Magnitude
@@ -1795,7 +1685,7 @@ end
 
 local function goalkeeperPassBall(gk,ball,team)
     local cands={}; local tm=(team=="Red") and gameState.redTeam or gameState.blueTeam
-    for _,t in ipairs(tm) do if t~=gk and t.PrimaryPart and not t:GetAttribute("SubbedOut") then table.insert(cands,{part=t.PrimaryPart,isPlayer=false}) end end
+    for _,t in ipairs(tm) do if t~=gk and t.PrimaryPart then table.insert(cands,{part=t.PrimaryPart,isPlayer=false}) end end
     local pc=gameState.playerChar
     if pc and gameState.playerTeam==team and not gameState.isOnBench then
         local hrp=pc:FindFirstChild("HumanoidRootPart")
@@ -1809,9 +1699,9 @@ local function goalkeeperPassBall(gk,ball,team)
             local s=-math.abs(c.part.Position.Z-ogz)*0.5;
             if c.isPlayer then 
                 local chance = 50
-                if gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" then chance = 30
-                elseif gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then chance = 50
-                elseif gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then chance = 80 end
+                if gameState.playerPosition == "Defender" then chance = 30
+                elseif gameState.playerPosition == "Midfielder" then chance = 50
+                elseif gameState.playerPosition == "Striker" then chance = 80 end
                 
                 if math.random(1,100) <= chance then s=s+50 else s=s-100 end
             end
@@ -1953,7 +1843,7 @@ local function updateOutfieldAI(bot,allBots,closestBot,dt)
     else
         if role=="Defender" then
             local no,md=nil,math.huge
-            for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" and not opp:GetAttribute("SubbedOut") then
+            for _,opp in ipairs(ol) do if opp.PrimaryPart and opp.Role.Value~="Goalkeeper" then
                 local d=math.abs(opp.PrimaryPart.Position.Z-ogz); if d<md then md=d; no=opp end
             end end
             if no then local op=no.PrimaryPart.Position; local mp=(op+Vector3.new(MAP_POS.X,MAP_POS.Y,ogz))/2; target=Vector3.new(mp.X,MAP_POS.Y+5,mp.Z)
@@ -1987,14 +1877,14 @@ local function updateAILogic(dt)
     if gameState.paused or gameState.restartCountdown>0 then return end
     
     if gameState.practiceModeEnabled then
-        for _, bot in ipairs(gameState.redTeam) do if bot.Role.Value == "Goalkeeper" and not bot:GetAttribute("SubbedOut") then updateGoalkeeperAI(bot, dt) end end
-        for _, bot in ipairs(gameState.blueTeam) do if bot.Role.Value == "Goalkeeper" and not bot:GetAttribute("SubbedOut") then updateGoalkeeperAI(bot, dt) end end
+        for _, bot in ipairs(gameState.redTeam) do if bot.Role.Value == "Goalkeeper" then updateGoalkeeperAI(bot, dt) end end
+        for _, bot in ipairs(gameState.blueTeam) do if bot.Role.Value == "Goalkeeper" then updateGoalkeeperAI(bot, dt) end end
         return
     end
 
     local ab={}
-    for _,b in ipairs(gameState.redTeam) do if not b:GetAttribute("SubbedOut") then table.insert(ab,b) end end
-    for _,b in ipairs(gameState.blueTeam) do if not b:GetAttribute("SubbedOut") then table.insert(ab,b) end end
+    for _,b in ipairs(gameState.redTeam) do table.insert(ab,b) end
+    for _,b in ipairs(gameState.blueTeam) do table.insert(ab,b) end
     local cb,md=nil,math.huge
     for _,bot in ipairs(ab) do if bot.PrimaryPart and bot.Role.Value~="Goalkeeper" then
         local d=(bot.PrimaryPart.Position-ball.Position).Magnitude; if d<md then md=d; cb=bot end
@@ -2038,7 +1928,7 @@ local function checkInterception()
     local ol=(gameState.lastTouchTeam=="Red") and gameState.blueTeam or gameState.redTeam
     local diff=getDiff(otn)
     
-    for _,bot in ipairs(ol) do if bot.PrimaryPart and not bot:GetAttribute("SubbedOut") then
+    for _,bot in ipairs(ol) do if bot.PrimaryPart then
         local d=(bot.PrimaryPart.Position-ball.Position).Magnitude
         local chance=0.5*diff.interceptMul
         if isD then chance=(d>8 and 0.05 or 0.35)*diff.interceptMul end
@@ -2123,13 +2013,13 @@ local function resetPositions(concedingTeam)
     if gameState.ball then gameState.ball.CanCollide=true end
     
     for _,bot in ipairs(gameState.redTeam) do 
-        if bot.PrimaryPart and not bot:GetAttribute("SubbedOut") then 
+        if bot.PrimaryPart then 
             local p=getHomePos(bot,false)
             pcall(moveCharacter, bot, p, p+Vector3.new(0,0,1)) 
         end 
     end
     for _,bot in ipairs(gameState.blueTeam) do 
-        if bot.PrimaryPart and not bot:GetAttribute("SubbedOut") then 
+        if bot.PrimaryPart then 
             local p=getHomePos(bot,false)
             pcall(moveCharacter, bot, p, p+Vector3.new(0,0,-1)) 
         end 
@@ -2140,14 +2030,19 @@ local function resetPositions(concedingTeam)
         gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
     end
     gameState.ballIsCurving=false; gameState.passCooldowns={}; gameState.aiDribbleState={}
-    
-    -- Dịch chuyển người chơi đến đúng vị trí
-    teleportPlayerToPosition()
-    updatePlayerAppearance()
-    
+    local pc=gameState.playerChar
+    if pc and pc:FindFirstChild("HumanoidRootPart") and not gameState.isOnBench then
+        local ad=(gameState.playerTeam=="Red") and 1 or -1
+        local tX = MAP_POS.X; local tZ = MAP_POS.Z
+        if gameState.playerPosition == "Striker" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
+        elseif gameState.playerPosition == "Midfielder" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.1) * ad
+        else tZ = MAP_POS.Z - (PITCH_LENGTH/2 * 0.3) * ad end
+        pc:PivotTo(CFrame.new(Vector3.new(tX, TORSO_Y, tZ)))
+        updatePlayerAppearance()
+    end
     if concedingTeam then
         local kt=(concedingTeam=="Red") and gameState.redTeam or gameState.blueTeam
-        for _,bot in ipairs(kt) do if bot.Role.Value=="Striker" and bot.PrimaryPart and not bot:GetAttribute("SubbedOut") then
+        for _,bot in ipairs(kt) do if bot.Role.Value=="Striker" and bot.PrimaryPart then
             local d=(concedingTeam=="Red") and 1 or -1
             local off=(bot:GetAttribute("FormationIndex")==1) and Vector3.new(-5,0,5*d) or Vector3.new(5,0,5*d)
             local pos=MAP_POS+Vector3.new(off.X,TORSO_Y-MAP_POS.Y,off.Z)
@@ -2251,11 +2146,11 @@ local function runPenaltyShootout()
             local pc=gameState.playerChar; if pc and pc:FindFirstChild("HumanoidRootPart") then return {isPlayer=true,char=pc,key="player"} end
         end
         for _,bot in ipairs((team=="Red") and gameState.redTeam or gameState.blueTeam) do
-            if bot.PrimaryPart and bot.Role.Value~="Goalkeeper" and not ul[bot.Name] and not bot:GetAttribute("SubbedOut") then return {isPlayer=false,bot=bot,key=bot.Name} end
+            if bot.PrimaryPart and bot.Role.Value~="Goalkeeper" and not ul[bot.Name] then return {isPlayer=false,bot=bot,key=bot.Name} end
         end
         if team=="Red" then ru={} else bu={} end
         for _,bot in ipairs((team=="Red") and gameState.redTeam or gameState.blueTeam) do
-            if bot.PrimaryPart and bot.Role.Value~="Goalkeeper" and not bot:GetAttribute("SubbedOut") then return {isPlayer=false,bot=bot,key=bot.Name} end
+            if bot.PrimaryPart and bot.Role.Value~="Goalkeeper" then return {isPlayer=false,bot=bot,key=bot.Name} end
         end
     end
     local function ts(team,round)
@@ -2407,10 +2302,8 @@ local function startCelebration(winningTeam)
     local w = (winningTeam == "Red") and gameState.redTeam or gameState.blueTeam
     local tp = {}
     for i, bot in ipairs(w) do
-        if not bot:GetAttribute("SubbedOut") then
-            local a = (i / #w) * math.pi * 2
-            tp[bot] = Vector3.new(cp.X + math.cos(a)*6, TORSO_Y, cp.Z + math.sin(a)*6)
-        end
+        local a = (i / #w) * math.pi * 2
+        tp[bot] = Vector3.new(cp.X + math.cos(a)*6, TORSO_Y, cp.Z + math.sin(a)*6)
     end
     local cst = tick()
     gameState.celebrationConn = RunService.Heartbeat:Connect(function()
@@ -2808,7 +2701,7 @@ local function createSettingsUI()
     local bb=Instance.new("Frame",panel); bb.AnchorPoint=Vector2.new(0,1); bb.Size=UDim2.new(1,-16,0,70); bb.Position=UDim2.new(0,8,1,-8); bb.BackgroundTransparency=1
     
     local sc=Instance.new("ScrollingFrame",panel); sc.Size=UDim2.new(1,-10,1,-130); sc.Position=UDim2.new(0,5,0,42)
-    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,3150)
+    sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=6; sc.ScrollBarImageColor3=Color3.fromRGB(100,150,255); sc.CanvasSize=UDim2.new(0,0,0,2850)
 
     local function msl(parent,y,label,slc,iv,onC)
         local l=Instance.new("TextLabel",parent); l.Size=UDim2.new(1,-24,0,14); l.Position=UDim2.new(0,12,0,y)
@@ -2884,49 +2777,39 @@ local function createSettingsUI()
     mtg(sc,250,"Two-Legged Tie", gameState.twoLeggedEnabled, function(st) gameState.twoLeggedEnabled = st; gameState.currentLeg = 1; updateTournamentDisplay() end)
     mtg(sc,288,"Practice Mode", gameState.practiceModeEnabled, function(st) setPracticeMode(st) end)
     
-    msh(sc,326,"FORMATION (e.g. 4-4-2, 4-3-3)",Color3.fromRGB(255,200,100))
-    local formFrame = Instance.new("Frame",sc); formFrame.Size=UDim2.new(1,-24,0,26); formFrame.Position=UDim2.new(0,12,0,352); formFrame.BackgroundTransparency=1
-    local formBox = Instance.new("TextBox",formFrame); formBox.Size=UDim2.new(0.6,0,1,0); formBox.Position=UDim2.new(0,0,0,0)
-    formBox.BackgroundColor3=Color3.fromRGB(45,45,60); formBox.Text=gameState.formation; formBox.TextColor3=Color3.new(1,1,1); formBox.TextScaled=true; formBox.Font=Enum.Font.FredokaOne
-    Instance.new("UICorner",formBox).CornerRadius=UDim.new(0,8)
-    local formApply = Instance.new("TextButton",formFrame); formApply.Size=UDim2.new(0.35,0,1,0); formApply.Position=UDim2.new(0.65,0,0,0)
-    formApply.BackgroundColor3=Color3.fromRGB(50,200,100); formApply.Text="APPLY"; formApply.TextColor3=Color3.new(1,1,1); formApply.TextScaled=true; formApply.Font=Enum.Font.FredokaOne
-    Instance.new("UICorner",formApply).CornerRadius=UDim.new(0,8)
-    formApply.MouseButton1Click:Connect(function()
-        local f = formBox.Text
-        if f:match("^%d+%-%d+%-%d+$") then
-            gameState.formation = f
-            buildTeam("Red", f)
-            buildTeam("Blue", f)
-            updateSubstitutionState()
-            resetPositions("Red")
-        end
-    end)
+    local flr=Instance.new("TextLabel",sc); flr.Size=UDim2.new(1,-24,0,14); flr.Position=UDim2.new(0,12,0,326)
+    flr.BackgroundTransparency=1; flr.Text="First Leg Score (Red - Blue)"; flr.TextColor3=Color3.fromRGB(200,200,200); flr.TextXAlignment=Enum.TextXAlignment.Left; flr.Font=Enum.Font.FredokaOne; flr.TextScaled=true
+    local flrBox=Instance.new("Frame",sc); flrBox.Size=UDim2.new(1,-24,0,30); flrBox.Position=UDim2.new(0,12,0,344); flrBox.BackgroundTransparency=1
+    local frb=Instance.new("TextBox",flrBox); frb.Size=UDim2.new(0.45,0,1,0); frb.Position=UDim2.new(0,0,0,0)
+    frb.BackgroundColor3=Color3.fromRGB(45,45,60); frb.Text=tostring(gameState.firstLegScoreRed); frb.TextColor3=Color3.new(1,1,1); frb.TextScaled=true; frb.Font=Enum.Font.FredokaOne
+    Instance.new("UICorner",frb).CornerRadius=UDim.new(0,8)
+    local fbb=Instance.new("TextBox",flrBox); fbb.Size=UDim2.new(0.45,0,1,0); fbb.Position=UDim2.new(0.55,0,0,0)
+    fbb.BackgroundColor3=Color3.fromRGB(45,45,60); fbb.Text=tostring(gameState.firstLegScoreBlue); fbb.TextColor3=Color3.new(1,1,1); fbb.TextScaled=true; fbb.Font=Enum.Font.FredokaOne
+    Instance.new("UICorner",fbb).CornerRadius=UDim.new(0,8)
+    frb.FocusLost:Connect(function() gameState.firstLegScoreRed = tonumber(frb.Text) or 0; updateTournamentDisplay() end)
+    fbb.FocusLost:Connect(function() gameState.firstLegScoreBlue = tonumber(fbb.Text) or 0; updateTournamentDisplay() end)
 
     msh(sc,390,"PLAYER POSITION",Color3.fromRGB(100,255,200))
-    local posFrame=Instance.new("ScrollingFrame",sc); posFrame.Size=UDim2.new(1,-24,0,90); posFrame.Position=UDim2.new(0,12,0,416); posFrame.BackgroundTransparency=1; posFrame.ScrollBarThickness=4
-    local posLayout = Instance.new("UIGridLayout", posFrame); posLayout.CellSize=UDim2.new(0.24,-2,0,26); posLayout.CellPadding=UDim2.new(0,4,0,4)
+    local posFrame=Instance.new("Frame",sc); posFrame.Size=UDim2.new(1,-24,0,30); posFrame.Position=UDim2.new(0,12,0,416); posFrame.BackgroundTransparency=1
+    local posList = {"Striker", "Midfielder", "Defender"}
     local posBtns = {}
-    for i, posName in ipairs(ALL_POSITIONS) do
-        local b=Instance.new("TextButton",posFrame)
+    for i, posName in ipairs(posList) do
+        local b=Instance.new("TextButton",posFrame); b.Size=UDim2.new(0.32,-4,1,0); b.Position=UDim2.new((i-1)*0.34,0,0,0)
         b.BackgroundColor3=(gameState.playerPosition==posName) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
         b.Text=posName; b.TextColor3=Color3.new(1,1,1); b.TextScaled=true; b.Font=Enum.Font.FredokaOne
         Instance.new("UICorner",b).CornerRadius=UDim.new(0,8)
         b.MouseButton1Click:Connect(function()
             gameState.playerPosition = posName
-            for j, btn in ipairs(posFrame:GetChildren()) do
-                if btn:IsA("TextButton") then
-                    btn.BackgroundColor3 = (btn.Text == posName) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
-                end
+            for j, btn in ipairs(posBtns) do
+                btn.BackgroundColor3 = (j==i) and Color3.fromRGB(80,180,100) or Color3.fromRGB(45,45,60)
             end
-            updateSubstitutionState()
-            teleportPlayerToPosition()
+            updateTeamForPlayer() -- THÊM DÒNG NÀY
         end)
         table.insert(posBtns, b)
     end
 
-    msh(sc,516,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
-    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,542); tr2.BackgroundTransparency=1
+    msh(sc,456,"SPECIAL ABILITIES",Color3.fromRGB(255,100,255))
+    local tr2=Instance.new("Frame",sc); tr2.Size=UDim2.new(1,-24,0,44); tr2.Position=UDim2.new(0,12,0,482); tr2.BackgroundTransparency=1
     local pt=Instance.new("TextButton",tr2); pt.Size=UDim2.new(0.49,-2,1,0); pt.Position=UDim2.new(0,0,0,0)
     pt.BackgroundColor3=Color3.fromRGB(150,30,200); pt.Text="PHYSICS: OFF"; pt.TextColor3=Color3.new(1,1,1); pt.TextScaled=true; pt.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pt).CornerRadius=UDim.new(0,10)
@@ -2946,8 +2829,8 @@ local function createSettingsUI()
         if gameState.superSkillLabel then gameState.superSkillLabel.Visible=gameState.superSkillEnabled and not gameState.isOnBench end
     end)
     
-    msh(sc,606,"PLAYER INFO (NAME & NUMBER)",Color3.fromRGB(200,200,255))
-    local pInfoFrame=Instance.new("Frame",sc); pInfoFrame.Size=UDim2.new(1,-24,0,30); pInfoFrame.Position=UDim2.new(0,12,0,632); pInfoFrame.BackgroundTransparency=1
+    msh(sc,546,"PLAYER INFO (NAME & NUMBER)",Color3.fromRGB(200,200,255))
+    local pInfoFrame=Instance.new("Frame",sc); pInfoFrame.Size=UDim2.new(1,-24,0,30); pInfoFrame.Position=UDim2.new(0,12,0,572); pInfoFrame.BackgroundTransparency=1
     local pnb=Instance.new("TextBox",pInfoFrame); pnb.Size=UDim2.new(0.6,0,1,0); pnb.Position=UDim2.new(0,0,0,0)
     pnb.BackgroundColor3=Color3.fromRGB(45,45,60); pnb.Text=gameState.playerName; pnb.TextColor3=Color3.new(1,1,1); pnb.TextScaled=true; pnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pnb).CornerRadius=UDim.new(0,8)
@@ -2955,16 +2838,16 @@ local function createSettingsUI()
     pnub.BackgroundColor3=Color3.fromRGB(45,45,60); pnub.Text=gameState.playerNumber; pnub.TextColor3=Color3.new(1,1,1); pnub.TextScaled=true; pnub.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",pnub).CornerRadius=UDim.new(0,8)
 
-    local jtcBtn = mtg(sc, 680, "Jersey Text Color (White)", gameState.isJerseyTextWhite, function(st) 
+    local jtcBtn = mtg(sc, 620, "Jersey Text Color (White)", gameState.isJerseyTextWhite, function(st) 
         gameState.isJerseyTextWhite = st
         gameState.jerseyTextColor = st and Color3.fromRGB(255,255,255) or Color3.fromRGB(0,0,0)
-        updatePlayerJersey()
+        updateJerseyBack(gameState.playerChar, gameState.playerTeam=="Red")
     end)
 
-    msh(sc,730,"TOURNAMENT",Color3.fromRGB(255,215,0))
+    msh(sc,670,"TOURNAMENT",Color3.fromRGB(255,215,0))
     local tFrame = Instance.new("Frame", sc)
     tFrame.Size = UDim2.new(1, -24, 0, 320)
-    tFrame.Position = UDim2.new(0, 12, 0, 756)
+    tFrame.Position = UDim2.new(0, 12, 0, 696)
     tFrame.BackgroundTransparency = 1
     
     local tGrid = Instance.new("UIGridLayout", tFrame)
@@ -2989,120 +2872,120 @@ local function createSettingsUI()
         tbt[i]=b
     end
 
-    msh(sc,1100,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
-    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,1126)
+    msh(sc,1040,"STAGE CUSTOMIZATION",Color3.fromRGB(150,255,150))
+    local sb=Instance.new("TextBox",sc); sb.Size=UDim2.new(0.48,-6,0,24); sb.Position=UDim2.new(0,12,0,1066)
     sb.BackgroundColor3=Color3.fromRGB(45,45,60); sb.Text="1"; sb.TextColor3=Color3.new(1,1,1); sb.TextScaled=true; sb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sb).CornerRadius=UDim.new(0,8)
-    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,1126)
+    local mib=Instance.new("TextBox",sc); mib.Size=UDim2.new(0.48,-6,0,24); mib.Position=UDim2.new(0.52,0,0,1066)
     mib.BackgroundColor3=Color3.fromRGB(45,45,60); mib.Text="1"; mib.TextColor3=Color3.new(1,1,1); mib.TextScaled=true; mib.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",mib).CornerRadius=UDim.new(0,8)
     
-    msh(sc,1170,"TEAM NAMES",Color3.fromRGB(150,200,255))
-    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,1196)
+    msh(sc,1110,"TEAM NAMES",Color3.fromRGB(150,200,255))
+    local tnb=Instance.new("TextBox",sc); tnb.Size=UDim2.new(1,-24,0,24); tnb.Position=UDim2.new(0,12,0,1136)
     tnb.BackgroundColor3=Color3.fromRGB(45,45,60); tnb.Text=gameState.teamRedName; tnb.TextColor3=Color3.new(1,1,1); tnb.TextScaled=true; tnb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",tnb).CornerRadius=UDim.new(0,8)
-    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,1226)
+    local onb=Instance.new("TextBox",sc); onb.Size=UDim2.new(1,-24,0,24); onb.Position=UDim2.new(0,12,0,1166)
     onb.BackgroundColor3=Color3.fromRGB(45,45,60); onb.Text=gameState.teamBlueName; onb.TextColor3=Color3.new(1,1,1); onb.TextScaled=true; onb.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",onb).CornerRadius=UDim.new(0,8)
     
-    msh(sc,1260,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
+    msh(sc,1200,"RED TEAM DIFFICULTY",Color3.fromRGB(255,120,120))
     local rdb={}
-    rdb.defense=mdr(sc,1286,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
-    rdb.goalkeeper=mdr(sc,1336,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
-    rdb.attack=mdr(sc,1386,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
-    rdb.pass=mdr(sc,1436,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
+    rdb.defense=mdr(sc,1226,"Defense:",gameState.redDifficulty.defense,function(i) gameState.redDifficulty.defense=i; refreshDiffStats() end)
+    rdb.goalkeeper=mdr(sc,1276,"Goalkeeper:",gameState.redDifficulty.goalkeeper,function(i) gameState.redDifficulty.goalkeeper=i; refreshDiffStats() end)
+    rdb.attack=mdr(sc,1326,"Attack:",gameState.redDifficulty.attack,function(i) gameState.redDifficulty.attack=i; refreshDiffStats() end)
+    rdb.pass=mdr(sc,1376,"Passing:",gameState.redDifficulty.pass,function(i) gameState.redDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1494,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
+    msh(sc,1434,"BLUE TEAM DIFFICULTY",Color3.fromRGB(120,150,255))
     local bdb={}
-    bdb.defense=mdr(sc,1520,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
-    bdb.goalkeeper=mdr(sc,1570,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
-    bdb.attack=mdr(sc,1620,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
-    bdb.pass=mdr(sc,1670,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
+    bdb.defense=mdr(sc,1460,"Defense:",gameState.blueDifficulty.defense,function(i) gameState.blueDifficulty.defense=i; refreshDiffStats() end)
+    bdb.goalkeeper=mdr(sc,1510,"Goalkeeper:",gameState.blueDifficulty.goalkeeper,function(i) gameState.blueDifficulty.goalkeeper=i; refreshDiffStats() end)
+    bdb.attack=mdr(sc,1560,"Attack:",gameState.blueDifficulty.attack,function(i) gameState.blueDifficulty.attack=i; refreshDiffStats() end)
+    bdb.pass=mdr(sc,1610,"Passing:",gameState.blueDifficulty.pass,function(i) gameState.blueDifficulty.pass=i; refreshDiffStats() end)
     
-    msh(sc,1728,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
-    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1750)
+    msh(sc,1668,"RED SHIRT COLOR",Color3.fromRGB(255,120,120))
+    local pv1=Instance.new("Frame",sc); pv1.AnchorPoint=Vector2.new(1,0); pv1.Size=UDim2.new(0,100,0,24); pv1.Position=UDim2.new(1,-12,0,1690)
     pv1.BackgroundColor3=curRC; Instance.new("UICorner",pv1).CornerRadius=UDim.new(0,6)
     local ph={0,0.1,0.33,0.6,0.8,0.05,0.9,0.5,0.15,0.65,0.45,0.75,0.25,0.85,0,0}
     local pst={1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0}
     local pvl={1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0.08}
     
-    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,50); rw1.Position=UDim2.new(0,12,0,1752); rw1.BackgroundTransparency=1
+    local rw1=Instance.new("Frame",sc); rw1.Size=UDim2.new(0.7,0,0,50); rw1.Position=UDim2.new(0,12,0,1692); rw1.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srs=msl(sc,1810,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
-    local srv=msl(sc,1846,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srs=msl(sc,1750,"Red Base Saturation:",Color3.fromRGB(200,80,80),sR,function(v) sR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
+    local srv=msl(sc,1786,"Red Base Brightness:",Color3.fromRGB(240,120,120),vR,function(v) vR=v; pv1.BackgroundColor3=Color3.fromHSV(hR,sR,vR) end)
     
-    local srToggle = mtg(sc, 1884, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
-    local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1920)
+    local srToggle = mtg(sc, 1824, "Enable Red Stripes", gameState.teamRedStripeEnabled, function(st) gameState.teamRedStripeEnabled = st; applyTeamColors() end)
+    local spv1=Instance.new("Frame",sc); spv1.AnchorPoint=Vector2.new(1,0); spv1.Size=UDim2.new(0,100,0,24); spv1.Position=UDim2.new(1,-12,0,1860)
     spv1.BackgroundColor3=gameState.teamRedStripeColor; Instance.new("UICorner",spv1).CornerRadius=UDim.new(0,6)
     
-    local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1922); srw1.BackgroundTransparency=1
+    local srw1=Instance.new("Frame",sc); srw1.Size=UDim2.new(0.7,0,0,50); srw1.Position=UDim2.new(0,12,0,1862); srw1.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",srw1); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssrs=msl(sc,1980,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
-    local ssrv=msl(sc,2016,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrs=msl(sc,1920,"Red Stripe Saturation:",Color3.fromRGB(200,80,80),sSR,function(v) sSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
+    local ssrv=msl(sc,1956,"Red Stripe Brightness:",Color3.fromRGB(240,120,120),vSR,function(v) vSR=v; spv1.BackgroundColor3=Color3.fromHSV(hSR,sSR,vSR) end)
     
-    msh(sc,2054,"RED PANTS COLOR",Color3.fromRGB(255,120,120))
-    local rpvp=Instance.new("Frame",sc); rpvp.AnchorPoint=Vector2.new(1,0); rpvp.Size=UDim2.new(0,100,0,24); rpvp.Position=UDim2.new(1,-12,0,2076)
+    msh(sc,1994,"RED PANTS COLOR",Color3.fromRGB(255,120,120))
+    local rpvp=Instance.new("Frame",sc); rpvp.AnchorPoint=Vector2.new(1,0); rpvp.Size=UDim2.new(0,100,0,24); rpvp.Position=UDim2.new(1,-12,0,2016)
     rpvp.BackgroundColor3=curRPants; Instance.new("UICorner",rpvp).CornerRadius=UDim.new(0,6)
-    local rpww=Instance.new("Frame",sc); rpww.Size=UDim2.new(0.7,0,0,50); rpww.Position=UDim2.new(0,12,0,2078); rpww.BackgroundTransparency=1
+    local rpww=Instance.new("Frame",sc); rpww.Size=UDim2.new(0.7,0,0,50); rpww.Position=UDim2.new(0,12,0,2018); rpww.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rpww); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local srps=msl(sc,2136,"Red Pants Saturation:",Color3.fromRGB(200,80,80),sRP,function(v) sRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
-    local srpv=msl(sc,2172,"Red Pants Brightness:",Color3.fromRGB(240,120,120),vRP,function(v) vRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
+    local srps=msl(sc,2076,"Red Pants Saturation:",Color3.fromRGB(200,80,80),sRP,function(v) sRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
+    local srpv=msl(sc,2112,"Red Pants Brightness:",Color3.fromRGB(240,120,120),vRP,function(v) vRP=v; rpvp.BackgroundColor3=Color3.fromHSV(hRP,sRP,vRP) end)
 
-    msh(sc,2210,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
-    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,2232)
+    msh(sc,2150,"BLUE SHIRT COLOR",Color3.fromRGB(120,150,255))
+    local pv2=Instance.new("Frame",sc); pv2.AnchorPoint=Vector2.new(1,0); pv2.Size=UDim2.new(0,100,0,24); pv2.Position=UDim2.new(1,-12,0,2172)
     pv2.BackgroundColor3=curBC; Instance.new("UICorner",pv2).CornerRadius=UDim.new(0,6)
     
-    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,50); rw2.Position=UDim2.new(0,12,0,2234); rw2.BackgroundTransparency=1
+    local rw2=Instance.new("Frame",sc); rw2.Size=UDim2.new(0.7,0,0,50); rw2.Position=UDim2.new(0,12,0,2174); rw2.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",rw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbs=msl(sc,2292,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
-    local sbv=msl(sc,2328,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbs=msl(sc,2232,"Blue Base Saturation:",Color3.fromRGB(80,80,200),sB,function(v) sB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
+    local sbv=msl(sc,2268,"Blue Base Brightness:",Color3.fromRGB(120,120,240),vB,function(v) vB=v; pv2.BackgroundColor3=Color3.fromHSV(hB,sB,vB) end)
     
-    local sbToggle = mtg(sc, 2366, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
-    local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,2402)
+    local sbToggle = mtg(sc, 2306, "Enable Blue Stripes", gameState.teamBlueStripeEnabled, function(st) gameState.teamBlueStripeEnabled = st; applyTeamColors() end)
+    local spv2=Instance.new("Frame",sc); spv2.AnchorPoint=Vector2.new(1,0); spv2.Size=UDim2.new(0,100,0,24); spv2.Position=UDim2.new(1,-12,0,2342)
     spv2.BackgroundColor3=gameState.teamBlueStripeColor; Instance.new("UICorner",spv2).CornerRadius=UDim.new(0,6)
     
-    local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,2404); srw2.BackgroundTransparency=1
+    local srw2=Instance.new("Frame",sc); srw2.Size=UDim2.new(0.7,0,0,50); srw2.Position=UDim2.new(0,12,0,2344); srw2.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",srw2); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local ssbs=msl(sc,2462,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
-    local ssbv=msl(sc,2498,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbs=msl(sc,2402,"Blue Stripe Saturation:",Color3.fromRGB(80,80,200),sSB,function(v) sSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
+    local ssbv=msl(sc,2438,"Blue Stripe Brightness:",Color3.fromRGB(120,120,240),vSB,function(v) vSB=v; spv2.BackgroundColor3=Color3.fromHSV(hSB,sSB,vSB) end)
     
-    msh(sc,2536,"BLUE PANTS COLOR",Color3.fromRGB(120,150,255))
-    local bpvp=Instance.new("Frame",sc); bpvp.AnchorPoint=Vector2.new(1,0); bpvp.Size=UDim2.new(0,100,0,24); bpvp.Position=UDim2.new(1,-12,0,2558)
+    msh(sc,2476,"BLUE PANTS COLOR",Color3.fromRGB(120,150,255))
+    local bpvp=Instance.new("Frame",sc); bpvp.AnchorPoint=Vector2.new(1,0); bpvp.Size=UDim2.new(0,100,0,24); bpvp.Position=UDim2.new(1,-12,0,2498)
     bpvp.BackgroundColor3=curBPants; Instance.new("UICorner",bpvp).CornerRadius=UDim.new(0,6)
-    local bpww=Instance.new("Frame",sc); bpww.Size=UDim2.new(0.7,0,0,50); bpww.Position=UDim2.new(0,12,0,2560); bpww.BackgroundTransparency=1
+    local bpww=Instance.new("Frame",sc); bpww.Size=UDim2.new(0.7,0,0,50); bpww.Position=UDim2.new(0,12,0,2500); bpww.BackgroundTransparency=1
     for i=1,16 do
         local c=Color3.fromHSV(ph[i],pst[i],pvl[i])
         local b=Instance.new("TextButton",bpww); b.Size=UDim2.new(0.115,-2,0.45,0); b.Position=UDim2.new(((i-1)%8)*0.125,0,math.floor((i-1)/8)*0.5,0)
         b.BackgroundColor3=c; b.Text=""; b.BorderSizePixel=0; Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
     end
-    local sbps=msl(sc,2618,"Blue Pants Saturation:",Color3.fromRGB(80,80,200),sBP,function(v) sBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
-    local sbpv=msl(sc,2654,"Blue Pants Brightness:",Color3.fromRGB(120,120,240),vBP,function(v) vBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
+    local sbps=msl(sc,2558,"Blue Pants Saturation:",Color3.fromRGB(80,80,200),sBP,function(v) sBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
+    local sbpv=msl(sc,2594,"Blue Pants Brightness:",Color3.fromRGB(120,120,240),vBP,function(v) vBP=v; bpvp.BackgroundColor3=Color3.fromHSV(hBP,sBP,vBP) end)
 
-    msh(sc,2692,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
-    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2716)
+    msh(sc,2632,"SCORE (RED - BLUE)",Color3.fromRGB(255,255,100))
+    local srB=Instance.new("TextBox",sc); srB.Size=UDim2.new(0.48,-6,0,26); srB.Position=UDim2.new(0,12,0,2656)
     srB.BackgroundColor3=Color3.fromRGB(60,40,40); srB.Text=tostring(gameState.scoreRed); srB.TextColor3=Color3.new(1,1,1); srB.TextScaled=true; srB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",srB).CornerRadius=UDim.new(0,8)
-    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,2716)
+    local sbB=Instance.new("TextBox",sc); sbB.Size=UDim2.new(0.48,-6,0,26); sbB.Position=UDim2.new(0.52,0,0,2656)
     sbB.BackgroundColor3=Color3.fromRGB(40,40,60); sbB.Text=tostring(gameState.scoreBlue); sbB.TextColor3=Color3.new(1,1,1); sbB.TextScaled=true; sbB.Font=Enum.Font.FredokaOne
     Instance.new("UICorner",sbB).CornerRadius=UDim.new(0,8)
     
@@ -3185,7 +3068,6 @@ local function createSettingsUI()
             tnb.Text=gameState.teamRedName; onb.Text=gameState.teamBlueName
             pnb.Text=gameState.playerName; pnub.Text=gameState.playerNumber
             sb.Text=tostring(gameState.currentStageIndex); mib.Text=tostring(gameState.currentMatchInStage)
-            formBox.Text=gameState.formation
             
             hR,sR,vR=Color3.toHSV(gameState.teamRedColor); hB,sB,vB=Color3.toHSV(gameState.teamBlueColor)
             hSR,sSR,vSR=Color3.toHSV(gameState.teamRedStripeColor); hSB,sSB,vSB=Color3.toHSV(gameState.teamBlueStripeColor)
@@ -3517,7 +3399,16 @@ local function createGameUI()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         gameState.playerTeam=(gameState.playerTeam=="Red") and "Blue" or "Red"
         gameState.playerDribbling=false; updatePlayerAppearance()
-        teleportPlayerToPosition()
+        updateTeamForPlayer() -- THÊM DÒNG NÀY
+        local pc=gameState.playerChar
+        if pc and pc:FindFirstChild("HumanoidRootPart") then
+            local ad=(gameState.playerTeam=="Red") and 1 or -1
+            local tX = MAP_POS.X; local tZ = MAP_POS.Z
+            if gameState.playerPosition == "Striker" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
+            elseif gameState.playerPosition == "Midfielder" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.1) * ad
+            else tZ = MAP_POS.Z - (PITCH_LENGTH/2 * 0.3) * ad end
+            pc:PivotTo(CFrame.new(Vector3.new(tX, TORSO_Y, tZ)))
+        end
     end)
     srb.MouseButton1Click:Connect(function()
         gameState.sprinting=not gameState.sprinting
@@ -3561,16 +3452,16 @@ local function autoStart()
     end)
     refreshDiffStats()
     createStadium(); createBall()
-    
-    -- BỐ TRÍ ĐỘI HÌNH BAN ĐẦU
-    buildTeam("Red", gameState.formation)
-    buildTeam("Blue", gameState.formation)
-    
+    createAIPlayer("Red","Goalkeeper",1)
+    for i=1,4 do createAIPlayer("Red","Defender",i) end
+    for i=1,4 do createAIPlayer("Red","Midfielder",i) end
+    for i=1,2 do createAIPlayer("Red","Striker",i) end
+    createAIPlayer("Blue","Goalkeeper",1)
+    for i=1,4 do createAIPlayer("Blue","Defender",i) end
+    for i=1,4 do createAIPlayer("Blue","Midfielder",i) end
+    for i=1,2 do createAIPlayer("Blue","Striker",i) end
+    updateTeamForPlayer() -- THÊM DÒNG NÀY
     resetPositions("Red"); gameState.gameActive=true
-    
-    -- GỌI HÀM CHÈN NGƯỜI CHƠI
-    task.delay(1, function() updateSubstitutionState() end)
-    
     createGameUI(); createSettingsUI(); startTimer(); updateTournamentDisplay()
     RunService.Heartbeat:Connect(function(dt)
         if gameState.ball then
