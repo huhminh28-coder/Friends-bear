@@ -18,7 +18,6 @@ local HALF_BREAK = 5
 local FULL_BREAK = 30
 local EXTRA_TIME = 120
 
--- CẬP NHẬT TỐC ĐỘ TẠI ĐÂY
 local NORMAL_WALKSPEED = 30
 local SPRINT_WALKSPEED = 60
 
@@ -34,8 +33,7 @@ local PENALTY_BOX_DEPTH = 80
 local PENALTY_DIST = 35
 local STOPPAGE_TIME = 15
 
--- THÊM CÁC VỊ TRÍ MỚI
-local ALL_POSITIONS = {"Striker", "ST", "LW", "RW", "Midfielder", "CAM", "CM", "CDM", "LM", "RM", "Defender", "CB", "LB", "RB"}
+local ALL_POSITIONS = {"ST", "LW", "RW", "CAM", "CM", "CDM", "LM", "RM", "CB", "LB", "RB"}
 
 local DIFFICULTY_LEVELS = {[1]={name="EASY"},[2]={name="NORMAL"},[3]={name="HARD"}}
 local DIFFICULTY_PER_CATEGORY = {
@@ -65,6 +63,18 @@ local TOURNAMENTS = {
     ["Supercopa de España"]={stages={"GROUP STAGE","SEMI-FINALS","FINAL"},matchesPerStage={5,1,1}},
 }
 
+-- TỌA ĐỘ CHUẨN CHO TỪNG VỊ TRÍ (X TỪ -0.5 ĐẾN 0.5, Z TỪ -1 ĐẾN 1)
+local POS_COORDS = {
+    GK = {0, -0.95},
+    LB = {-0.35, -0.65}, LCB = {-0.15, -0.65}, CB = {0, -0.65}, RCB = {0.15, -0.65}, RB = {0.35, -0.65},
+    LWB = {-0.4, -0.4}, RWB = {0.4, -0.4},
+    CDM = {0, -0.35}, LDM = {-0.15, -0.3}, RDM = {0.15, -0.3},
+    LCM = {-0.25, -0.1}, CM = {0, -0.1}, RCM = {0.25, -0.1}, CAM = {0, 0.15},
+    LM = {-0.35, -0.05}, RM = {0.35, -0.05},
+    LW = {-0.3, 0.4}, LST = {-0.15, 0.45}, ST = {0, 0.45}, RST = {0.15, 0.45}, RW = {0.3, 0.4},
+    Striker = {0, 0.45}, Midfielder = {0, -0.1}, Defender = {0, -0.65}
+}
+
 local gameState = {
     ball=nil, redTeam={}, blueTeam={}, scoreRed=0, scoreBlue=0,
     timeLeft=HALF_TIME, currentHalf=1, maxHalves=2, isExtraTime=false,
@@ -87,7 +97,6 @@ local gameState = {
     teamRedStripeEnabled=false, teamBlueStripeEnabled=false,
     teamRedStripeColor=Color3.fromRGB(255,255,255), teamBlueStripeColor=Color3.fromRGB(255,255,255),
 
-    -- FORMATION VÀ SUB
     formation="4-4-2",
     savedFormations={"4-4-2", "4-3-3", "3-5-2", "5-3-2", "4-2-3-1", "4-1-4-1", "3-4-3", "4-5-1", "5-4-1", "4-2-4"},
     benchedBotForPlayer=nil,
@@ -266,9 +275,6 @@ local function playNetSound() playSoundOnce(NET_SOUND, 7, 3) end
 local function playFWLaunch() playSoundOnce(FW_LAUNCH, 8, 3) end
 local function playFWBoom() playSoundOnce(FW_BOOM, 10, 4) end
 
--- ==========================================
--- JERSEY UI (STRICTLY FOR PLAYER ONLY)
--- ==========================================
 local function updatePlayerJersey()
     local char = gameState.playerChar
     if not char then return end
@@ -428,14 +434,24 @@ local function showGoalText()
 end
 local function hideGoalText() if gameState.goalTextLabel then gameState.goalTextLabel.Visible=false end end
 
--- HÀM CẬP NHẬT NGƯỜI CHƠI / BOT DỰ BỊ
+-- HÀM DỊCH CHUYỂN NGƯỜI CHƠI ĐẾN ĐÚNG VỊ TRÍ
+local function teleportPlayerToPosition()
+    if gameState.isOnBench or not gameState.playerChar then return end
+    local hrp = gameState.playerChar:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    local ad = (gameState.playerTeam == "Red") and 1 or -1
+    local coords = POS_COORDS[gameState.playerPosition] or {0, 0.45}
+    local tX = MAP_POS.X + coords[1] * (PITCH_WIDTH/2)
+    local tZ = MAP_POS.Z + coords[2] * (PITCH_LENGTH/2) * ad
+    hrp.CFrame = CFrame.new(tX, TORSO_Y, tZ)
+end
+
 local function updateSubstitutionState()
-    -- Nếu chưa có đội hình, bỏ qua
     if #gameState.redTeam == 0 then return end
     
     local isPlayerActive = not gameState.isOnBench
 
-    -- Tìm bot bị ẩn trước đó (nếu có) để đưa trở lại
     if gameState.benchedBotForPlayer then
         local bot = gameState.benchedBotForPlayer
         bot:SetAttribute("SubbedOut", false)
@@ -447,25 +463,35 @@ local function updateSubstitutionState()
         gameState.benchedBotForPlayer = nil
     end
 
-    -- Nếu người chơi đang ở trên sân, ta phải ẩn 1 bot đi
     if isPlayerActive then
-        local targetRole = "Striker"
-        if gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" or gameState.playerPosition == "Striker" then targetRole = "Striker"
-        elseif gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" or gameState.playerPosition == "Midfielder" then targetRole = "Midfielder"
-        elseif gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" or gameState.playerPosition == "Defender" then targetRole = "Defender"
-        end
-        
-        -- Tìm 1 bot có cùng role để đưa ra ngoài
+        local targetPos = gameState.playerPosition
+        -- Nếu chọn ST, thì tìm bot có vị trí là ST hoặc LST hoặc RST
+        local matchedBot = nil
         for _, bot in ipairs(gameState.redTeam) do
-            if bot.Role.Value == targetRole and not bot:GetAttribute("SubbedOut") then
-                bot:SetAttribute("SubbedOut", true)
-                for _, p in ipairs(bot:GetChildren()) do
-                    if p:IsA("BasePart") then p.Transparency = 1 end
-                end
-                moveCharacter(bot, Vector3.new(0, -500, 0), Vector3.new(0, -500, 1))
-                gameState.benchedBotForPlayer = bot
+            local bPos = bot:GetAttribute("PosName") or ""
+            if bPos == targetPos or (targetPos == "ST" and (bPos == "LST" or bPos == "RST")) then
+                matchedBot = bot
                 break
             end
+        end
+        
+        -- Nếu không tìm thấy vị trí chính xác, lấy tạm 1 bot
+        if not matchedBot then
+            for _, bot in ipairs(gameState.redTeam) do
+                if bot.Role.Value ~= "Goalkeeper" and not bot:GetAttribute("SubbedOut") then
+                    matchedBot = bot
+                    break
+                end
+            end
+        end
+
+        if matchedBot then
+            matchedBot:SetAttribute("SubbedOut", true)
+            for _, p in ipairs(matchedBot:GetChildren()) do
+                if p:IsA("BasePart") then p.Transparency = 1 end
+            end
+            moveCharacter(matchedBot, Vector3.new(0, -500, 0), Vector3.new(0, -500, 1))
+            gameState.benchedBotForPlayer = matchedBot
         end
     end
 end
@@ -486,15 +512,7 @@ local function toggleBenchMode()
         gameState.benchBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
         gameState.playerDribbling = false
     else
-        local hrp = chr:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local ad = (gameState.playerTeam=="Red") and 1 or -1
-            local tX = MAP_POS.X; local tZ = MAP_POS.Z
-            if gameState.playerPosition == "Striker" or gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
-            elseif gameState.playerPosition == "Midfielder" or gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.1) * ad
-            else tZ = MAP_POS.Z - (PITCH_LENGTH/2 * 0.3) * ad end
-            hrp.CFrame = CFrame.new(Vector3.new(tX, TORSO_Y, tZ))
-        end
+        teleportPlayerToPosition()
         updatePlayerAppearance()
         for _, btn in ipairs(gameState.actionButtons) do btn.Visible = true end
         if gameState.switchTeamBtn then gameState.switchTeamBtn.Visible = true end
@@ -600,6 +618,7 @@ local function buildTrophy(tournamentType)
             mk("Crest"..i, Vector3.new(0.8, 1, 0.2), CFrame.new(math.cos(ang)*2, 0.5, math.sin(ang)*2) * CFrame.Angles(0, -ang, 0), Color3.fromRGB(200, 200, 200), Enum.Material.SmoothPlastic)
         end
         mk("GoldTrim", Vector3.new(1.5, 0.5, 1.5), CFrame.new(0, 6.2, 0), Color3.fromRGB(255,215,0), Enum.Material.Metal, Enum.PartType.Cylinder)
+
     elseif shape=="DFB" then
         mk("Base", Vector3.new(3,0.5,3), CFrame.new(0,0.25,0), sc, Enum.Material.Metal)
         mk("Stem", Vector3.new(1.2,2,1.2), CFrame.new(0,1.5,0), sc, Enum.Material.Metal)
@@ -1261,7 +1280,6 @@ local function createAIPlayer(team,role,idx,posName)
 end
 
 local function buildTeam(team, formationStr)
-    -- Xóa đội cũ nếu có
     if team == "Red" then
         for _, b in ipairs(gameState.redTeam) do b:Destroy() end
         gameState.redTeam = {}
@@ -1281,21 +1299,21 @@ local function buildTeam(team, formationStr)
     local function getPosNames(count, roleType)
         if roleType == "Defender" then
             if count == 1 then return {"CB"} end
-            if count == 2 then return {"CB", "CB"} end
+            if count == 2 then return {"LCB", "RCB"} end
             if count == 3 then return {"LB", "CB", "RB"} end
-            if count == 4 then return {"LB", "CB", "CB", "RB"} end
-            if count == 5 then return {"LB", "CB", "CB", "CB", "RB"} end
+            if count == 4 then return {"LB", "LCB", "RCB", "RB"} end
+            if count == 5 then return {"LB", "LCB", "CB", "RCB", "RB"} end
         elseif roleType == "Midfielder" then
             if count == 1 then return {"CM"} end
-            if count == 2 then return {"CDM", "CAM"} end
-            if count == 3 then return {"LM", "CM", "RM"} end
-            if count == 4 then return {"LM", "CM", "CM", "RM"} end
-            if count == 5 then return {"LM", "CDM", "CM", "CAM", "RM"} end
+            if count == 2 then return {"LDM", "RDM"} end
+            if count == 3 then return {"LCM", "CM", "RCM"} end
+            if count == 4 then return {"LM", "LCM", "RCM", "RM"} end
+            if count == 5 then return {"LM", "LCM", "CAM", "RCM", "RM"} end
         elseif roleType == "Striker" then
             if count == 1 then return {"ST"} end
-            if count == 2 then return {"ST", "ST"} end
+            if count == 2 then return {"LST", "RST"} end
             if count == 3 then return {"LW", "ST", "RW"} end
-            if count == 4 then return {"LW", "ST", "ST", "RW"} end
+            if count == 4 then return {"LW", "LST", "RST", "RW"} end
         end
         local arr = {}
         for i=1,count do table.insert(arr, roleType) end
@@ -1314,50 +1332,23 @@ end
 local function getHomePos(bot,useBall)
     local team=bot.Team.Value; local role=bot.Role.Value
     local posName=bot:GetAttribute("PosName") or role
-    local idx=bot:GetAttribute("FormationIndex") or 1
     local ad=(team=="Red") and 1 or -1
-    local bx,bz,xw,zw = 0,0,0.3,0.3
     
-    local redTeamSize = 0
-    local blueTeamSize = 0
-    for _, b in ipairs(gameState.redTeam) do if b.Role.Value == role then redTeamSize = redTeamSize + 1 end end
-    for _, b in ipairs(gameState.blueTeam) do if b.Role.Value == role then blueTeamSize = blueTeamSize + 1 end end
-    local countInRole = (team=="Red") and redTeamSize or blueTeamSize
-    if countInRole == 0 then countInRole = 1 end
-    
-    if role=="Goalkeeper" then 
-        bx,bz,xw,zw=0,-0.95,0.5,0.05
-    elseif role=="Defender" then 
-        bz=(posName=="CB") and -0.55 or -0.5
-        if posName=="LB" then bx=-0.35
-        elseif posName=="RB" then bx=0.35
-        else
-            local step = 0.7 / math.max(1, countInRole - 1)
-            bx = -0.35 + (idx - 1) * step
-            if countInRole == 1 then bx = 0 end
-        end
-        xw,zw=0.35,0.4
-    elseif role=="Midfielder" then 
-        bz=(posName=="CDM") and -0.2 or ((posName=="CAM") and 0.15 or -0.05)
-        if posName=="LM" then bx=-0.35
-        elseif posName=="RM" then bx=0.35
-        else
-            local step = 0.7 / math.max(1, countInRole - 1)
-            bx = -0.35 + (idx - 1) * step
-            if countInRole == 1 then bx = 0 end
-        end
-        xw,zw=0.35,0.5
-    elseif role=="Striker" then 
-        bz=0.35
-        if posName=="LW" then bx=-0.25
-        elseif posName=="RW" then bx=0.25
-        else
-            local step = 0.5 / math.max(1, countInRole - 1)
-            bx = -0.25 + (idx - 1) * step
-            if countInRole == 1 then bx = 0 end
-        end
-        xw,zw=0.3,0.55 
+    local bx, bz = 0, 0
+    local coords = POS_COORDS[posName]
+    if coords then
+        bx, bz = coords[1], coords[2]
+    else
+        if role == "Defender" then bz = -0.6
+        elseif role == "Midfielder" then bz = -0.1
+        elseif role == "Striker" then bz = 0.35 end
     end
+    
+    local xw, zw = 0.3, 0.3
+    if role == "Goalkeeper" then xw, zw = 0.5, 0.05
+    elseif role == "Defender" then xw, zw = 0.35, 0.4
+    elseif role == "Midfielder" then xw, zw = 0.35, 0.5
+    elseif role == "Striker" then xw, zw = 0.3, 0.55 end
     
     local bZ,bX = 0,0
     if useBall and gameState.ball then
@@ -1687,9 +1678,9 @@ function findBestPassTarget(bot)
             
             if c.isPlayer then
                 local chance = 50
-                if gameState.playerPosition == "Defender" or gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" then chance = 30
-                elseif gameState.playerPosition == "Midfielder" or gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then chance = 50
-                elseif gameState.playerPosition == "Striker" or gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then chance = 80 end
+                if gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" then chance = 30
+                elseif gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then chance = 50
+                elseif gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then chance = 80 end
                 
                 if math.random(1,100) <= chance then
                     score = score + 500
@@ -1818,9 +1809,9 @@ local function goalkeeperPassBall(gk,ball,team)
             local s=-math.abs(c.part.Position.Z-ogz)*0.5;
             if c.isPlayer then 
                 local chance = 50
-                if gameState.playerPosition == "Defender" or gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" then chance = 30
-                elseif gameState.playerPosition == "Midfielder" or gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then chance = 50
-                elseif gameState.playerPosition == "Striker" or gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then chance = 80 end
+                if gameState.playerPosition == "CB" or gameState.playerPosition == "LB" or gameState.playerPosition == "RB" then chance = 30
+                elseif gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then chance = 50
+                elseif gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then chance = 80 end
                 
                 if math.random(1,100) <= chance then s=s+50 else s=s-100 end
             end
@@ -2149,16 +2140,11 @@ local function resetPositions(concedingTeam)
         gameState.ball.AssemblyLinearVelocity=Vector3.zero; gameState.ball.AssemblyAngularVelocity=Vector3.zero
     end
     gameState.ballIsCurving=false; gameState.passCooldowns={}; gameState.aiDribbleState={}
-    local pc=gameState.playerChar
-    if pc and pc:FindFirstChild("HumanoidRootPart") and not gameState.isOnBench then
-        local ad=(gameState.playerTeam=="Red") and 1 or -1
-        local tX = MAP_POS.X; local tZ = MAP_POS.Z
-        if gameState.playerPosition == "Striker" or gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
-        elseif gameState.playerPosition == "Midfielder" or gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.1) * ad
-        else tZ = MAP_POS.Z - (PITCH_LENGTH/2 * 0.3) * ad end
-        pc:PivotTo(CFrame.new(Vector3.new(tX, TORSO_Y, tZ)))
-        updatePlayerAppearance()
-    end
+    
+    -- Dịch chuyển người chơi đến đúng vị trí
+    teleportPlayerToPosition()
+    updatePlayerAppearance()
+    
     if concedingTeam then
         local kt=(concedingTeam=="Red") and gameState.redTeam or gameState.blueTeam
         for _,bot in ipairs(kt) do if bot.Role.Value=="Striker" and bot.PrimaryPart and not bot:GetAttribute("SubbedOut") then
@@ -2934,7 +2920,7 @@ local function createSettingsUI()
                 end
             end
             updateSubstitutionState()
-            resetPositions("Red")
+            teleportPlayerToPosition()
         end)
         table.insert(posBtns, b)
     end
@@ -3531,15 +3517,7 @@ local function createGameUI()
         if gameState.inPenaltyShootout or gameState.celebrating or gameState.isOnBench then return end
         gameState.playerTeam=(gameState.playerTeam=="Red") and "Blue" or "Red"
         gameState.playerDribbling=false; updatePlayerAppearance()
-        local pc=gameState.playerChar
-        if pc and pc:FindFirstChild("HumanoidRootPart") then
-            local ad=(gameState.playerTeam=="Red") and 1 or -1
-            local tX = MAP_POS.X; local tZ = MAP_POS.Z
-            if gameState.playerPosition == "Striker" or gameState.playerPosition == "ST" or gameState.playerPosition == "LW" or gameState.playerPosition == "RW" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.35) * ad
-            elseif gameState.playerPosition == "Midfielder" or gameState.playerPosition == "CAM" or gameState.playerPosition == "CM" or gameState.playerPosition == "CDM" or gameState.playerPosition == "LM" or gameState.playerPosition == "RM" then tZ = MAP_POS.Z + (PITCH_LENGTH/2 * 0.1) * ad
-            else tZ = MAP_POS.Z - (PITCH_LENGTH/2 * 0.3) * ad end
-            pc:PivotTo(CFrame.new(Vector3.new(tX, TORSO_Y, tZ)))
-        end
+        teleportPlayerToPosition()
     end)
     srb.MouseButton1Click:Connect(function()
         gameState.sprinting=not gameState.sprinting
